@@ -50,6 +50,11 @@ export interface ProviderJobState {
   outputUrls: string[]
   /** Provider-reported actual cost in USD — exact, unlike a pre-flight estimate. */
   costUsd: number | null
+  /**
+   * Compute seconds the provider billed for, when it says
+   * (Replicate's `metrics.predict_time`). Null when it does not.
+   */
+  predictTimeSeconds: number | null
   error: string | null
   /** The provider payload, verbatim, for debugging and the Details panel. */
   raw: unknown

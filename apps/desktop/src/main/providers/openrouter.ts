@@ -49,6 +49,17 @@ import type {
   ProviderJobStatus,
 } from "./types"
 
+/*
+ * ⛔ Paid endpoint. Never call outside a user-initiated Generate action.
+ *
+ * if (process.env.NODE_ENV === "test" && !process.env.OPENDIRECT_ALLOW_SUBMIT_IN_TEST) {
+ *   // msw intercepts network in tests; this assertion documents the rule.
+ * }
+ *
+ * As in the Replicate adapter, the guarantee comes from the harness: msw runs
+ * with `onUnhandledRequest: "error"`, so no test can reach `openrouter.ai`.
+ */
+
 type JsonObject = Record<string, unknown>
 
 const API_BASE = "https://openrouter.ai/api/v1"
@@ -650,6 +661,7 @@ export function createOpenRouterProvider(
         ]
       }),
       costUsd: typeof usage?.cost === "number" ? usage.cost : null,
+      predictTimeSeconds: null,
       error: null,
       raw: body,
     })
@@ -711,6 +723,7 @@ export function createOpenRouterProvider(
           progress: null,
           outputUrls: [],
           costUsd: null,
+          predictTimeSeconds: null,
           error: null,
           raw: null,
         }
@@ -732,6 +745,8 @@ export function createOpenRouterProvider(
         progress: null,
         outputUrls: status === "succeeded" ? urlList(job.unsigned_urls) : [],
         costUsd: typeof usage?.cost === "number" ? usage.cost : null,
+        // OpenRouter bills by SKU, not by compute time, and publishes none.
+        predictTimeSeconds: null,
         error: asString(job.error),
         raw: job,
       }

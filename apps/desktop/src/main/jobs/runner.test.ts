@@ -86,6 +86,7 @@ function fakeProvider(options: FakeOptions = {}): FakeProvider {
         progress: next.progress ?? null,
         outputUrls: next.outputUrls ?? [],
         costUsd: next.costUsd ?? null,
+        predictTimeSeconds: next.predictTimeSeconds ?? null,
         error: next.error ?? null,
         raw: next.raw ?? { id: ref.id },
       }
@@ -660,4 +661,202 @@ it("never submits a generation that is not queued", async () => {
   expect(() => underTest.enqueue(generation.id)).toThrow(/queued/i)
   await underTest.idle()
   expect(provider.submissions).toHaveLength(0)
+})
+
+describe("never paying twice", () => {
+  it("re-attaches instead of re-submitting when a poll fails transiently", async () => {
+    const provider = fakeProvider({
+      states: [{ status: "succeeded", outputUrls: ["https://x/out.mp4"] }],
+    })
+    const original = provider.poll.bind(provider)
+    let polls = 0
+    provider.poll = async (ref) => {
+      polls += 1
+      if (polls === 1) {
+        throw Object.assign(new Error("Replicate is down"), {
+          response: { status: 503 },
+        })
+      }
+      return original(ref)
+    }
+
+    const generation = queued()
+    build(provider).enqueue(generation.id)
+    await runner!.idle()
+
+    // The prediction was already created and billed; the retry must poll it,
+    // not create a second one.
+    expect(provider.submissions).toHaveLength(1)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "succeeded"
+    )
+  })
+
+  it("does not re-send a submit whose outcome is unknown", async () => {
+    const provider = fakeProvider({
+      onSubmit: () => {
+        // No HTTP status at all: the request may have been accepted before the
+        // connection died.
+        throw new Error("fetch failed")
+      },
+    })
+    const generation = queued()
+    build(provider).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(provider.submissions).toHaveLength(1)
+    const row = getGeneration(opened.handle.db, generation.id)!
+    expect(row.status).toBe("failed")
+    expect(row.error).toMatch(/dashboard/i)
+  })
+
+  it("still retries a 5xx the provider answered with", async () => {
+    const provider = fakeProvider({
+      onSubmit: (_req, attemptNumber) => {
+        if (attemptNumber === 1) {
+          throw Object.assign(new Error("bad gateway"), {
+            response: { status: 502 },
+          })
+        }
+      },
+      states: [{ status: "succeeded", outputUrls: [] }],
+    })
+    const generation = queued()
+    build(provider).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(provider.submissions).toHaveLength(2)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "succeeded"
+    )
+  })
+
+  it("cancels the prediction a cancelled job had already created", async () => {
+    const provider = fakeProvider({
+      states: [{ status: "succeeded", outputUrls: ["https://x/out.mp4"] }],
+      onSubmit: async () => {
+        // Cancel lands while the submit is in flight: the provider job exists
+        // by the time the runner hears about it.
+        const job = getJobForGeneration(opened.handle.db, generationId)
+        if (job) await runner!.cancel(job.id)
+      },
+    })
+    const generation = queued()
+    const generationId = generation.id
+    build(provider).enqueue(generationId)
+    await runner!.idle()
+
+    const row = getGeneration(opened.handle.db, generationId)!
+    expect(row.status).toBe("canceled")
+    // The id is persisted even though cancel arrived first, so the run can be
+    // found on the provider's dashboard.
+    expect(row.providerJobId).toBe("pred-1")
+    expect(provider.cancelled).toEqual(["pred-1"])
+    expect(getJobForGeneration(opened.handle.db, generationId)!.state).toBe(
+      "canceled"
+    )
+  })
+
+  it("retries only the download when the outputs were already produced", async () => {
+    const provider = fakeProvider({
+      states: [
+        {
+          status: "succeeded",
+          outputUrls: ["https://x/out.mp4"],
+          raw: { id: "pred-1", status: "succeeded" },
+        },
+      ],
+    })
+    let failing = true
+    const generation = queued()
+    const underTest = build(provider, {
+      download: async (input) => {
+        if (failing) throw new Error("connection reset")
+        return fakeDownload(input)
+      },
+    })
+    const job = underTest.enqueue(generation.id)
+    await underTest.idle()
+
+    const failed = getGeneration(opened.handle.db, generation.id)!
+    expect(failed.status).toBe("failed")
+    // Both are what makes the retry free.
+    expect(failed.providerJobId).toBe("pred-1")
+    expect(JSON.parse(failed.responseJson!)).toMatchObject({ id: "pred-1" })
+
+    failing = false
+    await underTest.retry(job.id)
+    await underTest.idle()
+
+    expect(provider.submissions).toHaveLength(1)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "succeeded"
+    )
+    expect(listAssets(opened.handle.db, { containerId }).items).toHaveLength(1)
+  })
+
+  it("refuses to retry a run that already succeeded", async () => {
+    const provider = fakeProvider({
+      states: [{ status: "succeeded", outputUrls: [] }],
+    })
+    const generation = queued()
+    const underTest = build(provider)
+    const job = underTest.enqueue(generation.id)
+    await underTest.idle()
+
+    await expect(underTest.retry(job.id)).rejects.toThrow(/succeeded/i)
+    expect(provider.submissions).toHaveLength(1)
+  })
+})
+
+describe("what is recorded", () => {
+  it("records the request with its references redacted, never their URLs", async () => {
+    const source = join(root, "secret-ref.png")
+    await writeFile(source, Buffer.from([137, 80, 78, 71]))
+    const imported = await importFiles(
+      { db: opened.handle.db, project: opened.project },
+      { paths: [source], containerId }
+    )
+    const assetId = imported.assets[0]!.id
+
+    const provider = fakeProvider({ states: [{ status: "succeeded" }] })
+    const generation = queued({
+      inputs: [{ assetId, slotField: "image", position: 0 }],
+    })
+    build(provider, {
+      getModel: async () => ({
+        referenceSlots: [{ field: "image", label: "Image", multiple: false }],
+      }),
+    }).enqueue(generation.id)
+    await runner!.idle()
+
+    // The provider was sent the real thing…
+    expect(provider.submissions[0]!.params.image).toMatch(/^data:image\/png/)
+    // …and the row — which travels to the renderer on every `jobs:update` —
+    // records which asset filled the slot, not a megabyte of base64.
+    const recorded = JSON.parse(
+      getGeneration(opened.handle.db, generation.id)!.requestJson!
+    ) as Record<string, unknown>
+    expect(recorded.image).toEqual({ assetId, slot: "image" })
+    expect(JSON.stringify(recorded)).not.toContain("base64")
+  })
+
+  it("records the provider's predict time when it reports one", async () => {
+    const provider = fakeProvider({
+      states: [
+        {
+          status: "succeeded",
+          outputUrls: ["https://x/out.mp4"],
+          predictTimeSeconds: 12.5,
+        },
+      ],
+    })
+    const generation = queued()
+    build(provider).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(
+      getGeneration(opened.handle.db, generation.id)!.predictTimeSeconds
+    ).toBe(12.5)
+  })
 })

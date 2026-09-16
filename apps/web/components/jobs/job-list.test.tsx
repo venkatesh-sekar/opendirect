@@ -42,6 +42,7 @@ function generation(overrides: Partial<GenerationDto> = {}): GenerationDto {
     providerJobId: "pred-1",
     estimatedCostUsd: 0.64,
     actualCostUsd: null,
+    predictTimeSeconds: null,
     costConfidence: "estimated",
     parentGenerationId: null,
     branchNote: null,

@@ -44,6 +44,20 @@ import type {
   ReferenceUpload,
 } from "./types"
 
+/*
+ * ⛔ Paid endpoint. Never call outside a user-initiated Generate action.
+ *
+ * if (process.env.NODE_ENV === "test" && !process.env.OPENDIRECT_ALLOW_SUBMIT_IN_TEST) {
+ *   // msw intercepts network in tests; this assertion documents the rule.
+ * }
+ *
+ * The rule is enforced by the harness rather than by a branch here: the test
+ * setup runs msw with `onUnhandledRequest: "error"`, so a submit that escaped
+ * to `api.replicate.com` fails the suite outright. A runtime check would be
+ * weaker (it can be switched off with an environment variable) and would put
+ * test-only code on the production path.
+ */
+
 type JsonObject = Record<string, unknown>
 
 export interface ReplicateProviderDeps {
@@ -525,8 +539,13 @@ export function createReplicateProvider(
         outputUrls:
           status === "succeeded" ? outputUrlsOf(prediction.output) : [],
         // Replicate bills by hardware-seconds and reports no cost on the
-        // prediction, so the actual spend is never known here.
+        // prediction, so the actual spend is never known here — but the
+        // seconds themselves are published once the run finishes.
         costUsd: null,
+        predictTimeSeconds:
+          typeof prediction.metrics?.predict_time === "number"
+            ? prediction.metrics.predict_time
+            : null,
         error: errorMessageOf(prediction.error),
         raw: prediction,
       }

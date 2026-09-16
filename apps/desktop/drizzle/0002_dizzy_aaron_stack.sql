@@ -1,0 +1,1 @@
+ALTER TABLE `generations` ADD `predict_time_seconds` real;

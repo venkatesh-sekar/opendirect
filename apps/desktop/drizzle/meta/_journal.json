@@ -15,6 +15,13 @@
       "when": 1789568401239,
       "tag": "0001_pretty_electro",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789572687877,
+      "tag": "0002_dizzy_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

@@ -133,6 +133,7 @@ export function createGeneration(
     providerJobId: null,
     estimatedCostUsd: input.estimatedCostUsd ?? null,
     actualCostUsd: null,
+    predictTimeSeconds: null,
     costConfidence: input.costConfidence ?? null,
     parentGenerationId: input.parentGenerationId ?? null,
     branchNote: input.branchNote ?? null,
@@ -168,6 +169,8 @@ export interface UpdateStatusInput {
   actualCostUsd?: number | null
   /** Set to `"exact"` when the provider reported what the run actually cost. */
   costConfidence?: string | null
+  /** Compute seconds the provider reported for the finished run. */
+  predictTimeSeconds?: number | null
   now?: number
 }
 
@@ -209,6 +212,10 @@ export function updateStatus(
         input.costConfidence === undefined
           ? current.costConfidence
           : input.costConfidence,
+      predictTimeSeconds:
+        input.predictTimeSeconds === undefined
+          ? current.predictTimeSeconds
+          : input.predictTimeSeconds,
       startedAt: started ? now : current.startedAt,
       completedAt: TERMINAL.has(input.status) ? now : current.completedAt,
     })

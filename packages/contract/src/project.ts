@@ -146,6 +146,8 @@ export const generationSchema = z.object({
   providerJobId: z.string().nullable(),
   estimatedCostUsd: z.number().nullable(),
   actualCostUsd: z.number().nullable(),
+  /** Provider-reported compute seconds, when it reports any. */
+  predictTimeSeconds: z.number().nullable(),
   costConfidence: z.string().nullable(),
   parentGenerationId: z.string().nullable(),
   branchNote: z.string().nullable(),

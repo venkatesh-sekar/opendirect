@@ -361,10 +361,23 @@ keystroke.
   and every transition is written to SQLite *before* it is pushed to the
   renderer as a `jobs:update` event.
 - **`poll.ts`** — the timing and retry arithmetic: the poll interval comes from
-  settings and is jittered; a 5xx, a 429 or a transport failure is retried with
-  exponential backoff up to three attempts; a 4xx, a provider-reported failure
-  and a failed download are all terminal, because by then the request has
-  already been paid for.
+  settings and is jittered; a 5xx or a 429 is retried with exponential backoff
+  up to three attempts; a 4xx, a provider-reported failure and a failed
+  download are all terminal, because by then the request has already been paid
+  for.
+- **Never paying twice.** Once `generations.provider_job_id` is set, every
+  later attempt — a retry after a flaky poll, a restart, the Retry button —
+  *polls* that job rather than submitting a second one. A submit that fails
+  with no HTTP status at all is terminal too, because the provider may have
+  accepted it; the error tells the user to check the dashboard. A cancel that
+  lands while a submit is in flight records the returned id, asks the provider
+  to stop the run, and leaves the row cancelled.
+- **What is recorded.** `request_json` names each reference as
+  `{ assetId, slot }` rather than the data URL or signed upload URL actually
+  sent — the row travels to the renderer inside every `jobs:update`. The raw
+  provider response, the actual cost and `predict_time_seconds` (Replicate's
+  `metrics.predict_time`) are written *before* the download starts, so a failed
+  download can be retried for free.
 - **`download.ts`** — streams each output into `tmp/` and renames it into
   `generations/<id>/<index>.<ext>` only once the length checks out, so the
   project never holds a half-written file. `attachOutputs` then creates the

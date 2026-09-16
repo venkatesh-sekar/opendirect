@@ -160,6 +160,12 @@ export const generations = sqliteTable(
     providerJobId: text("provider_job_id"),
     estimatedCostUsd: real("estimated_cost_usd"),
     actualCostUsd: real("actual_cost_usd"),
+    /**
+     * Seconds of compute the provider says the run took (Replicate's
+     * `metrics.predict_time`). Recorded because it is the only thing Replicate
+     * publishes that a hardware-seconds bill can be checked against.
+     */
+    predictTimeSeconds: real("predict_time_seconds"),
     costConfidence: text("cost_confidence"),
     /**
      * Branching. `set null` rather than `cascade`: pruning one run must not

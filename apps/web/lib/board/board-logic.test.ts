@@ -78,6 +78,7 @@ function generation(overrides: Partial<GenerationDto> = {}): GenerationDto {
     kind: "video",
     prompt: "a hallway that never ends",
     paramsJson: "{}",
+    predictTimeSeconds: null,
     requestJson: null,
     responseJson: null,
     status: "running",

@@ -69,6 +69,7 @@ import {
 } from "./download"
 import {
   backoffDelay,
+  httpStatusOf,
   isRetryable,
   nextPollDelay,
   MAX_ATTEMPTS,
@@ -83,6 +84,20 @@ import {
  * for) the output, so a retry would pay twice for a file that exists. The user
  * is told what happened and can retry deliberately from the job list.
  */
+/**
+ * A submit whose outcome nobody knows — no status came back, so the provider
+ * may have accepted it. Terminal: the one thing worse than a failed run is two
+ * of them.
+ */
+class SubmitOutcomeUnknown extends TerminalJobError {
+  constructor(cause: unknown) {
+    super(
+      `The run could not be confirmed as submitted (${messageOf(cause)}). It was not sent again, because the provider may have accepted it — check the provider's dashboard before retrying.`
+    )
+    this.name = "SubmitOutcomeUnknown"
+  }
+}
+
 class DownloadFailure extends TerminalJobError {
   constructor(detail: string) {
     super(`The run finished but its output could not be downloaded: ${detail}`)
@@ -93,6 +108,14 @@ class DownloadFailure extends TerminalJobError {
 /** What a run needs to know about the model beyond what its row records. */
 export interface RunnerModelShape {
   referenceSlots: { field: string; label: string; multiple: boolean }[]
+}
+
+/** A run's references, twice: as the provider needs them, and as we record them. */
+interface ResolvedReferences {
+  /** Real URLs — uploaded or `data:` — sent to the provider. */
+  params: Record<string, unknown>
+  /** `{ assetId, slot }` marks, safe to store and to send to the renderer. */
+  redacted: Record<string, unknown>
 }
 
 export interface JobRunnerSettings {
@@ -200,9 +223,9 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     provider: ModelProvider,
     generationId: string,
     modelKey: string
-  ): Promise<Record<string, unknown>> {
+  ): Promise<ResolvedReferences> {
     const inputs = listInputs(db, generationId)
-    if (inputs.length === 0) return {}
+    if (inputs.length === 0) return { params: {}, redacted: {} }
 
     let slots: RunnerModelShape["referenceSlots"] = []
     if (deps.getModel) {
@@ -217,6 +240,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     const multiple = new Map(slots.map((slot) => [slot.field, slot.multiple]))
 
     const byField = new Map<string, string[]>()
+    const assetsByField = new Map<string, string[]>()
     for (const input of inputs) {
       if (!input.asset.relPath) continue
       const absolute = resolveAssetPath(project, input.asset.relPath)
@@ -235,14 +259,28 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
         ...(byField.get(input.slotField) ?? []),
         url,
       ])
+      assetsByField.set(input.slotField, [
+        ...(assetsByField.get(input.slotField) ?? []),
+        input.asset.id,
+      ])
     }
 
     const params: Record<string, unknown> = {}
+    const redacted: Record<string, unknown> = {}
     for (const [field, urls] of byField) {
       const many = multiple.get(field) ?? urls.length > 1
       params[field] = many ? urls : urls[0]
+
+      // What is *recorded* names the asset instead of carrying its bytes: the
+      // recorded request travels to the renderer inside every `jobs:update`,
+      // and a base64 data URL (or a signed upload URL) has no business there.
+      const marks = (assetsByField.get(field) ?? []).map((assetId) => ({
+        assetId,
+        slot: field,
+      }))
+      redacted[field] = many ? marks : marks[0]
     }
-    return params
+    return { params, redacted }
   }
 
   /** Downloads a finished run's outputs and records it as succeeded. */
@@ -251,6 +289,19 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     generationId: string,
     state: ProviderJobState
   ): Promise<void> {
+    // Recorded *before* the download, and with the provider job id left in
+    // place: if a download fails, `retry` can re-attach to the finished
+    // prediction and fetch it again instead of paying for a second run.
+    updateStatus(db, generationId, {
+      status: "running",
+      response: state.raw,
+      ...(state.costUsd === null
+        ? {}
+        : { actualCostUsd: state.costUsd, costConfidence: "exact" }),
+      ...(state.predictTimeSeconds === null
+        ? {}
+        : { predictTimeSeconds: state.predictTimeSeconds }),
+    })
     move(jobId, "downloading")
 
     const outputs: DownloadedOutput[] = []
@@ -279,16 +330,10 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       }
     )
 
-    updateStatus(db, generationId, {
-      status: "succeeded",
-      error: null,
-      response: state.raw,
-      // Only OpenRouter reports what a run actually cost; Replicate never
-      // does, and inventing a number would be worse than leaving the estimate.
-      ...(state.costUsd === null
-        ? {}
-        : { actualCostUsd: state.costUsd, costConfidence: "exact" }),
-    })
+    // Only OpenRouter reports what a run actually cost; Replicate never does,
+    // and inventing a number would be worse than leaving the estimate — both
+    // were already recorded above, alongside the raw response.
+    updateStatus(db, generationId, { status: "succeeded", error: null })
     move(jobId, "succeeded", { error: null })
   }
 
@@ -336,15 +381,23 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     }
   }
 
-  /** One attempt: submit (or re-attach) and then poll to a conclusion. */
-  async function attempt(jobId: string, resume: boolean): Promise<void> {
+  /**
+   * One attempt: submit if there is nothing to re-attach to, then poll to a
+   * conclusion.
+   *
+   * The `provider_job_id` is the whole decision. Once it is set the provider
+   * has been paid, so *every* subsequent attempt — a retry after a flaky poll,
+   * a restart, a user pressing Retry — polls that job rather than creating a
+   * second one.
+   */
+  async function attempt(jobId: string): Promise<void> {
     const job = requireJob(db, jobId)
     const generation = getGeneration(db, job.generationId)
     if (!generation)
       throw new Error(`Generation ${job.generationId} was not found`)
     const provider = providerFor(generation.provider)
 
-    if (resume && generation.providerJobId) {
+    if (generation.providerJobId) {
       move(jobId, "running")
       await poll(jobId, generation.id, provider, {
         provider: generation.provider as ProviderId,
@@ -357,32 +410,73 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     move(jobId, "submitting", { error: null })
     updateStatus(db, generation.id, { status: "submitted", error: null })
 
-    const params = {
-      ...(JSON.parse(generation.paramsJson) as Record<string, unknown>),
-      ...(await referenceParams(
-        provider,
-        generation.id,
-        `${generation.provider}:${generation.modelSlug}`
-      )),
-    }
+    const own = JSON.parse(generation.paramsJson) as Record<string, unknown>
+    const references = await referenceParams(
+      provider,
+      generation.id,
+      `${generation.provider}:${generation.modelSlug}`
+    )
+    const params = { ...own, ...references.params }
     if (cancelled.has(jobId) || disposed) return
 
     // ⛔ The paid call.
-    const ref = await provider.submit({
-      slug: generation.modelSlug,
-      versionId: generation.modelVersion,
-      params,
-    })
+    let ref: ProviderJobRef
+    try {
+      ref = await provider.submit({
+        slug: generation.modelSlug,
+        versionId: generation.modelVersion,
+        params,
+      })
+    } catch (error) {
+      // A failure that carries no HTTP status never got an answer: the request
+      // may have been accepted and be running right now. Re-sending it could
+      // pay for the same run twice, so it is terminal and says why.
+      if (httpStatusOf(error) === null) throw new SubmitOutcomeUnknown(error)
+      throw error
+    }
+
+    if (cancelled.has(jobId) || disposed) {
+      // Cancelled while the submit was in flight. The prediction exists, so its
+      // id is recorded (the user can find it on the dashboard) and the provider
+      // is asked to stop it — but the run stays cancelled rather than being
+      // promoted to running behind the user's back.
+      await stopSubmitted(jobId, generation.id, provider, ref)
+      return
+    }
 
     updateStatus(db, generation.id, {
       status: "running",
       providerJobId: ref.id,
-      // The payload is recorded as it was actually sent, references and all.
-      request: params,
+      // Recorded with its references named rather than expanded: this JSON
+      // goes back to the renderer with every job update.
+      request: { ...own, ...references.redacted },
     })
     move(jobId, "running")
 
     await poll(jobId, generation.id, provider, ref)
+  }
+
+  /** Cancellation that arrived while a submit was in flight. */
+  async function stopSubmitted(
+    jobId: string,
+    generationId: string,
+    provider: ModelProvider,
+    ref: ProviderJobRef
+  ): Promise<void> {
+    let note: string | null = null
+    try {
+      await provider.cancel(ref)
+    } catch (error) {
+      // OpenRouter cannot cancel a video job at all; the run is still stopped
+      // here, and the reason it may be billed anyway is recorded on the row.
+      note = messageOf(error)
+    }
+    updateStatus(db, generationId, {
+      status: "canceled",
+      providerJobId: ref.id,
+      error: note,
+    })
+    move(jobId, "canceled", { error: note })
   }
 
   function fail(jobId: string, generationId: string, message: string): void {
@@ -391,7 +485,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
   }
 
   /** The retry loop around `attempt`. */
-  async function execute(jobId: string, resume: boolean): Promise<void> {
+  async function execute(jobId: string): Promise<void> {
     const job = getJob(db, jobId)
     if (!job || cancelled.has(jobId) || disposed) return
 
@@ -402,7 +496,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       updateJob(db, jobId, { attempts })
 
       try {
-        await attempt(jobId, resume && attempts === job.attempts + 1)
+        await attempt(jobId)
         return
       } catch (error) {
         if (cancelled.has(jobId) || disposed) return
@@ -421,10 +515,10 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     }
   }
 
-  function schedule(jobId: string, resume: boolean): void {
+  function schedule(jobId: string): void {
     queue.concurrency = deps.settings().maxConcurrentJobs
     void queue
-      .add(() => execute(jobId, resume))
+      .add(() => execute(jobId))
       .catch((error: unknown) => {
         log(`Job ${jobId} crashed`, error)
         try {
@@ -462,7 +556,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
       cancelled.delete(job.id)
       const dto = publish(job.id)
-      schedule(job.id, false)
+      schedule(job.id)
       return dto
     },
 
@@ -509,18 +603,36 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       if (isActiveState(job.state)) {
         throw new Error("That run is still going; cancel it before retrying.")
       }
+      if (job.state === "succeeded") {
+        throw new Error(
+          "That run already succeeded; generate a new one instead of retrying it."
+        )
+      }
 
-      updateStatus(db, job.generationId, {
-        status: "queued",
-        error: null,
-        providerJobId: null,
-      })
+      const generation = getGeneration(db, job.generationId)
+      if (!generation)
+        throw new Error(`Generation ${job.generationId} was not found`)
+
+      if (generation.providerJobId) {
+        // The provider has already been paid for this run: re-attach to it.
+        // Polling it again is a free GET that also hands back fresh output
+        // URLs — which is what a failed download needs, since the ones from
+        // the first attempt are usually signed and short-lived.
+        updateStatus(db, job.generationId, { status: "running", error: null })
+      } else {
+        updateStatus(db, job.generationId, {
+          status: "queued",
+          error: null,
+          providerJobId: null,
+        })
+      }
+
       updateJob(db, jobId, { state: "queued", attempts: 0, error: null })
       cancelled.delete(jobId)
       progress.delete(jobId)
 
       const dto = publish(jobId)
-      schedule(jobId, false)
+      schedule(jobId)
       return dto
     },
 
@@ -534,14 +646,14 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
           // The provider job outlived us; re-attach and keep polling rather
           // than paying for the same run twice.
           recovered.push(move(job.id, "running"))
-          schedule(job.id, true)
+          schedule(job.id)
           continue
         }
 
         if (job.state === "queued" && generation.status === "queued") {
           // Never submitted, so nothing has been spent: start it properly.
           recovered.push(publish(job.id))
-          schedule(job.id, false)
+          schedule(job.id)
           continue
         }
 
