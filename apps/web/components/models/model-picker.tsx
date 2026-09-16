@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { parseModelKey } from "@opendirect/contract"
 import type { ModelKind, ModelSummary } from "@opendirect/contract"
@@ -13,7 +13,6 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -25,6 +24,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { useCatalogRefreshAccelerator } from "@/hooks/use-app-info"
 import {
@@ -56,6 +56,32 @@ export interface ModelPickerProps {
    * that two of them cannot fight over the same chord.
    */
   hotkeys?: boolean
+  /** Classes for the trigger — the caller states the chip's width. */
+  className?: string
+}
+
+/**
+ * How many rows of one group are mounted at once.
+ *
+ * The catalog is the union of several provider collections and is unbounded in
+ * principle, while a popup 26rem wide shows about eight rows. Mounting all of
+ * them is work nobody sees, paid on every open and again on every keystroke,
+ * so each group stops here and says how many it is holding back. Nothing is
+ * *hidden*: the search below runs over the whole catalog, so a model past the
+ * cap is one word away.
+ */
+const GROUP_CAP = 25
+
+/** Substring over the name and the key — what someone typing a slug expects. */
+function matches(
+  model: Pick<ModelSummary, "name" | "key">,
+  needle: string
+): boolean {
+  if (!needle) return true
+  return (
+    model.name.toLowerCase().includes(needle) ||
+    model.key.toLowerCase().includes(needle)
+  )
 }
 
 /** One row: name, provider badge, and the honest price hint. */
@@ -103,9 +129,11 @@ export function ModelPicker({
   placeholder = "Select a model",
   disabled,
   hotkeys = true,
+  className,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<"all" | ModelKind>("all")
+  const [query, setQuery] = useState("")
 
   const models = useModels(kinds)
   const recommended = useRecommendedModels()
@@ -139,18 +167,29 @@ export function ModelPicker({
     [disabled]
   )
 
+  /**
+   * The kinds are read through a ref rather than listed as a dependency: the
+   * caller builds the array in its own render body, so depending on it by
+   * identity tore down and re-bound this chord on every keystroke of whatever
+   * bar the picker sits in.
+   */
+  const kindsRef = useRef(kinds)
+  useEffect(() => {
+    kindsRef.current = kinds
+  }, [kinds])
+
   useHotkeys(
     refreshAccelerator,
     (event) => {
       event.preventDefault()
-      if (!refresh.isPending) refresh.mutate(kinds)
+      if (!refresh.isPending) refresh.mutate(kindsRef.current)
     },
     {
       enabled: hotkeys,
       enableOnFormTags: true,
       enableOnContentEditable: true,
     },
-    [refresh.isPending, kinds, refreshAccelerator]
+    [refresh.isPending, refreshAccelerator]
   )
 
   const all = useMemo(() => models.data?.models ?? [], [models.data])
@@ -166,31 +205,58 @@ export function ModelPicker({
     [all, filter]
   )
 
+  const needle = query.trim().toLowerCase()
+
   const recommendedRows = useMemo(() => {
     const groups = recommended.data
     if (!groups) return []
     return [...groups.video, ...groups.image].filter(
-      (model) => filter === "all" || model.kind === filter
+      (model) =>
+        (filter === "all" || model.kind === filter) &&
+        matches({ name: model.label, key: model.key }, needle)
     )
-  }, [recommended.data, filter])
+  }, [recommended.data, filter, needle])
 
   const recommendedKeys = useMemo(
     () => new Set(recommendedRows.map((model) => model.key)),
     [recommendedRows]
   )
 
-  const group = (kind: ModelKind) =>
-    visible.filter(
-      (model) => model.kind === kind && !recommendedKeys.has(model.key)
+  /**
+   * The three catalog groups, filtered once and capped.
+   *
+   * The search is ours rather than `cmdk`'s (`shouldFilter={false}` below):
+   * `cmdk` can only score the rows that are mounted, so a capped list and its
+   * filter have to be the same pass. It is a plain substring test run inside a
+   * memo — synchronous with the keystroke, no debounce to wait out.
+   */
+  const groups = useMemo(() => {
+    const rest = visible.filter(
+      (model) => !recommendedKeys.has(model.key) && matches(model, needle)
     )
-  const video = group("video")
-  const image = group("image")
-  const other = visible.filter(
-    (model) =>
-      model.kind !== "video" &&
-      model.kind !== "image" &&
-      !recommendedKeys.has(model.key)
-  )
+    const of = (kind: ModelKind) => rest.filter((model) => model.kind === kind)
+    const video = of("video")
+    const image = of("image")
+    const other = rest.filter(
+      (model) => model.kind !== "video" && model.kind !== "image"
+    )
+    const total = video.length + image.length + other.length
+    return {
+      rows: [
+        { heading: "Video", models: video },
+        { heading: "Image", models: image },
+        { heading: "Other", models: other },
+      ],
+      total,
+      shown:
+        Math.min(video.length, GROUP_CAP) +
+        Math.min(image.length, GROUP_CAP) +
+        Math.min(other.length, GROUP_CAP),
+    }
+  }, [visible, recommendedKeys, needle])
+
+  const empty = groups.total === 0 && recommendedRows.length === 0
+  const held = groups.total - groups.shown
 
   function pick(key: string) {
     onChange(key)
@@ -207,7 +273,7 @@ export function ModelPicker({
             aria-expanded={open}
             aria-haspopup="listbox"
             disabled={disabled}
-            className="justify-between"
+            className={cn("justify-between", className)}
           >
             <span className="truncate">
               {selected?.name ?? value ?? placeholder}
@@ -216,8 +282,12 @@ export function ModelPicker({
         }
       />
       <PopoverContent className="w-[26rem] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search models…" />
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder="Search models…"
+            value={query}
+            onValueChange={setQuery}
+          />
 
           <div
             role="group"
@@ -253,14 +323,21 @@ export function ModelPicker({
             </Alert>
           ) : null}
 
-          <CommandList>
-            <CommandEmpty>
-              {models.isLoading
-                ? "Loading the model catalog…"
-                : models.isError
-                  ? "The model catalog could not be loaded. Check your API keys in Settings."
-                  : "No models match. Try refreshing the catalog."}
-            </CommandEmpty>
+          {/* A stated height: a list that grows and shrinks with the results
+              re-positions the whole popup on every keystroke. */}
+          <CommandList className="h-72">
+            {empty ? (
+              <p
+                data-testid="model-picker-empty"
+                className="py-6 text-center text-sm text-muted-foreground"
+              >
+                {models.isLoading
+                  ? "Loading the model catalog…"
+                  : models.isError
+                    ? "The model catalog could not be loaded. Check your API keys in Settings."
+                    : "No models match. Try refreshing the catalog."}
+              </p>
+            ) : null}
 
             {recommendedRows.length > 0 ? (
               <CommandGroup heading="Recommended">
@@ -294,14 +371,10 @@ export function ModelPicker({
               </CommandGroup>
             ) : null}
 
-            {[
-              { heading: "Video", models: video },
-              { heading: "Image", models: image },
-              { heading: "Other", models: other },
-            ].map(({ heading, models: rows }) =>
+            {groups.rows.map(({ heading, models: rows }) =>
               rows.length > 0 ? (
                 <CommandGroup key={heading} heading={heading}>
-                  {rows.map((model) => (
+                  {rows.slice(0, GROUP_CAP).map((model) => (
                     <CommandItem
                       key={model.key}
                       value={`${model.name} ${model.key}`}
@@ -315,6 +388,15 @@ export function ModelPicker({
                 </CommandGroup>
               ) : null
             )}
+
+            {held > 0 ? (
+              <p
+                data-testid="model-rows-truncated"
+                className="px-3 py-2 text-xs text-muted-foreground"
+              >
+                {held} more — keep typing to narrow them down.
+              </p>
+            ) : null}
 
             <CommandSeparator />
             <CommandGroup heading="Catalog">

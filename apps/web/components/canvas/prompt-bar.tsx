@@ -200,9 +200,18 @@ function useDraft(
   return [draft, update]
 }
 
-/** The modalities a node of this type may run. */
+/**
+ * The modalities a node of this type may run.
+ *
+ * Two frozen arrays rather than a fresh one per call: the picker keeps this in
+ * a hotkey dependency list, so a new array on every render re-bound the
+ * catalog chord on every keystroke.
+ */
+const VIDEO_KINDS: ModelKind[] = ["video"]
+const IMAGE_KINDS: ModelKind[] = ["image"]
+
 function kindsFor(node: CanvasNodeDto): ModelKind[] {
-  return node.type === "video_gen" ? ["video"] : ["image"]
+  return node.type === "video_gen" ? VIDEO_KINDS : IMAGE_KINDS
 }
 
 /** References grouped the way `buildGenerationRequest` takes them. */
@@ -249,6 +258,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         : stored,
     [defaultModelKey, stored]
   )
+  /** Stable by node type: the picker keeps it in a hotkey dependency list. */
+  const kinds = useMemo(() => kindsFor(node), [node])
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -602,16 +613,24 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         </Button>
       </div>
 
+      {/* Both slots are held open whether or not they have anything to say:
+          the label appears the moment the count passes the model's own
+          per-prediction maximum, and a slot that appears is a slot that
+          shoves. */}
       {plan && plan.runs > 1 ? (
         <span
           data-testid="run-count"
-          className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums"
+          className="w-12 shrink-0 text-right font-mono text-xs text-muted-foreground tabular-nums"
         >
           {plan.runs} runs
         </span>
-      ) : null}
+      ) : (
+        <span aria-hidden className="w-12 shrink-0" />
+      )}
 
-      <CostBadge quote={total} pending={cost.isFetching} />
+      <span className="flex w-24 shrink-0 justify-end">
+        <CostBadge quote={total} pending={cost.isFetching} />
+      </span>
     </>
   )
 
@@ -621,37 +640,26 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     ? Object.keys(advancedSchema.properties).length
     : 0
 
+  /*
+   * The bar's width is **stated**, not inherited from its content. React Flow
+   * anchors it to the node, so its width is its position: a model name
+   * arriving, a cost resolving or an "N runs" label appearing would otherwise
+   * slide every control sideways under the pointer. Every child that can
+   * change its text is given a width for the same reason.
+   */
   return (
     <div
       data-testid="canvas-prompt-bar"
       data-node-id={node.id}
-      className="pointer-events-auto flex max-w-[52rem] flex-col gap-2 rounded-xl border bg-card/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85"
+      className="pointer-events-auto flex w-[min(52rem,calc(100vw-4rem))] flex-col gap-2 rounded-xl border bg-card/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85"
     >
-      {notice ? (
-        <p role="status" className="px-1 text-xs text-muted-foreground">
-          {notice}
-        </p>
-      ) : null}
-
-      {submission.error ? (
-        <p role="alert" className="px-1 text-xs text-destructive">
-          {submission.error.message}
-        </p>
-      ) : null}
-
-      {blockedReason ? (
-        <p
-          role="alert"
-          data-testid="run-blocked"
-          className="px-1 text-xs text-destructive"
-        >
-          {blockedReason}
-        </p>
-      ) : null}
-
       {/* Wraps rather than overflowing: the bar is anchored to a node and a
-          narrow window would otherwise push Run off the viewport. */}
-      <div className="flex flex-wrap items-end gap-2">
+          narrow window would otherwise push Run off the viewport. The messages
+          are *below* this row — see the end of the bar. */}
+      <div
+        data-testid="prompt-bar-controls"
+        className="flex flex-wrap items-end gap-2"
+      >
         <ReferenceTray
           node={node}
           canvas={canvas}
@@ -660,6 +668,13 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           onNotice={setNotice}
         />
 
+        {/* ---- the prompt field -------------------------------------------
+            One plain textarea, kept whole and kept here on purpose: the
+            @-mention picker is going to attach to exactly this element, and
+            it needs a caret it can read from a real <textarea>. Its width
+            comes from `flex-1` inside a bar of stated width, so it is the one
+            thing that absorbs the remaining space instead of setting it.
+            ----------------------------------------------------------------- */}
         <Textarea
           aria-label="Prompt"
           placeholder="Describe what you want…"
@@ -669,8 +684,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             const prompt = event.target.value
             updateDraft((current) => ({ ...current, prompt }))
           }}
-          className="max-h-32 min-h-9 min-w-48 flex-1 resize-y py-2"
+          className="max-h-32 min-h-9 min-w-48 flex-1 resize-none py-2"
         />
+        {/* ---- end of the prompt field ----------------------------------- */}
 
         {/*
           The ✨ menu, in the same place the creation bar kept it: between the
@@ -716,7 +732,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           onChange={(key) =>
             updateDraft((current) => ({ ...current, modelKey: key }))
           }
-          kinds={kindsFor(node)}
+          kinds={kinds}
+          // Stated so the model's own name cannot move its neighbours.
+          className="w-44 shrink-0"
           // The canvas can show several bars over its lifetime; the palette
           // chord belongs to the window, not to whichever one is mounted.
           hotkeys={false}
@@ -743,7 +761,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           size="sm"
           disabled={!advancedSchema}
           onClick={() => setAdvancedOpen(true)}
-          className="shrink-0 text-muted-foreground"
+          className="w-28 shrink-0 justify-start text-muted-foreground"
         >
           <HugeiconsIcon icon={SlidersHorizontalIcon} className="size-3.5" />
           Advanced
@@ -771,6 +789,37 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           </TooltipContent>
         </Tooltip>
       </div>
+
+      {/*
+        The messages, *below* the controls.
+
+        The toolbar anchors this bar by its top edge, so anything rendered
+        above the row moves every control down the instant it appears — a
+        notice arriving while the pointer is travelling to Run. Below the row
+        the bar grows downward into empty canvas and nothing the user is
+        aiming at moves. `role` is unchanged: the same text, still announced.
+      */}
+      {notice ? (
+        <p role="status" className="px-1 text-xs text-muted-foreground">
+          {notice}
+        </p>
+      ) : null}
+
+      {submission.error ? (
+        <p role="alert" className="px-1 text-xs text-destructive">
+          {submission.error.message}
+        </p>
+      ) : null}
+
+      {blockedReason ? (
+        <p
+          role="alert"
+          data-testid="run-blocked"
+          className="px-1 text-xs text-destructive"
+        >
+          {blockedReason}
+        </p>
+      ) : null}
 
       {/*
         The AI answer, and the only place it can become the prompt: Apply

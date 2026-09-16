@@ -47,6 +47,20 @@ if (browser.window !== undefined) {
 }
 
 /**
+ * jsdom implements no `scrollIntoView`, and `cmdk` calls it on whichever item
+ * is highlighted — which is every time a list of results changes. A no-op is
+ * the honest answer: nothing in jsdom is scrolled.
+ */
+if (browser.window !== undefined && typeof Element !== "undefined") {
+  const element = Element.prototype as Element & {
+    scrollIntoView?: () => void
+  }
+  if (typeof element.scrollIntoView !== "function") {
+    element.scrollIntoView = () => {}
+  }
+}
+
+/**
  * jsdom implements no Web Animations API, and Base UI's ScrollArea asks the
  * viewport for its running animations on a timer — which throws *after* the
  * test that mounted it has finished, so it surfaces as an unhandled error

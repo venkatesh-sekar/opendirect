@@ -278,4 +278,20 @@ describe("SettingsPopover", () => {
     )
     expect(container).toBeEmptyDOMElement()
   })
+  /**
+   * The popup is opened from a chip on a bar that is itself anchored to a
+   * node. A width taken from the content means the popup is a different size
+   * for every model, and re-sizes under the pointer when a row arrives; the
+   * chip has the same problem, so both are stated.
+   */
+  it("opens at one stated width, whatever the model declares", async () => {
+    await open(seedance())
+
+    const popup = document.querySelector('[data-slot="popover-content"]')
+    expect(popup).not.toBeNull()
+    expect(popup!.className).toContain("w-80")
+    expect(popup!.className).not.toContain("w-auto")
+
+    expect(screen.getByTestId("settings-chip").className).toContain("w-32")
+  })
 })

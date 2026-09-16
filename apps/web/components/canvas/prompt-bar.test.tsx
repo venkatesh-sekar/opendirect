@@ -697,4 +697,58 @@ describe("PromptBar", () => {
     )
     expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
   })
+  /**
+   * The bar is anchored to a node through React Flow's toolbar, so its own
+   * width is its position: a chip that grows when a model name arrives slides
+   * every control under the pointer. The width is therefore stated, not
+   * inherited from the content.
+   */
+  it("keeps one stated width whatever the content is", async () => {
+    renderBar()
+
+    const bar = await screen.findByTestId("canvas-prompt-bar")
+    expect(bar.className).toContain("w-[min(52rem,calc(100vw-4rem))]")
+    expect(bar.className).not.toContain("max-w-[52rem]")
+  })
+
+  /**
+   * The messages sit *after* the control row in the flow. The toolbar anchors
+   * the bar by its top edge, so anything above the row pushes Run downward the
+   * moment an error arrives — under a pointer that was already on its way.
+   */
+  it("puts a blocked-run message below the controls, never above them", async () => {
+    renderBar(BROKEN)
+
+    const blocked = await screen.findByTestId("run-blocked")
+    const controls = screen.getByTestId("prompt-bar-controls")
+    expect(controls).not.toContainElement(blocked)
+    expect(
+      controls.compareDocumentPosition(blocked) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  /**
+   * `useIsMobile` used to start `false` and flip in an effect, so a narrow
+   * window reflowed the bar one frame after every selection change. The
+   * breakpoint is read synchronously now: the first paint is already right.
+   */
+  it("collapses on the first paint at a narrow width, with no reflow", async () => {
+    const wide = window.innerWidth
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 500,
+    })
+    try {
+      renderBar()
+      // No `waitFor`: the very first render must already be the narrow one.
+      expect(screen.queryByTestId("count-stepper")).toBeNull()
+      await screen.findByLabelText("Prompt")
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: wide,
+      })
+    }
+  })
 })

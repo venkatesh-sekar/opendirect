@@ -121,6 +121,61 @@ function boxOf(node: CanvasNodeDto): Box {
 }
 
 /**
+ * The nodes React Flow draws, reusing the object for every node a change did
+ * not touch.
+ *
+ * Selection used to rebuild all of them — the memo depended on the selected
+ * set, so clicking one node handed React Flow a fresh object for every other
+ * one and the whole graph re-rendered, each generate node redoing its own
+ * batch join. The cache makes the rebuild proportional to what actually
+ * changed: the node that was selected, the node that was deselected, and
+ * whatever row the server sent back.
+ *
+ * It is a pure function over a caller-owned cache so it can be tested without
+ * a canvas; the cache is a ref in the component.
+ */
+export function toFlowNodes(
+  rows: readonly CanvasNodeDto[],
+  selected: ReadonlySet<string>,
+  cache: Map<string, CanvasFlowNode>
+): CanvasFlowNode[] {
+  const next: CanvasFlowNode[] = []
+  const live = new Set<string>()
+
+  for (const node of rows) {
+    live.add(node.id)
+    const chosen = selected.has(node.id)
+    const previous = cache.get(node.id)
+    if (
+      previous &&
+      previous.data.node === node &&
+      previous.selected === chosen
+    ) {
+      next.push(previous)
+      continue
+    }
+    const flow: CanvasFlowNode = {
+      id: node.id,
+      type: node.type,
+      position: { x: node.x, y: node.y },
+      width: node.width,
+      height: node.height,
+      selected: chosen,
+      data: { node },
+    }
+    cache.set(node.id, flow)
+    next.push(flow)
+  }
+
+  // A deleted node must not keep its object alive in here.
+  if (cache.size !== live.size) {
+    for (const id of cache.keys()) if (!live.has(id)) cache.delete(id)
+  }
+
+  return next
+}
+
+/**
  * The model a node's slots come from.
  *
  * The node's own `modelKey` first — what the prompt bar wrote when the user
@@ -174,18 +229,13 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   /* Rows → what React Flow draws                                        */
   /* ------------------------------------------------------------------ */
 
-  const flowNodes: CanvasFlowNode[] = useMemo(() => {
-    const chosen = new Set(selectedNodes)
-    return canvas.nodes.map((node) => ({
-      id: node.id,
-      type: node.type,
-      position: { x: node.x, y: node.y },
-      width: node.width,
-      height: node.height,
-      selected: chosen.has(node.id),
-      data: { node },
-    }))
-  }, [canvas.nodes, selectedNodes])
+  // One cache for the life of the surface. `toFlowNodes` only ever reuses or
+  // replaces entries by identity, so a double render produces the same array.
+  const flowNodeCache = useMemo(() => new Map<string, CanvasFlowNode>(), [])
+  const flowNodes: CanvasFlowNode[] = useMemo(
+    () => toFlowNodes(canvas.nodes, new Set(selectedNodes), flowNodeCache),
+    [canvas.nodes, selectedNodes, flowNodeCache]
+  )
 
   const flowEdges: CanvasFlowEdge[] = useMemo(() => {
     const chosen = new Set(selectedEdges)
@@ -944,6 +994,11 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
               nodeId={selectedGenerateNode.id}
               isVisible
               position={Position.Bottom}
+              /* Anchored to the node's left edge rather than its centre: a
+                 centred toolbar moves by half of any width change, and this
+                 bar's width is the one thing the user must be able to rely
+                 on while reaching for a control. */
+              align="start"
               offset={16}
             >
               <PromptBar

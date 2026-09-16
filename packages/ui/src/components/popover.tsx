@@ -12,17 +12,40 @@ function PopoverTrigger({ ...props }: PopoverPrimitive.Trigger.Props) {
   return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
 }
 
+/**
+ * How a popup behaves when it meets the edge of the window.
+ *
+ * `shift` on both axes slides it back into view; `fallbackAxisSide: "none"`
+ * forbids the flip to the opposite side, which is the jump people read as the
+ * popup "moving on its own" — a chip near the bottom of a canvas would
+ * otherwise open upward one time and downward the next.
+ */
+const STAY_PUT = {
+  side: "shift",
+  align: "shift",
+  fallbackAxisSide: "none",
+} as const
+
 function PopoverContent({
   className,
   align = "center",
   alignOffset = 0,
   side = "bottom",
   sideOffset = 4,
+  collisionPadding = 8,
+  collisionAvoidance = STAY_PUT,
+  sticky = true,
   ...props
 }: PopoverPrimitive.Popup.Props &
   Pick<
     PopoverPrimitive.Positioner.Props,
-    "align" | "alignOffset" | "side" | "sideOffset"
+    | "align"
+    | "alignOffset"
+    | "side"
+    | "sideOffset"
+    | "collisionPadding"
+    | "collisionAvoidance"
+    | "sticky"
   >) {
   return (
     <PopoverPrimitive.Portal>
@@ -31,6 +54,9 @@ function PopoverContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
+        collisionPadding={collisionPadding}
+        collisionAvoidance={collisionAvoidance}
+        sticky={sticky}
         className="isolate z-50"
       >
         <PopoverPrimitive.Popup
