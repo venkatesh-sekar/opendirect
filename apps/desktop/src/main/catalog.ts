@@ -261,11 +261,18 @@ export function createModelCatalog(deps: ModelCatalogDeps): ModelCatalog {
     }
 
     // Only the models this refresh actually re-listed are replaced: another
-    // modality, and a failed provider's last-known models, both survive.
+    // modality, and a *configured* provider's last-known models when its list
+    // failed, both survive. A provider whose key was removed is not attempted
+    // at all, so its cached models are dropped here rather than lingering as
+    // models the user can no longer run.
     const refreshed = new Set(wanted)
     const merged = new Map<string, ModelSummary>()
     for (const model of file.models) {
-      if (refreshed.has(model.kind) && succeeded.has(model.provider)) continue
+      if (
+        refreshed.has(model.kind) &&
+        (succeeded.has(model.provider) || !attempted.has(model.provider))
+      )
+        continue
       merged.set(model.key, model)
     }
     for (const model of fetched.values()) merged.set(model.key, model)

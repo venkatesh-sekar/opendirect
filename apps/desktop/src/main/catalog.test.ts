@@ -346,6 +346,41 @@ describe("createModelCatalog", () => {
       expect(failures).toHaveLength(1)
     })
 
+    it("drops the models of a provider whose key was removed", async () => {
+      const store = memoryStore()
+      await build(
+        [
+          stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+            .provider,
+          stubProvider("openrouter", {
+            models: [summary("openrouter", "c/d")],
+          }).provider,
+        ],
+        store.store
+      ).refresh()
+
+      // The OpenRouter key is cleared: it is no longer attempted, so its
+      // cached models must not linger as models the user can still run.
+      const afterClear = build(
+        [
+          stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+            .provider,
+          stubProvider("openrouter", {
+            configured: false,
+            models: [summary("openrouter", "c/d")],
+          }).provider,
+        ],
+        store.store
+      )
+      const { models, failures } = await afterClear.refresh()
+
+      expect(models.map((m) => m.key)).toEqual(["replicate:a/b"])
+      expect(failures).toEqual([])
+      expect((await afterClear.list()).models.map((m) => m.key)).toEqual([
+        "replicate:a/b",
+      ])
+    })
+
     it("empties the catalog when no provider is configured at all", async () => {
       const catalog = build([
         stubProvider("replicate", { configured: false }).provider,
