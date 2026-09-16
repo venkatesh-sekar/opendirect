@@ -15,10 +15,9 @@
  * Electron-free: every function takes the Drizzle handle plus the project's
  * path, which is what makes this testable against a temp folder.
  */
-import { createHash } from "node:crypto"
 import { randomUUID } from "node:crypto"
-import { copyFile, mkdir, readFile, stat } from "node:fs/promises"
-import { dirname, extname, join } from "node:path"
+import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises"
+import { basename, dirname, extname, join } from "node:path"
 
 import type {
   AssetDto,
@@ -32,6 +31,7 @@ import type { ProjectDatabase } from "../db/client"
 import { assets, containerAssets, containers, type Asset } from "../db/schema"
 import { assetKindFor, contentTypeFor, mediaUrl } from "../media"
 import { assetRelPath, type ProjectRef } from "../project"
+import { hashFile } from "./hash"
 import { createPreview, NO_PREVIEW, type Thumbnailer } from "./thumbnails"
 
 /** Everything the asset repository needs about the open project. */
@@ -173,14 +173,6 @@ export function listByContainer(
   }
 }
 
-async function sha256Of(path: string): Promise<string> {
-  // Projects hold images and short clips, not disk images: reading the file
-  // whole is simpler than a stream pipeline and fast enough at this size.
-  return createHash("sha256")
-    .update(await readFile(path))
-    .digest("hex")
-}
-
 function findByHash(
   db: ProjectDatabase,
   projectId: string,
@@ -221,7 +213,7 @@ export async function importFiles(
       const stats = await stat(sourcePath)
       if (!stats.isFile()) throw new Error("Not a file")
 
-      const sha256 = await sha256Of(sourcePath)
+      const sha256 = await hashFile(sourcePath)
       const existing = findByHash(db, project.id, sha256)
       if (existing) {
         if (containerId) {
@@ -242,7 +234,18 @@ export async function importFiles(
       })
       const target = join(project.path, relPath)
       await mkdir(dirname(target), { recursive: true })
-      await copyFile(sourcePath, target)
+      // Copy into `tmp/` and rename into place: a rename within the project
+      // folder is atomic, so `assets/` can never hold a half-written file if
+      // the app dies mid-copy. `tmp/` is cleared on every open anyway.
+      const staged = join(project.path, "tmp", `${id}${extname(sourcePath)}`)
+      await mkdir(dirname(staged), { recursive: true })
+      try {
+        await copyFile(sourcePath, staged)
+        await rename(staged, target)
+      } catch (error) {
+        await rm(staged, { force: true })
+        throw error
+      }
 
       const preview = await thumbnailer({
         sourcePath: target,
@@ -265,12 +268,17 @@ export async function importFiles(
         sha256,
         thumbnailRelPath: preview.relPath,
         label: options.label ?? null,
+        originalName: basename(sourcePath),
         pinned: false,
         generationId: null,
         createdAt: now,
       }
-      db.insert(assets).values(row).run()
-      if (containerId) addToContainer(db, { containerId, assetId: id })
+      // One transaction: an asset that exists but is filed nowhere would be
+      // invisible on every board.
+      db.transaction((tx) => {
+        tx.insert(assets).values(row).run()
+        if (containerId) addToContainer(tx, { containerId, assetId: id })
+      })
 
       added += 1
       imported.push(toAssetDto(row))

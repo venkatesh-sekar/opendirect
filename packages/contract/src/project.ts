@@ -94,6 +94,8 @@ export const assetSchema = z.object({
   sha256: z.string().nullable(),
   thumbnailRelPath: z.string().nullable(),
   label: z.string().nullable(),
+  /** The file name this asset was imported from, when it was imported. */
+  originalName: z.string().nullable(),
   pinned: z.boolean(),
   generationId: z.string().nullable(),
   createdAt: z.number(),

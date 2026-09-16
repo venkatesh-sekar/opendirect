@@ -123,7 +123,11 @@ in-memory or on-disk database.
   `assets/<yyyy>/<mm>/`, hashes them with sha256 and **deduplicates by hash
   within the project**, so re-importing the same picture into a second
   container links the existing asset instead of storing the bytes twice. A
-  per-file failure is reported in `failures`, never thrown.
+  per-file failure is reported in `failures`, never thrown. Files are hashed by
+  streaming (never `readFile`, which would pin a whole clip in memory), copied
+  into `tmp/` and renamed into place so `assets/` never holds a half-written
+  file, and the row plus its container link are written in one transaction. The
+  user's own file name is kept in `assets.original_name`.
   `addToContainer` / `removeFromContainer` are link operations only.
 - **generations** — `createGeneration`, `updateStatus` (write-once `startedAt`
   and `completedAt`), `attachOutputs` (records a finished run's files as assets
@@ -161,11 +165,15 @@ files are served over a custom `asset://` protocol instead of `file://`:
 asset://media/assets/2026/09/<id>.png
 ```
 
-`media.ts` (pure) builds and parses those URLs and resolves them through
-`resolveAssetPath()`, which refuses anything escaping the project folder;
+`media.ts` (pure) builds and parses those URLs, and a request must clear three
+checks before a byte is read: it names one of `assets/`, `generations/` or
+`thumbnails/` (so `opendirect.db`, `project.json` and the in-flight `tmp/`
+downloads are not addressable), it survives `resolveAssetPath()`, and its
+`realpath` is still inside the project — which is what stops a symlink planted
+under `assets/` from serving a file outside it.
 `media-service.ts` registers the scheme (before `app.whenReady()`, privileged,
 `standard` + `secure` + `stream`, and **not** `bypassCSP`) and streams the bytes
-with `net.fetch` over a `file://` URL. `img-src` and `media-src` name `asset:`
+with `net.fetch` over a `file://` URL, forwarding the request's `Range` header. `img-src` and `media-src` name `asset:`
 in both copies of the policy — and nothing else does, so the scheme can never
 become a script or connect source. An unknown, escaping or missing path is a
 plain 404.

@@ -30,6 +30,7 @@ export function useAssets(
   return useQuery({
     queryKey: queryKeys.assets.byContainer(containerId ?? "", {
       limit: options.limit,
+      offset: options.offset,
     }),
     queryFn: () =>
       invoke("assets:list", {

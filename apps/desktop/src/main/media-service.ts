@@ -7,11 +7,12 @@
  * - `registerSchemesAsPrivileged` must run **before** `app.whenReady()`, like
  *   `electron-serve`'s own scheme. `stream: true` is what makes `<video>` seek:
  *   without it Chromium cannot issue range requests against the scheme.
- * - The bytes are served with `net.fetch` over a `file://` URL, which gives
- *   range support and streaming for free rather than reading whole clips into
- *   memory. Every path is resolved through `resolveMediaRequest` first, so only
- *   files inside the open project are ever opened; anything else is a 404,
- *   never a filesystem error the renderer could probe with.
+ * - The bytes are streamed with `net.fetch` over a `file://` URL rather than
+ *   read into memory, and the request's `Range` header is forwarded. Every path
+ *   goes through `resolveMediaRequest` first, so only existing files inside the
+ *   open project's media folders are opened; everything else — a traversal, a
+ *   symlink out of the project, the database, a missing file — is the same
+ *   opaque 404.
  */
 import { pathToFileURL } from "node:url"
 
@@ -57,14 +58,24 @@ export function registerMediaProtocol(): void {
 
     let resolved
     try {
-      resolved = resolveMediaRequest(project, request.url)
+      resolved = await resolveMediaRequest(project, request.url)
     } catch {
-      // Outside the project, or not one of our URLs at all.
+      // Outside the project, not a servable folder, not one of our URLs, or
+      // simply missing — the renderer is told the same thing either way.
       return notFound()
     }
 
     try {
-      const response = await net.fetch(pathToFileURL(resolved.path).toString())
+      // The `Range` header is forwarded so a seek in a long clip can be served
+      // as a 206 rather than a full re-read. Electron's `file:` handler may
+      // still answer 200 with the whole body; the response is passed through
+      // as-is, so playback works either way and improves if it starts honouring
+      // the header.
+      const range = request.headers.get("range")
+      const response = await net.fetch(
+        pathToFileURL(resolved.path).toString(),
+        range ? { headers: { Range: range } } : undefined
+      )
       if (!response.ok) return notFound()
       const headers = new Headers(response.headers)
       headers.set("Content-Type", resolved.contentType)

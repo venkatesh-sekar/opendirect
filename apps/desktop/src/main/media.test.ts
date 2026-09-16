@@ -1,6 +1,8 @@
-import { join, sep } from "node:path"
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import {
   assetKindFor,
@@ -9,9 +11,9 @@ import {
   mediaUrl,
   parseMediaUrl,
   resolveMediaRequest,
+  SERVABLE_MEDIA_FOLDERS,
 } from "./media"
-
-const project = { path: join(sep, "tmp", "infinite hotel") }
+import { createProject, DB_FILE_NAME, PROJECT_FILE_NAME } from "./project"
 
 describe("mediaUrl", () => {
   it("builds an asset:// URL from a project-relative path", () => {
@@ -74,40 +76,94 @@ describe("assetKindFor", () => {
 })
 
 describe("resolveMediaRequest", () => {
-  it("resolves to an absolute path inside the project", () => {
-    const request = resolveMediaRequest(
-      project,
+  let projectPath: string
+  let outside: string
+
+  beforeEach(async () => {
+    outside = await mkdtemp(join(tmpdir(), "opendirect-outside-"))
+    const root = await mkdtemp(join(tmpdir(), "opendirect-media-"))
+    const created = await createProject({ root, name: "Infinite Hotel" })
+    projectPath = created.path
+    await mkdir(join(projectPath, "assets", "2026", "09"), { recursive: true })
+    await writeFile(join(projectPath, "assets", "2026", "09", "a1.png"), "png")
+    await writeFile(join(outside, "secret.png"), "secret")
+  })
+
+  afterEach(async () => {
+    await rm(outside, { recursive: true, force: true })
+    await rm(projectPath, { recursive: true, force: true })
+  })
+
+  const project = () => ({ path: projectPath })
+
+  it("resolves a file under assets/ to an absolute path inside the project", async () => {
+    const request = await resolveMediaRequest(
+      project(),
       mediaUrl("assets/2026/09/a1.png")
     )
     expect(request.path).toBe(
-      join(project.path, "assets", "2026", "09", "a1.png")
+      join(projectPath, "assets", "2026", "09", "a1.png")
     )
     expect(request.contentType).toBe("image/png")
   })
 
-  it("never resolves outside the project folder", () => {
-    // A standard URL collapses its own `..` segments, so those land harmlessly
-    // inside the project; a percent-encoded one survives parsing and has to be
-    // rejected by `resolveAssetPath`. Either outcome is acceptable — escaping
-    // the folder is not.
-    for (const url of [
-      "asset://media/../../../etc/passwd",
-      `asset://media/${encodeURIComponent("../secrets.txt")}`,
-      `asset://media/assets/${encodeURIComponent("../../outside.png")}`,
+  it("serves only the media folders, never the database or the manifest", async () => {
+    for (const relPath of [
+      DB_FILE_NAME,
+      PROJECT_FILE_NAME,
+      "tmp/in-flight.mp4",
+      "../elsewhere.png",
     ]) {
-      let resolved: string | undefined
-      try {
-        resolved = resolveMediaRequest(project, url).path
-      } catch {
-        continue
-      }
-      expect(resolved.startsWith(project.path + sep)).toBe(true)
+      await expect(
+        resolveMediaRequest(project(), mediaUrl(relPath))
+      ).rejects.toThrow()
+    }
+    // …and the three that are servable resolve (or fail only because the file
+    // is missing, which is a different error the handler also turns into 404).
+    for (const folder of SERVABLE_MEDIA_FOLDERS) {
+      expect(mediaUrl(`${folder}/x.png`)).toContain(folder)
     }
   })
 
-  it("refuses a URL from another scheme", () => {
-    expect(() => resolveMediaRequest(project, "file:///etc/passwd")).toThrow(
-      /media URL/i
+  it("refuses traversal, encoded or not", async () => {
+    for (const url of [
+      `asset://media/assets/${encodeURIComponent("../../outside.png")}`,
+      `asset://media/${encodeURIComponent("../secrets.txt")}`,
+      "asset://media/../../../etc/passwd",
+    ]) {
+      await expect(resolveMediaRequest(project(), url)).rejects.toThrow()
+    }
+  })
+
+  it("refuses a symlink inside the project that points out of it", async () => {
+    // The lexical check passes — the link itself is under `assets/` — so only
+    // the realpath containment check catches this one.
+    await symlink(
+      join(outside, "secret.png"),
+      join(projectPath, "assets", "escape.png")
     )
+    await expect(
+      resolveMediaRequest(project(), mediaUrl("assets/escape.png"))
+    ).rejects.toThrow(/outside the project/i)
+  })
+
+  it("follows a symlink that stays inside the project", async () => {
+    await symlink(
+      join(projectPath, "assets", "2026", "09", "a1.png"),
+      join(projectPath, "assets", "alias.png")
+    )
+    const request = await resolveMediaRequest(
+      project(),
+      mediaUrl("assets/alias.png")
+    )
+    expect(request.path).toBe(
+      join(projectPath, "assets", "2026", "09", "a1.png")
+    )
+  })
+
+  it("refuses a URL from another scheme", async () => {
+    await expect(
+      resolveMediaRequest(project(), "file:///etc/passwd")
+    ).rejects.toThrow(/media URL/i)
   })
 })

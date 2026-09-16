@@ -30,6 +30,7 @@ export function useGenerations(
   return useQuery({
     queryKey: queryKeys.generations.byContainer(containerId ?? "", {
       limit: options.limit,
+      offset: options.offset,
     }),
     queryFn: () =>
       invoke("generations:list", {

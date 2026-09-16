@@ -7,6 +7,23 @@
  * the hierarchy takes care of the rest — which only works while every key is
  * built here rather than spelled out at each call site.
  */
+/**
+ * The slice of a list a key stands for. Both fields are part of the key: two
+ * pages of the same container are different cache entries, and leaving `offset`
+ * out would make page 2 overwrite page 1 under one key.
+ */
+export interface PageKey {
+  limit?: number
+  offset?: number
+}
+
+function page(options: PageKey | undefined) {
+  return {
+    limit: options?.limit ?? null,
+    offset: options?.offset ?? null,
+  }
+}
+
 export const queryKeys = {
   project: {
     current: ["project", "current"] as const,
@@ -19,14 +36,14 @@ export const queryKeys = {
   },
   assets: {
     all: ["assets"] as const,
-    byContainer: (containerId: string, page?: { limit?: number }) =>
-      ["assets", containerId, page ?? null] as const,
+    byContainer: (containerId: string, options?: PageKey) =>
+      ["assets", containerId, page(options)] as const,
     detail: (id: string) => ["assets", "detail", id] as const,
   },
   generations: {
     all: ["generations"] as const,
-    byContainer: (containerId: string, page?: { limit?: number }) =>
-      ["generations", containerId, page ?? null] as const,
+    byContainer: (containerId: string, options?: PageKey) =>
+      ["generations", containerId, page(options)] as const,
     detail: (id: string) => ["generations", "detail", id] as const,
     lineage: (id: string) => ["generations", "lineage", id] as const,
   },

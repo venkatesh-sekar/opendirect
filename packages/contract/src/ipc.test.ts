@@ -101,6 +101,7 @@ describe("project channels", () => {
           sha256: "abc",
           thumbnailRelPath: "thumbnails/a1.webp",
           label: null,
+          originalName: "a1.png",
           pinned: false,
           generationId: null,
           createdAt: 1,

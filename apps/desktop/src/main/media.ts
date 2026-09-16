@@ -11,9 +11,13 @@
  * asset://media/assets/2026/09/<id>.png
  * ```
  *
- * whose only input is a project-relative path. Every request is resolved
- * through `resolveAssetPath()`, which refuses anything that escapes the project
- * folder, so `..%2f..%2f.ssh/id_rsa` resolves to nothing. `asset:` is added to
+ * whose only input is a project-relative path. A request must clear three
+ * checks: it has to name one of the media folders (so the database, the
+ * manifest and the in-flight `tmp/` downloads are not addressable at all), it
+ * has to survive `resolveAssetPath()`, which refuses anything lexically outside
+ * the project, and its `realpath` has to still be inside the project — which is
+ * what stops a symlink planted under `assets/` from serving `~/.ssh/id_rsa`.
+ * `asset:` is added to
  * `img-src` and `media-src` in the CSP (and nowhere else — it is not a script
  * or connect source), and the scheme is registered as standard + secure so
  * Chromium treats it like `https:` for mixed-content and origin purposes.
@@ -21,7 +25,8 @@
  * This module is Electron-free and pure; `media-service.ts` registers the
  * scheme and serves the bytes.
  */
-import { extname } from "node:path"
+import { realpath } from "node:fs/promises"
+import { extname, sep } from "node:path"
 
 import { resolveAssetPath, type ProjectRef } from "./project"
 
@@ -122,6 +127,21 @@ export function parseMediaUrl(url: string): string | null {
   return path || null
 }
 
+/**
+ * The only folders the protocol will serve.
+ *
+ * Everything else in a project folder is either private (`opendirect.db`,
+ * `project.json`) or transient (`tmp/`, which holds partial downloads), and no
+ * view in the app needs to fetch it.
+ */
+export const SERVABLE_MEDIA_FOLDERS = [
+  "assets",
+  "generations",
+  "thumbnails",
+] as const
+
+const SERVABLE = new Set<string>(SERVABLE_MEDIA_FOLDERS)
+
 export interface MediaRequest {
   /** Absolute path, guaranteed to be inside the project folder. */
   path: string
@@ -131,15 +151,36 @@ export interface MediaRequest {
 /**
  * Resolves an `asset://` URL against the open project.
  *
- * Throws on anything that is not a well-formed URL for a file inside the
- * project — the caller turns that into a 404, never a filesystem read.
+ * Throws on anything that is not a well-formed URL for an existing file inside
+ * one of the media folders — including a file that resolves out of the project
+ * through a symlink. The caller turns every throw into a 404, so a refusal and
+ * a missing file are indistinguishable from the renderer.
  */
-export function resolveMediaRequest(
+export async function resolveMediaRequest(
   project: Pick<ProjectRef, "path">,
   url: string
-): MediaRequest {
+): Promise<MediaRequest> {
   const relPath = parseMediaUrl(url)
   if (!relPath) throw new Error(`Not an ${MEDIA_SCHEME}:// media URL: ${url}`)
+
+  const [folder] = relPath.split("/")
+  if (!folder || !SERVABLE.has(folder)) {
+    throw new Error(`Refusing to serve outside the media folders: ${relPath}`)
+  }
+
+  // Lexical check first: it costs nothing and rejects the obvious traversal
+  // before any filesystem call is made on an attacker-chosen path.
   const path = resolveAssetPath(project, relPath)
-  return { path, contentType: contentTypeFor(path) }
+
+  // …then the real one. `realpath` also fails for a file that does not exist,
+  // which is the 404 the handler wants anyway.
+  const root = await realpath(project.path)
+  const target = await realpath(path)
+  if (target !== root && !target.startsWith(root + sep)) {
+    throw new Error(`Refusing a path outside the project: ${relPath}`)
+  }
+
+  // The type comes from the URL, not the link target: a `.png` request is a
+  // `.png` response, whatever the symlink happened to point at.
+  return { path: target, contentType: contentTypeFor(relPath) }
 }

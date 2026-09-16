@@ -13,8 +13,7 @@
  * (`on delete set null` in the schema), so pruning never destroys history.
  */
 import { randomUUID } from "node:crypto"
-import { createHash } from "node:crypto"
-import { readFile, stat } from "node:fs/promises"
+import { stat } from "node:fs/promises"
 
 import type {
   AssetDto,
@@ -36,6 +35,7 @@ import {
 import { assetKindFor, contentTypeFor } from "../media"
 import { resolveAssetPath, type ProjectRef } from "../project"
 import { addToContainer, toAssetDto, type AssetContext } from "./assets"
+import { hashFile } from "./hash"
 import { createPreview, NO_PREVIEW, type Thumbnailer } from "./thumbnails"
 
 /** Statuses after which a run will not change again. */
@@ -253,9 +253,7 @@ export async function attachOutputs(
   for (const output of input.outputs) {
     const absolute = resolveAssetPath(project, output.relPath)
     const stats = await stat(absolute)
-    const sha256 = createHash("sha256")
-      .update(await readFile(absolute))
-      .digest("hex")
+    const sha256 = await hashFile(absolute)
 
     const id = randomUUID()
     const kind: AssetKind = output.kind ?? assetKindFor(output.relPath)
@@ -280,12 +278,15 @@ export async function attachOutputs(
       sha256,
       thumbnailRelPath: preview.relPath,
       label: output.label ?? null,
+      originalName: null,
       pinned: false,
       generationId: generation.id,
       createdAt: now,
     }
-    db.insert(assets).values(row).run()
-    if (containerId) addToContainer(db, { containerId, assetId: id })
+    db.transaction((tx) => {
+      tx.insert(assets).values(row).run()
+      if (containerId) addToContainer(tx, { containerId, assetId: id })
+    })
     created.push(toAssetDto(row))
   }
 

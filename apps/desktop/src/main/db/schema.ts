@@ -89,6 +89,12 @@ export const assets = sqliteTable(
     thumbnailRelPath: text("thumbnail_rel_path"),
     /** Free-form, e.g. "Character Sheet". */
     label: text("label"),
+    /**
+     * The file name the user imported, kept for display and for "reveal in
+     * finder" — the stored copy is named after the asset id, so without this
+     * the original name is lost the moment the import finishes.
+     */
+    originalName: text("original_name"),
     pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
     /**
      * Set when this asset came out of a generation. Deleting the generation

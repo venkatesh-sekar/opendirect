@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -68,6 +68,9 @@ describe("importFiles", () => {
     expect(asset!.relPath).toMatch(/^assets\/\d{4}\/\d{2}\/[0-9a-f-]+\.png$/)
     expect(asset!.sha256).toMatch(/^[0-9a-f]{64}$/)
     expect(asset!.bytes).toBeGreaterThan(0)
+    // The stored copy is named after the asset id, so the user's file name is
+    // only recoverable if the import kept it.
+    expect(asset!.originalName).toBe("lobby.png")
     expect(asset!.width).toBe(64)
     expect(asset!.height).toBe(64)
 
@@ -152,6 +155,18 @@ describe("importFiles", () => {
     expect(assets[0]!.mimeType).toBe("video/mp4")
     // No ffmpeg ships with the app; the renderer uses a <video> poster instead.
     expect(assets[0]!.thumbnailRelPath).toBeNull()
+  })
+
+  it("leaves no partial file behind when a copy is interrupted", async () => {
+    // Imports land in tmp/ and are renamed into place, so `assets/` never
+    // contains a half-written file even if the app dies mid-copy.
+    const source = await writePng(join(root, "atomic.png"))
+    const { assets } = await importFiles(
+      { db: opened.handle.db, project: opened.project },
+      { paths: [source], containerId }
+    )
+    expect((await readdir(join(opened.project.path, "tmp"))).length).toBe(0)
+    expect(assets[0]!.relPath).toMatch(/^assets\//)
   })
 
   it("reports an unreadable file without failing the rest of the import", async () => {

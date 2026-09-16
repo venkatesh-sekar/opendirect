@@ -1,0 +1,1 @@
+ALTER TABLE `assets` ADD `original_name` text;
