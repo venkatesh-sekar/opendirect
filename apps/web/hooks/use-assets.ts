@@ -126,3 +126,26 @@ export function useRemoveAssetFromContainer(): UseMutationResult<
     },
   })
 }
+
+/**
+ * Hands a file to the operating system — Open, and Reveal in folder.
+ *
+ * The renderer sends an asset id, never a path: main is the only process that
+ * knows where the project folder is, and `shell-open.ts` re-checks the stored
+ * path against it before Electron is allowed near the file.
+ */
+export function useOpenAsset(): UseMutationResult<{ ok: true }, Error, string> {
+  return useMutation({
+    mutationFn: (assetId: string) => invoke("shell:openAsset", { assetId }),
+  })
+}
+
+export function useRevealAsset(): UseMutationResult<
+  { ok: true },
+  Error,
+  string
+> {
+  return useMutation({
+    mutationFn: (assetId: string) => invoke("shell:revealAsset", { assetId }),
+  })
+}

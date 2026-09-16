@@ -14,7 +14,7 @@
  *   by `media.ts`; the only exception is `project.path`, which the title bar
  *   shows and which the user typed in the first place.
  */
-import { dialog } from "electron"
+import { dialog, shell } from "electron"
 
 import type { ModelCatalog } from "./catalog"
 import { submitGeneration } from "./generations-submit"
@@ -45,6 +45,7 @@ import {
   reparentContainer,
 } from "./repo/containers"
 import { estimateCost } from "./providers/cost"
+import { resolveOpenPath } from "./shell-open"
 import {
   getGeneration,
   lineage,
@@ -205,6 +206,28 @@ export function registerProjectHandlers(
   })
 
   handle("generations:lineage", ({ id }) => lineage(requireProject().db, id))
+
+  /**
+   * The two places a path leaves main. `resolveOpenPath` re-checks the row's
+   * stored path against the project root first, so the OS is only ever handed
+   * a file that is genuinely inside the open project.
+   */
+  handle("shell:openAsset", async ({ assetId }) => {
+    const { db, project } = requireProject()
+    const failure = await shell.openPath(
+      resolveOpenPath({ db, project }, assetId)
+    )
+    // `openPath` reports "no application could open this" as a string rather
+    // than by rejecting, and silence would look like success.
+    if (failure) throw new Error(failure)
+    return { ok: true as const }
+  })
+
+  handle("shell:revealAsset", ({ assetId }) => {
+    const { db, project } = requireProject()
+    shell.showItemInFolder(resolveOpenPath({ db, project }, assetId))
+    return { ok: true as const }
+  })
 
   /**
    * The creation bar's live price. Always answers — a model with no published

@@ -36,8 +36,9 @@ import {
 } from "@/lib/board/items"
 import { pathsForFiles } from "@/lib/ipc"
 
-import { AssetCard, GenerationCard } from "./asset-card"
+import { GenerationCard } from "./asset-card"
 import { BoardEmptyState } from "./empty-state"
+import { OutputCard } from "./output-card"
 
 /** How many assets one board page holds; the contract caps it at 500. */
 const PAGE_SIZE = 200
@@ -107,6 +108,10 @@ export interface BoardProps {
   view?: "all" | "generations"
   selectedAssetId?: string | null
   onSelectAsset?: (asset: AssetDto) => void
+  /** Fills the creation bar's reference tray from a tile. */
+  onUseAsReference?: (asset: AssetDto) => void
+  /** ⛔ Pre-fills the creation bar from a run; it never submits one. */
+  onBranch?: (generationId: string) => void
 }
 
 /**
@@ -146,6 +151,8 @@ export function Board({
   view = "all",
   selectedAssetId,
   onSelectAsset,
+  onUseAsReference,
+  onBranch,
 }: BoardProps) {
   // The generations view never paints media, so it never asks for any.
   const assets = useAssets(view === "generations" ? null : containerId, {
@@ -206,10 +213,19 @@ export function Board({
     [importPaths]
   )
 
+  /** Everything on this board that Compare can be pointed at. */
+  const media = useMemo(
+    () =>
+      items
+        .filter((item) => item.type === "asset")
+        .map((item) => (item as Extract<BoardItem, { type: "asset" }>).asset),
+    [items]
+  )
+
   const renderItem = useCallback(
     ({ data, width: cellWidth }: RenderComponentProps<BoardItem>) =>
       data.type === "asset" ? (
-        <AssetCard
+        <OutputCard
           asset={data.asset}
           containerId={containerId}
           width={cellWidth}
@@ -219,11 +235,22 @@ export function Board({
             containerId &&
             removeAsset.mutate({ containerId, assetId: asset.id })
           }
+          siblings={media}
+          onUseAsReference={onUseAsReference}
+          onBranch={onBranch}
         />
       ) : (
         <GenerationCard generation={data.generation} width={cellWidth} />
       ),
-    [containerId, selectedAssetId, onSelectAsset, removeAsset]
+    [
+      containerId,
+      media,
+      onBranch,
+      onSelectAsset,
+      onUseAsReference,
+      removeAsset,
+      selectedAssetId,
+    ]
   )
 
   const grid = useMasonry<BoardItem>({

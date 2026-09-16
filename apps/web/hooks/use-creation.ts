@@ -31,6 +31,7 @@ import type {
 } from "@opendirect/contract"
 
 import { isAssetDragData, isContainerDragData } from "@/lib/board/drop-target"
+import { partitionParams, type BranchPrefill } from "@/lib/create/branch"
 import { isReferencesDropData } from "@/components/create/references-tray"
 import {
   buildGenerationRequest,
@@ -82,6 +83,21 @@ export interface CreationController {
   references: Record<string, string[]>
   knownAssets: ReadonlyMap<string, AssetDto>
   removeReference: (slotField: string, assetId: string) => void
+  /** Puts an asset straight into the slot that accepts it. */
+  useAsReference: (asset: AssetDto) => void
+
+  /**
+   * Loads a finished run back into the bar as the starting point for a
+   * variant. ⛔ Pre-fills only — the user still presses Generate.
+   */
+  branchFrom: (prefill: BranchPrefill) => void
+  /** The run this one will be recorded as a variant of, if any. */
+  parentGenerationId: string | null
+  clearBranch: () => void
+  /** Adds a quick-branch preset to the end of the prompt. */
+  appendToPrompt: (text: string) => void
+  /** Bumped whenever the bar should take the caret back. */
+  focusToken: number
 
   picker: PickerState | null
   browseSlot: (slotField: string) => void
@@ -126,6 +142,17 @@ export function useCreation(options: UseCreationOptions): CreationController {
   const [known, setKnown] = useState<Map<string, AssetDto>>(new Map())
   const [picker, setPicker] = useState<PickerState | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /**
+   * A branch waiting for its model's schema. The prefill carries flat params
+   * under the model's own field names; which control renders each of them is
+   * only knowable once the descriptor has loaded, so the prefill is parked
+   * here and applied in the same place a model change seeds its defaults.
+   */
+  const [pendingBranch, setPendingBranch] = useState<BranchPrefill | null>(null)
+  const [parentGenerationId, setParentGenerationId] = useState<string | null>(
+    null
+  )
+  const [focusToken, setFocusToken] = useState(0)
 
   const split = useMemo(
     () => (descriptor ? splitSchema(descriptor) : null),
@@ -139,7 +166,37 @@ export function useCreation(options: UseCreationOptions): CreationController {
    * prompt, which is the user's own work, is deliberately kept.
    */
   const [seededFor, setSeededFor] = useState<string | null>(null)
-  if (descriptor && seededFor !== descriptor.key) {
+  const branchReady =
+    pendingBranch !== null &&
+    descriptor !== undefined &&
+    descriptor.key === pendingBranch.modelKey
+
+  if (branchReady && descriptor && pendingBranch) {
+    // A branch replaces the defaults rather than being applied on top of them:
+    // a variant starts as its parent, down to the fields the parent left alone.
+    const fresh = splitSchema(descriptor)
+    const slotFields = new Set(fresh.slots.map((slot) => slot.field))
+    const parts = partitionParams(fresh, pendingBranch.params)
+
+    setSeededFor(descriptor.key)
+    setCommon(parts.common)
+    setAdvanced(parts.advanced)
+    setPrompt(pendingBranch.prompt || parts.prompt || "")
+    const kept: Record<string, string[]> = {}
+    for (const [field, ids] of Object.entries(pendingBranch.references)) {
+      if (slotFields.has(field)) kept[field] = ids
+    }
+    setReferences(kept)
+    setKnown((current) => {
+      const next = new Map(current)
+      for (const asset of pendingBranch.assets) next.set(asset.id, asset)
+      return next
+    })
+    setParentGenerationId(pendingBranch.parentGenerationId)
+    setPicker(null)
+    setPendingBranch(null)
+    setFocusToken((token) => token + 1)
+  } else if (descriptor && seededFor !== descriptor.key) {
     setSeededFor(descriptor.key)
     const defaults = schemaDefaults(descriptor)
     const fresh = splitSchema(descriptor)
@@ -344,6 +401,52 @@ export function useCreation(options: UseCreationOptions): CreationController {
     ]
   )
 
+  /**
+   * "Use as reference" from an output card: the same planner the drag uses, so
+   * a card that is over a slot's limit opens the picker rather than silently
+   * evicting something.
+   */
+  const useAsReference = useCallback(
+    (asset: AssetDto) => {
+      const slots = descriptor?.referenceSlots ?? []
+      remember([asset])
+      applyPlan(
+        slots,
+        [{ assetId: asset.id, kind: asset.kind }],
+        [asset],
+        null
+      )
+    },
+    [applyPlan, descriptor, remember]
+  )
+
+  /**
+   * Loads a run back into the bar. The params cannot be applied until the
+   * model's schema is known, so the prefill is parked and the model is
+   * selected; the block above applies it the moment the descriptor lands.
+   *
+   * ⛔ Nothing is submitted. A branch is a filled-in bar, waiting for the user.
+   */
+  const branchFrom = useCallback((prefill: BranchPrefill) => {
+    setPendingBranch(prefill)
+    setChosenModel(prefill.modelKey)
+    setNotice(null)
+  }, [])
+
+  const appendToPrompt = useCallback((text: string) => {
+    setPrompt((current) =>
+      current.trim() === "" ? text : `${current.trimEnd()}, ${text}`
+    )
+    setFocusToken((token) => token + 1)
+  }, [])
+
+  /** Choosing a model by hand ends the branch: it is no longer that variant. */
+  const chooseModel = useCallback((key: string) => {
+    setChosenModel(key)
+    setPendingBranch(null)
+    setParentGenerationId(null)
+  }, [])
+
   const confirmPicker = useCallback(
     (assetIds: string[]) => {
       if (picker) {
@@ -363,9 +466,18 @@ export function useCreation(options: UseCreationOptions): CreationController {
             descriptor,
             containerId: options.containerId,
             values: { prompt, common, advanced, references },
+            parentGenerationId,
           })
         : null,
-    [advanced, common, descriptor, options.containerId, prompt, references]
+    [
+      advanced,
+      common,
+      descriptor,
+      options.containerId,
+      parentGenerationId,
+      prompt,
+      references,
+    ]
   )
 
   const quoteParams = useMemo(
@@ -393,6 +505,9 @@ export function useCreation(options: UseCreationOptions): CreationController {
           // The prompt is the one thing worth keeping: iterating on wording is
           // the whole workflow, and retyping settings between takes is not.
           setPrompt("")
+          // The branch link belongs to the run that was just queued, not to
+          // whatever the user types next.
+          setParentGenerationId(null)
         },
       }
     )
@@ -400,7 +515,7 @@ export function useCreation(options: UseCreationOptions): CreationController {
 
   return {
     modelKey,
-    setModelKey: setChosenModel,
+    setModelKey: chooseModel,
     descriptor,
     isLoadingModel: model.isPending && modelKey !== null,
     split,
@@ -415,6 +530,16 @@ export function useCreation(options: UseCreationOptions): CreationController {
     references,
     knownAssets: known,
     removeReference,
+    useAsReference,
+
+    branchFrom,
+    parentGenerationId,
+    clearBranch: () => {
+      setPendingBranch(null)
+      setParentGenerationId(null)
+    },
+    appendToPrompt,
+    focusToken,
 
     picker,
     browseSlot,

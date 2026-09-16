@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -10,6 +10,7 @@ import {
   useSensors,
 } from "@dnd-kit/core"
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
+import { useQueryClient } from "@tanstack/react-query"
 import type { ContainerNodeDto } from "@opendirect/contract"
 import {
   ResizableHandle,
@@ -23,11 +24,13 @@ import { useAsset } from "@/hooks/use-assets"
 import { useAssetDnd } from "@/hooks/use-asset-dnd"
 import { useContainerTree, useCurrentProject } from "@/hooks/use-containers"
 import { useCreation } from "@/hooks/use-creation"
+import { queryKeys } from "@/hooks/query-keys"
+import { branchPrefill } from "@/lib/create/branch"
 import {
   findContainer,
   firstSelectableContainer,
 } from "@/lib/board/sidebar-tree"
-import { isBridgeAvailable } from "@/lib/ipc"
+import { invoke, isBridgeAvailable } from "@/lib/ipc"
 import { useSettings } from "@/lib/settings"
 
 import { AssetPreview } from "@/components/board/asset-preview"
@@ -116,6 +119,25 @@ export function AppShell() {
     defaultModelKey: settings.data?.defaultVideoModel ?? null,
   })
 
+  /**
+   * Branching needs the run's inputs as well as its row, so the detail query
+   * is fetched (or read from cache) and handed to the pure mapper. The bar is
+   * only *filled*: `useCreation` never submits on its own.
+   */
+  const client = useQueryClient()
+  const branchFromGeneration = useCallback(
+    (generationId: string) => {
+      void client
+        .fetchQuery({
+          queryKey: queryKeys.generations.detail(generationId),
+          queryFn: () => invoke("generations:get", { id: generationId }),
+        })
+        .then((detail) => creation.branchFrom(branchPrefill(detail)))
+        .catch(() => {})
+    },
+    [client, creation]
+  )
+
   if (!isBridgeAvailable()) {
     return (
       <main className="flex min-h-svh items-center justify-center p-8">
@@ -199,6 +221,8 @@ export function AppShell() {
                       current === asset.id ? null : asset.id
                     )
                   }
+                  onUseAsReference={creation.useAsReference}
+                  onBranch={branchFromGeneration}
                 />
               </div>
             </ResizablePanel>

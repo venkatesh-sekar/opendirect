@@ -66,9 +66,18 @@ describe("project channels", () => {
       "generations:lineage",
       "generations:submit",
       "cost:estimate",
+      "shell:openAsset",
+      "shell:revealAsset",
     ]) {
       expect(isIpcChannel(channel)).toBe(true)
     }
+  })
+
+  it("takes an asset id to open, never a filesystem path", () => {
+    const { input } = ipcContract["shell:openAsset"]
+    expect(input.safeParse({ assetId: "a1" }).success).toBe(true)
+    expect(input.safeParse({ path: "/etc/passwd" }).success).toBe(false)
+    expect(input.safeParse({ assetId: "" }).success).toBe(false)
   })
 
   it("rejects a container kind the schema does not know", () => {

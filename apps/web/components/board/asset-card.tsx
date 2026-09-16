@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useDraggable } from "@dnd-kit/core"
 import type { AssetDto, GenerationDto } from "@opendirect/contract"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -13,6 +14,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@workspace/ui/components/context-menu"
 import { cn } from "@workspace/ui/lib/utils"
@@ -28,6 +30,10 @@ export interface AssetCardProps {
   selected?: boolean
   onSelect?: (asset: AssetDto) => void
   onRemove?: (asset: AssetDto) => void
+  /** Extra items for the right-click menu, above "Remove from this board". */
+  menuItems?: ReactNode
+  /** A control pinned to the tile's hover overlay — the ⋯ button. */
+  overlay?: ReactNode
 }
 
 function mediaLabel(asset: AssetDto): string {
@@ -49,6 +55,8 @@ export function AssetCard({
   selected,
   onSelect,
   onRemove,
+  menuItems,
+  overlay,
 }: AssetCardProps) {
   const dragData: AssetDragData = {
     type: "asset",
@@ -138,10 +146,18 @@ export function AssetCard({
               />
             ) : null}
           </div>
+
+          {overlay ? (
+            <div className="pointer-events-auto absolute top-1.5 right-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              {overlay}
+            </div>
+          ) : null}
         </div>
       </ContextMenuTrigger>
 
       <ContextMenuContent>
+        {menuItems}
+        {menuItems ? <ContextMenuSeparator /> : null}
         <ContextMenuItem
           disabled={!containerId || !onRemove}
           onClick={() => onRemove?.(asset)}

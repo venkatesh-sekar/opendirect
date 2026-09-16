@@ -484,16 +484,39 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     move(jobId, "failed", { error: message })
   }
 
-  /** The retry loop around `attempt`. */
+  /** True once the provider has been paid for this run and can be polled. */
+  function isAttached(generationId: string): boolean {
+    return Boolean(getGeneration(db, generationId)?.providerJobId)
+  }
+
+  /**
+   * The retry loop around `attempt`.
+   *
+   * The two phases are budgeted separately, and that is the whole point: a
+   * submit may only be tried `MAX_ATTEMPTS` times because each one can be
+   * *charged for*, while a poll is a free GET against a prediction that has
+   * already been paid for. Sharing one counter meant three flaky polls could
+   * strand a finished run as `failed` with its output still sitting at the
+   * provider — so a transient poll failure now spends the poll budget and
+   * leaves the submit budget untouched.
+   *
+   * `attempts` on the row stays the total, because that is what the job list
+   * means by "attempt 3".
+   */
   async function execute(jobId: string): Promise<void> {
     const job = getJob(db, jobId)
     if (!job || cancelled.has(jobId) || disposed) return
 
-    let attempts = job.attempts
+    let submits = isAttached(job.generationId) ? 0 : job.attempts
+    let polls = 0
     for (;;) {
       if (cancelled.has(jobId) || disposed) return
-      attempts += 1
-      updateJob(db, jobId, { attempts })
+      // Decided before the attempt: an attempt that starts with a provider job
+      // id can only poll, and one that does not has a submit to pay for.
+      const polling = isAttached(job.generationId)
+      if (polling) polls += 1
+      else submits += 1
+      updateJob(db, jobId, { attempts: submits + polls })
 
       try {
         await attempt(jobId)
@@ -502,9 +525,9 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
         if (cancelled.has(jobId) || disposed) return
         const message = messageOf(error)
 
-        if (attempts < MAX_ATTEMPTS && isRetryable(error)) {
+        if ((polling ? polls : submits) < MAX_ATTEMPTS && isRetryable(error)) {
           move(jobId, "queued", { error: message })
-          await wait(backoffDelay(attempts, { random }))
+          await wait(backoffDelay(submits + polls, { random }))
           if (cancelled.has(jobId) || disposed) return
           continue
         }
@@ -613,7 +636,11 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       if (!generation)
         throw new Error(`Generation ${job.generationId} was not found`)
 
-      if (generation.providerJobId) {
+      // A cancelled run's prediction was asked to stop, so it will never
+      // produce anything: re-attaching would poll a corpse until the job aged
+      // out. Retrying a cancellation means what the user meant by it — run it
+      // again — so the provider job id is cleared and a fresh one is paid for.
+      if (generation.providerJobId && job.state !== "canceled") {
         // The provider has already been paid for this run: re-attach to it.
         // Polling it again is a free GET that also hands back fresh output
         // URLs — which is what a failed download needs, since the ones from

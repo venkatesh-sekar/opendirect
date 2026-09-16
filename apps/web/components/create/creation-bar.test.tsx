@@ -141,6 +141,16 @@ const CONTAINER_DROP = {
   },
 }
 
+/** A run coming back from `generations:get`, already mapped for the bar. */
+const BRANCH_PREFILL = {
+  modelKey: MODEL_KEY,
+  prompt: "a bellhop opens the lift",
+  params: { prompt: "a bellhop opens the lift", duration: 9, watermark: true },
+  references: { reference_images: ["a0"] },
+  assets: [asset("a0")],
+  parentGenerationId: "gen-42",
+}
+
 function Harness() {
   const creation = useCreation({
     containerId: "c1",
@@ -159,6 +169,9 @@ function Harness() {
         }
       >
         Simulate container drop
+      </button>
+      <button type="button" onClick={() => creation.branchFrom(BRANCH_PREFILL)}>
+        Branch from a run
       </button>
       <CreationBar creation={creation} />
     </DndContext>
@@ -354,5 +367,69 @@ describe("CreationBar", () => {
 
     await user.hover(screen.getByTestId("generate-wrapper"))
     expect(await screen.findByText(/Prompt is still needed/)).toBeVisible()
+  })
+})
+
+describe("branching", () => {
+  it("fills the bar from the parent run without submitting anything", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(
+      await screen.findByRole("button", { name: "Branch from a run" })
+    )
+
+    const prompt = await screen.findByLabelText("Prompt")
+    await waitFor(() =>
+      expect(prompt).toHaveValue("a bellhop opens the lift")
+    )
+    expect(screen.getByText(/Branching from an earlier run/)).toBeInTheDocument()
+    // ⛔ The whole point: a branch is a filled-in bar, not a run.
+    expect(
+      invoke.mock.calls.some(([channel]) => channel === "generations:submit")
+    ).toBe(false)
+  })
+
+  it("adds a quick-branch preset to the prompt and nowhere else", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(
+      await screen.findByRole("button", { name: "Branch from a run" })
+    )
+    await user.click(
+      await screen.findByRole("button", { name: "Slower camera" })
+    )
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Prompt")).toHaveValue(
+        "a bellhop opens the lift, slower camera move"
+      )
+    )
+  })
+
+  it("records the branch's parent when the user does press Generate", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(
+      await screen.findByRole("button", { name: "Branch from a run" })
+    )
+    await screen.findByText(/Branching from an earlier run/)
+    await user.click(await screen.findByRole("button", { name: "Generate" }))
+
+    await waitFor(() => {
+      const submitted = invoke.mock.calls.find(
+        ([channel]) => channel === "generations:submit"
+      )
+      expect(submitted?.[1]).toMatchObject({
+        modelKey: MODEL_KEY,
+        parentGenerationId: "gen-42",
+        params: { duration: 9, watermark: true },
+        references: [
+          { slotField: "reference_images", assetId: "a0", position: 0 },
+        ],
+      })
+    })
   })
 })

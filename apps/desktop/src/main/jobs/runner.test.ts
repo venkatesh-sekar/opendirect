@@ -36,6 +36,7 @@ import {
   updateStatus,
 } from "../repo/generations"
 import { createJob, getJobForGeneration, listJobs } from "../repo/jobs"
+import { MAX_ATTEMPTS } from "./poll"
 import { createJobRunner, type JobRunner } from "./runner"
 
 let root: string
@@ -806,6 +807,65 @@ describe("never paying twice", () => {
 
     await expect(underTest.retry(job.id)).rejects.toThrow(/succeeded/i)
     expect(provider.submissions).toHaveLength(1)
+  })
+
+  it("keeps polling a flaky prediction rather than spending the submit budget", async () => {
+    const provider = fakeProvider({
+      states: [{ status: "succeeded", outputUrls: ["https://x/out.mp4"] }],
+    })
+    const original = provider.poll.bind(provider)
+    let polls = 0
+    provider.poll = async (ref) => {
+      polls += 1
+      // More transient poll failures than a submit is ever allowed: a free
+      // GET against an already-paid-for prediction must not be rationed by
+      // the budget that decides whether to *pay* a second time.
+      if (polls <= MAX_ATTEMPTS) {
+        throw Object.assign(new Error("Replicate is down"), {
+          response: { status: 503 },
+        })
+      }
+      return original(ref)
+    }
+
+    const generation = queued()
+    build(provider).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(provider.submissions).toHaveLength(1)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "succeeded"
+    )
+  })
+
+  it("starts a cancelled run over instead of polling a dead prediction", async () => {
+    const provider = fakeProvider({
+      states: [{ status: "succeeded", outputUrls: ["https://x/out.mp4"] }],
+      onSubmit: async (_req, attemptNumber) => {
+        if (attemptNumber > 1) return
+        const job = getJobForGeneration(opened.handle.db, generationId)
+        if (job) await runner!.cancel(job.id)
+      },
+    })
+    const generation = queued()
+    const generationId = generation.id
+    const underTest = build(provider)
+    const job = underTest.enqueue(generationId)
+    await underTest.idle()
+
+    const cancelledRow = getGeneration(opened.handle.db, generationId)!
+    expect(cancelledRow.status).toBe("canceled")
+    expect(cancelledRow.providerJobId).toBe("pred-1")
+
+    await underTest.retry(job.id)
+    await underTest.idle()
+
+    // `pred-1` was cancelled at the provider, so re-attaching to it would poll
+    // a run that will never finish. A retry of a cancelled job is a new run.
+    expect(provider.submissions).toHaveLength(2)
+    const row = getGeneration(opened.handle.db, generationId)!
+    expect(row.providerJobId).toBe("pred-2")
+    expect(row.status).toBe("succeeded")
   })
 })
 

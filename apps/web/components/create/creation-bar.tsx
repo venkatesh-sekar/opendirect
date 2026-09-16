@@ -16,10 +16,11 @@
  * ⛔ Generate queues a row; the job runner in main is what submits it, and the
  * job list on the status strip is where it is watched and cancelled.
  */
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowRight01Icon,
+  GitBranchIcon,
   Settings02Icon,
   SlidersHorizontalIcon,
 } from "@hugeicons/core-free-icons"
@@ -51,6 +52,19 @@ export interface CreationBarProps {
   creation: CreationController
 }
 
+/**
+ * The quick ways to make a branch differ from its parent.
+ *
+ * Deliberately prompt text and nothing else. A preset that quietly changed a
+ * parameter would be OpenDirect guessing at a run the user is about to pay
+ * for, so each of these only appends words the user can see and edit.
+ */
+const BRANCH_PRESETS: { label: string; suffix: string }[] = [
+  { label: "Slower camera", suffix: "slower camera move" },
+  { label: "Different expression", suffix: "a different expression" },
+  { label: "Different styling", suffix: "styled differently" },
+]
+
 /** Why Generate is off, in the words the tooltip uses. */
 function blockedReason(creation: CreationController): string | null {
   if (!creation.modelKey) return "Pick a model to generate with."
@@ -65,6 +79,18 @@ function blockedReason(creation: CreationController): string | null {
 export function CreationBar({ creation }: CreationBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+
+  // A branch fills the bar and then hands the caret over: the prompt is the
+  // one thing the user is expected to change.
+  const { focusToken } = creation
+  useEffect(() => {
+    if (focusToken === 0) return
+    const field = promptRef.current
+    if (!field) return
+    field.focus()
+    field.setSelectionRange(field.value.length, field.value.length)
+  }, [focusToken])
 
   const split = creation.split
   const settings = split?.common.filter((field) => field.control !== "prompt")
@@ -105,6 +131,34 @@ export function CreationBar({ creation }: CreationBarProps) {
           </p>
         ) : null}
 
+        {creation.parentGenerationId ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed px-3 py-1.5 text-xs">
+            <HugeiconsIcon icon={GitBranchIcon} className="size-3.5" />
+            <span className="text-muted-foreground">
+              Branching from an earlier run
+            </span>
+            {BRANCH_PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant="outline"
+                size="sm"
+                className="h-6"
+                onClick={() => creation.appendToPrompt(preset.suffix)}
+              >
+                {preset.label}
+              </Button>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6"
+              onClick={creation.clearBranch}
+            >
+              Not a branch
+            </Button>
+          </div>
+        ) : null}
+
         {split ? (
           <ReferencesTray
             slots={split.slots}
@@ -117,6 +171,7 @@ export function CreationBar({ creation }: CreationBarProps) {
 
         <div className="flex items-end gap-2">
           <Textarea
+            ref={promptRef}
             aria-label="Prompt"
             placeholder="Describe what you want…"
             rows={1}

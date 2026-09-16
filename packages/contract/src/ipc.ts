@@ -335,6 +335,24 @@ export const ipcContract = {
   },
 
   /**
+   * Hands an asset's file to the operating system: `shell.openPath` for Open,
+   * `shell.showItemInFolder` for Reveal in folder.
+   *
+   * The renderer names an **asset**, never a path. Main looks the row up and
+   * re-checks its stored `relPath` against the project root
+   * (`shell-open.ts`), so a path can neither be supplied by the renderer nor
+   * escape the project folder on its way to the OS.
+   */
+  "shell:openAsset": {
+    input: z.object({ assetId: z.string().min(1) }),
+    output: okSchema,
+  },
+  "shell:revealAsset": {
+    input: z.object({ assetId: z.string().min(1) }),
+    output: okSchema,
+  },
+
+  /**
    * The job runner's queue: active runs first, then recently finished ones.
    * Every row is a `jobs` row in SQLite, so the list survives a restart.
    */
