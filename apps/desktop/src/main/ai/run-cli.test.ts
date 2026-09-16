@@ -12,6 +12,7 @@ import {
   runClaude,
   runCodex,
   runTool,
+  sanitizeEnv,
   type SpawnLike,
 } from "./run-cli"
 
@@ -22,9 +23,23 @@ import {
  */
 const FAKE_CLI = path.join(process.cwd(), "test/fixtures/ai/fake-cli.mjs")
 
+class FakeStdin {
+  written: string[] = []
+  ended = false
+  write = vi.fn((chunk: string) => {
+    this.written.push(chunk)
+    return true
+  })
+  end = vi.fn(() => {
+    this.ended = true
+  })
+  on = vi.fn()
+}
+
 class FakeChild extends EventEmitter {
   stdout = new EventEmitter()
   stderr = new EventEmitter()
+  stdin = new FakeStdin()
   kill = vi.fn((signal?: string) => {
     this.killedWith = signal ?? "SIGTERM"
     return true
@@ -48,26 +63,107 @@ afterEach(() => {
 })
 
 describe("argument building", () => {
-  it("asks claude for a JSON envelope in print mode", () => {
-    expect(claudeArgs("a prompt")).toEqual([
-      "-p",
-      "a prompt",
-      "--output-format",
-      "json",
-    ])
+  it("asks claude for a JSON envelope in print mode, reading the prompt from stdin", () => {
+    const args = claudeArgs({ allowedTools: [] })
+
+    expect(args.slice(0, 3)).toEqual(["-p", "--output-format", "json"])
+    // No prompt in argv at all: it goes down the pipe.
+    expect(args).not.toContain("--prompt")
   })
 
-  it("runs codex non-interactively", () => {
-    expect(codexArgs("a prompt")).toContain("exec")
-    expect(codexArgs("a prompt").at(-1)).toBe("a prompt")
+  it("never lets claude escalate its own permissions", () => {
+    const args = claudeArgs({ allowedTools: [] })
+    const mode = args[args.indexOf("--permission-mode") + 1]
+
+    expect(args).toContain("--permission-mode")
+    expect(mode).toBe("plan")
+    expect(mode).not.toBe("bypassPermissions")
+    expect(mode).not.toBe("acceptEdits")
   })
 
-  it("keeps a shell-hostile prompt in one argv element", () => {
+  it("denies every writing tool, and Read too when the helper needs no file", () => {
+    const denied =
+      claudeArgs({ allowedTools: [] })[
+        claudeArgs({ allowedTools: [] }).indexOf("--disallowedTools") + 1
+      ] ?? ""
+
+    for (const tool of ["Bash", "Edit", "Write", "NotebookEdit", "Read"]) {
+      expect(denied.split(",")).toContain(tool)
+    }
+    expect(claudeArgs({ allowedTools: [] })).not.toContain("--allowedTools")
+  })
+
+  it("allows exactly Read for a helper that must open a reference", () => {
+    const args = claudeArgs({ allowedTools: ["Read"] })
+    const allowed = args[args.indexOf("--allowedTools") + 1]
+    const denied = args[args.indexOf("--disallowedTools") + 1] ?? ""
+
+    expect(allowed).toBe("Read")
+    expect(denied.split(",")).not.toContain("Read")
+    expect(denied.split(",")).toContain("Bash")
+    expect(denied.split(",")).toContain("Write")
+  })
+
+  it("runs codex non-interactively, reading the prompt from stdin", () => {
+    const args = codexArgs()
+
+    expect(args).toContain("exec")
+    expect(args).toContain("--sandbox")
+    expect(args[args.indexOf("--sandbox") + 1]).toBe("read-only")
+    // `-` is codex's own "the prompt is on stdin".
+    expect(args.at(-1)).toBe("-")
+  })
+
+  it("puts no prompt text in argv for either tool", () => {
     const nasty = '"; rm -rf ~ #`whoami`$(id)'
-    expect(claudeArgs(nasty)).toContain(nasty)
-    expect(codexArgs(nasty)).toContain(nasty)
-    // Nothing is quoted or escaped, because nothing is ever concatenated.
-    expect(claudeArgs(nasty).join(" ")).not.toContain("\\")
+    expect(claudeArgs({ allowedTools: [] })).not.toContain(nasty)
+    expect(codexArgs()).not.toContain(nasty)
+  })
+})
+
+describe("sanitizeEnv", () => {
+  const dirty = {
+    PATH: "/usr/bin",
+    HOME: "/home/dev",
+    LANG: "en_GB.UTF-8",
+    REPLICATE_API_TOKEN: "r8_secret",
+    OPENROUTER_API_KEY: "sk-or-secret",
+    SOME_OTHER_API_KEY: "nope",
+    STRIPE_SECRET: "nope",
+    ANTHROPIC_API_KEY: "sk-ant",
+    OPENAI_API_KEY: "sk-oai",
+    CLAUDE_CODE_SOMETHING: "fine",
+    CODEX_HOME: "/home/dev/.codex",
+  }
+
+  it("keeps the environment a CLI needs to run at all", () => {
+    const env = sanitizeEnv("claude", dirty)
+
+    expect(env.PATH).toBe("/usr/bin")
+    expect(env.HOME).toBe("/home/dev")
+    expect(env.LANG).toBe("en_GB.UTF-8")
+  })
+
+  it("never hands a provider key to a child process", () => {
+    for (const tool of ["claude", "codex"] as const) {
+      const env = sanitizeEnv(tool, dirty)
+      expect(env.REPLICATE_API_TOKEN).toBeUndefined()
+      expect(env.OPENROUTER_API_KEY).toBeUndefined()
+      expect(env.SOME_OTHER_API_KEY).toBeUndefined()
+      expect(env.STRIPE_SECRET).toBeUndefined()
+    }
+  })
+
+  it("leaves each CLI its own credentials and takes away the other's", () => {
+    const forClaude = sanitizeEnv("claude", dirty)
+    expect(forClaude.ANTHROPIC_API_KEY).toBe("sk-ant")
+    expect(forClaude.CLAUDE_CODE_SOMETHING).toBe("fine")
+    expect(forClaude.OPENAI_API_KEY).toBeUndefined()
+
+    const forCodex = sanitizeEnv("codex", dirty)
+    expect(forCodex.OPENAI_API_KEY).toBe("sk-oai")
+    expect(forCodex.CODEX_HOME).toBe("/home/dev/.codex")
+    expect(forCodex.ANTHROPIC_API_KEY).toBeUndefined()
   })
 })
 
@@ -113,10 +209,13 @@ describe("runClaude", () => {
       Record<string, unknown>,
     ]
     expect(command).toBe("claude")
-    expect(args).toEqual(["-p", "make it better", "--output-format", "json"])
-    expect(args).toContain("make it better")
+    expect(args.slice(0, 3)).toEqual(["-p", "--output-format", "json"])
+    expect(args).not.toContain("make it better")
     expect(options.shell).toBe(false)
     expect(options.cwd).toBe("/tmp/p")
+    // The prompt goes down the pipe, so its length is not an argv limit.
+    expect(child.stdin.written.join("")).toBe("make it better")
+    expect(child.stdin.ended).toBe(true)
 
     child.stdout.emit(
       "data",
@@ -223,6 +322,37 @@ describe("runCodex", () => {
 })
 
 describe("runTool against a real fake executable", () => {
+  it("keeps the provider API keys away from the child", async () => {
+    const result = await runTool("claude", {
+      prompt: "env check",
+      command: FAKE_CLI,
+      env: {
+        // The fixture's shebang needs a PATH to find node; everything else
+        // here is a secret the child must not come back reporting.
+        // eslint-disable-next-line turbo/no-undeclared-env-vars
+        PATH: process.env.PATH,
+        REPLICATE_API_TOKEN: "r8_secret",
+        OPENROUTER_API_KEY: "sk-or-secret",
+        ANTHROPIC_API_KEY: "sk-ant",
+      },
+    })
+
+    expect(JSON.parse(result.text)).toEqual({
+      REPLICATE_API_TOKEN: false,
+      OPENROUTER_API_KEY: false,
+      ANTHROPIC_API_KEY: true,
+      OPENAI_API_KEY: false,
+      PATH: true,
+    })
+  })
+
+  it("carries a prompt far longer than an argv entry allows", async () => {
+    const huge = `a very long prompt ${"x".repeat(300_000)}`
+    const result = await runTool("codex", { prompt: huge, command: FAKE_CLI })
+
+    expect(result.text).toBe(`codex saw: ${huge}`)
+  })
+
   it("parses the claude envelope the fixture prints", async () => {
     const result = await runTool("claude", {
       prompt: "hello there",
@@ -233,7 +363,7 @@ describe("runTool against a real fake executable", () => {
     expect(result.stderr).toBe("")
   })
 
-  it("passes the prompt as one argv element, unmangled by a shell", async () => {
+  it("passes the prompt through stdin, unmangled by a shell", async () => {
     const nasty = '"; echo pwned > /tmp/pwned #'
     const result = await runTool("codex", { prompt: nasty, command: FAKE_CLI })
 

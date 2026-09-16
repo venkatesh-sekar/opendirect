@@ -3,16 +3,23 @@
  *
  * Three rules hold this file together:
  *
- * 1. **No shell, ever.** The child is spawned with `shell: false` and an argv
- *    array, so a prompt containing `"; rm -rf ~` is a single argument and not
- *    a command. Nothing in here concatenates a command string, which is why
- *    there is no escaping in here either — escaping is what you need when you
- *    have already lost.
+ * 1. **No shell, and no prompt in argv.** The child is spawned with
+ *    `shell: false` and an argv array of flags only; the prompt itself goes
+ *    down stdin, which both CLIs read. Nothing in here concatenates a command
+ *    string, which is why there is no escaping in here either — escaping is
+ *    what you need when you have already lost. Stdin also means a 300KB prompt
+ *    is not an `E2BIG` (or a 32KB Windows command line).
  * 2. **Every run ends.** A helper that hangs would hold a spinner open
  *    forever, so each run owns a deadline and an abort signal, and both kill
  *    the child rather than merely forgetting about it.
  * 3. **The prompt is never logged.** It is the user's own creative work and
  *    can carry a file path; only lengths and exit codes go to `electron-log`.
+ * 4. **The child gets a scrubbed environment and no tools it does not need.**
+ *    `sanitizeEnv` strips the provider API keys — in development they are in
+ *    `process.env` from `.env.local`, and a helper has no business seeing the
+ *    credentials that spend money — and `claude` is pinned to a non-escalating
+ *    permission mode with an explicit tool allowlist, so no Write/Edit/Bash
+ *    path exists from a prompt the user was only asking to improve.
  *
  * `spawn` is injected so the whole thing is tested against a stub and against
  * a fake executable in `test/fixtures/ai/` — never against the real binaries.
@@ -68,9 +75,17 @@ export interface ChildStreamLike {
   on(event: "data", listener: (chunk: unknown) => void): unknown
 }
 
+/** The slice of a child's stdin the prompt is written to. */
+export interface ChildStdinLike {
+  write(chunk: string): unknown
+  end(): unknown
+  on?(event: "error", listener: (error: Error) => void): unknown
+}
+
 export interface ChildLike {
   stdout: ChildStreamLike | null
   stderr: ChildStreamLike | null
+  stdin?: ChildStdinLike | null
   on(
     event: "close",
     listener: (code: number | null, signal: string | null) => void
@@ -85,7 +100,8 @@ export interface SpawnOptionsLike {
   cwd?: string
   timeout?: number
   windowsHide?: boolean
-  env?: NodeJS.ProcessEnv
+  /** Always the scrubbed environment — never an inherited `process.env`. */
+  env: NodeJS.ProcessEnv
 }
 
 export type SpawnLike = (
@@ -102,6 +118,10 @@ export interface RunOptions {
   cwd?: string
   timeoutMs?: number
   signal?: AbortSignal
+  /** What the helper needs to do its job; nothing else is permitted. */
+  allowedTools?: readonly string[]
+  /** The environment to scrub and hand over. Defaults to `process.env`. */
+  env?: NodeJS.ProcessEnv
   /** Live output for the progress log. Never the prompt. */
   onChunk?: (chunk: string) => void
   spawn?: SpawnLike
@@ -117,22 +137,106 @@ export interface AiRunOutput {
 }
 
 /**
- * `claude -p <prompt> --output-format json` — print mode, one JSON envelope.
- * Verified against Claude Code 2.1.x (`claude --help`).
+ * Environment variables a child CLI must never see.
+ *
+ * In development `loadDevEnv()` puts `REPLICATE_API_TOKEN` and
+ * `OPENROUTER_API_KEY` into `process.env`, and an inherited environment would
+ * hand both to a process that is only being asked to rewrite a sentence. The
+ * rule is therefore a denylist by *shape* — anything that looks like a
+ * credential goes — with one exception per tool: the CLI's own authentication,
+ * which the user may well be relying on to run it at all.
+ *
+ * `claude` keeps `ANTHROPIC_*` / `CLAUDE_*`, `codex` keeps `OPENAI_*` /
+ * `CODEX_*`, and neither gets the other's. Everything non-secret (PATH, HOME,
+ * locale, TMPDIR…) is passed through untouched, because a CLI with no PATH is
+ * a CLI that does not start.
  */
-export function claudeArgs(prompt: string): string[] {
-  return ["-p", prompt, "--output-format", "json"]
+const SECRET_SHAPED =
+  /(_API_KEY|_API_TOKEN|_SECRET|_SECRET_KEY|_ACCESS_KEY|_PASSWORD)$/
+
+/** Prefixes each tool is allowed to keep, because they are its own login. */
+const TOOL_OWN_ENV: Record<AiToolId, RegExp> = {
+  claude: /^(ANTHROPIC_|CLAUDE_)/,
+  codex: /^(OPENAI_|CODEX_)/,
+}
+
+export function sanitizeEnv(
+  tool: AiToolId,
+  source: NodeJS.ProcessEnv = process.env
+): NodeJS.ProcessEnv {
+  const own = TOOL_OWN_ENV[tool]
+  const other = Object.entries(TOOL_OWN_ENV)
+    .filter(([id]) => id !== tool)
+    .map(([, pattern]) => pattern)
+
+  const env: NodeJS.ProcessEnv = {}
+  for (const [name, value] of Object.entries(source)) {
+    if (value === undefined) continue
+    if (other.some((pattern) => pattern.test(name))) continue
+    if (own.test(name)) {
+      env[name] = value
+      continue
+    }
+    if (SECRET_SHAPED.test(name)) continue
+    env[name] = value
+  }
+  return env
 }
 
 /**
- * `codex exec <prompt>` — the non-interactive subcommand. `--color never`
- * keeps ANSI escapes out of the captured text, `--skip-git-repo-check` lets it
- * run in a project folder that is not a git repository (most are not), and
- * `--sandbox read-only` is belt and braces: a helper is asked to *read* a
- * reference and answer, never to write anything. All four verified against
- * `codex exec --help` (codex-cli 0.154).
+ * Tools `claude` is explicitly denied, whatever else it decides it wants.
+ *
+ * A helper reads a file the user pointed at and answers in text. Nothing in
+ * that job description needs a shell, an editor or the network, so the whole
+ * writing half of the toolset is named and refused rather than left to the
+ * permission prompt nobody is there to answer.
  */
-export function codexArgs(prompt: string): string[] {
+const CLAUDE_DENIED_TOOLS = [
+  "Bash",
+  "Edit",
+  "Write",
+  "NotebookEdit",
+  "Task",
+  "WebFetch",
+  "WebSearch",
+  "KillShell",
+  "Read",
+]
+
+export interface ToolPolicy {
+  /** What the helper genuinely needs — `Read` for the file-reading two. */
+  allowedTools: readonly string[]
+}
+
+/**
+ * `claude -p --output-format json` — print mode, one JSON envelope, prompt on
+ * stdin. `--permission-mode plan` is the only mode of the six that cannot
+ * escalate (the others are `acceptEdits`, `auto`, `bypassPermissions`,
+ * `manual`, `dontAsk`), and the allow/deny lists pin the toolset on top of it.
+ * All three flags verified against Claude Code 2.1.273 (`claude --help`).
+ */
+export function claudeArgs(policy: ToolPolicy): string[] {
+  const args = ["-p", "--output-format", "json", "--permission-mode", "plan"]
+  if (policy.allowedTools.length > 0) {
+    args.push("--allowedTools", policy.allowedTools.join(","))
+  }
+  const denied = CLAUDE_DENIED_TOOLS.filter(
+    (tool) => !policy.allowedTools.includes(tool)
+  )
+  args.push("--disallowedTools", denied.join(","))
+  return args
+}
+
+/**
+ * `codex exec -` — the non-interactive subcommand, prompt on stdin (`-` is
+ * codex's own spelling for that). `--color never` keeps ANSI escapes out of
+ * the captured text, `--skip-git-repo-check` lets it run in a project folder
+ * that is not a git repository (most are not), and `--sandbox read-only` is
+ * codex's equivalent of claude's denied tool list: a helper reads a reference
+ * and answers, and may never write. All verified against `codex exec --help`
+ * (codex-cli 0.154).
+ */
+export function codexArgs(): string[] {
   return [
     "exec",
     "--color",
@@ -140,7 +244,7 @@ export function codexArgs(prompt: string): string[] {
     "--skip-git-repo-check",
     "--sandbox",
     "read-only",
-    prompt,
+    "-",
   ]
 }
 
@@ -183,14 +287,15 @@ export function parseClaudeResult(stdout: string): string {
 }
 
 interface ToolSpec {
-  args: (prompt: string) => string[]
+  args: (policy: ToolPolicy) => string[]
   parse: (stdout: string) => string
 }
 
 const TOOLS: Record<AiToolId, ToolSpec> = {
   claude: { args: claudeArgs, parse: parseClaudeResult },
-  // `codex exec` prints the assistant's answer on stdout and nothing else.
-  codex: { args: codexArgs, parse: (stdout) => stdout.trim() },
+  // `codex exec` prints the assistant's answer on stdout and nothing else,
+  // and its own `--sandbox read-only` stands in for a tool allowlist.
+  codex: { args: () => codexArgs(), parse: (stdout) => stdout.trim() },
 }
 
 /** Keeps captured output bounded without losing the most recent part of it. */
@@ -211,13 +316,19 @@ function runCli(tool: AiToolId, options: RunOptions): Promise<AiRunOutput> {
   return new Promise<AiRunOutput>((resolve, reject) => {
     let child: ChildLike
     try {
-      child = spawn(options.command ?? tool, spec.args(options.prompt), {
-        // The whole point of this module. Never make it configurable.
-        shell: false,
-        cwd: options.cwd,
-        timeout: timeoutMs + SPAWN_TIMEOUT_MARGIN_MS,
-        windowsHide: true,
-      })
+      child = spawn(
+        options.command ?? tool,
+        spec.args({ allowedTools: options.allowedTools ?? [] }),
+        {
+          // The whole point of this module. Never make it configurable.
+          shell: false,
+          cwd: options.cwd,
+          timeout: timeoutMs + SPAWN_TIMEOUT_MARGIN_MS,
+          windowsHide: true,
+          // Never inherited: the provider keys live in `process.env` in dev.
+          env: sanitizeEnv(tool, options.env),
+        }
+      )
     } catch (error) {
       reject(
         new AiToolError(
@@ -278,6 +389,19 @@ function runCli(tool: AiToolId, options: RunOptions): Promise<AiRunOutput> {
     capture(child.stderr, (text) => {
       stderr = append(stderr, text)
     })
+
+    /**
+     * The prompt, down the pipe. A closed stdin (the child died before it
+     * read anything) surfaces as the `close`/`error` the run is already
+     * waiting for, so an EPIPE here is swallowed rather than raced.
+     */
+    try {
+      child.stdin?.on?.("error", () => {})
+      child.stdin?.write(options.prompt)
+      child.stdin?.end()
+    } catch {
+      // Same reasoning: the exit handler below reports what actually happened.
+    }
 
     child.on("error", (error: Error) => {
       if (settled) return

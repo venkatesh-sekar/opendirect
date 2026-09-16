@@ -444,8 +444,16 @@ both CLIs — **no test ever runs the real `claude` or `codex`.**
 
 Three rules hold the feature together:
 
-- **No shell.** `spawn(cmd, args, { shell: false })` with the prompt as one
-  argv element, so a prompt is never a command.
+- **No shell, and no prompt in argv.** `spawn(cmd, args, { shell: false })`
+  with flags only; the prompt goes down stdin, which both CLIs read (`codex`
+  spells it `-`), so a long prompt is never an `E2BIG`.
+- **A scrubbed environment and no spare tools.** `sanitizeEnv` strips anything
+  credential-shaped — `REPLICATE_API_TOKEN` and `OPENROUTER_API_KEY` are in
+  `process.env` in development — while leaving each CLI its own login
+  (`ANTHROPIC_*`/`CLAUDE_*` for claude, `OPENAI_*`/`CODEX_*` for codex, never
+  the other's). `claude` runs in `--permission-mode plan` with `Read` allowed
+  only for the two file-reading helpers and Bash/Edit/Write denied outright;
+  `codex` runs `--sandbox read-only`.
 - **No path from the renderer.** A reference helper is given an *asset id*;
   main resolves it through `realAssetPath`, the same containment check
   `shell:openAsset` uses, before the path reaches a child process.

@@ -20,6 +20,7 @@ import { execFile as execFileCallback } from "node:child_process"
 import { promisify } from "node:util"
 
 import type {
+  AiHelperId,
   AiProgress,
   AiResult,
   AiRunRequest,
@@ -154,6 +155,20 @@ async function resolveRequest(
     : { helper: "analyze-video", assetPath }
 }
 
+/**
+ * What each helper is allowed to do inside the CLI.
+ *
+ * Only the two that read a file get `Read`; the text-only pair get nothing at
+ * all. `run-cli.ts` turns this into an explicit allow/deny pair, so a prompt
+ * that talks the model into wanting a shell finds there is no shell.
+ */
+const HELPER_TOOLS: Record<AiHelperId, readonly string[]> = {
+  "improve-prompt": [],
+  "suggest-shots": [],
+  "describe-reference": ["Read"],
+  "analyze-video": ["Read"],
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -206,6 +221,7 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
         prompt,
         command: status.path ?? chosen,
         cwd: getCurrentProject()?.project.path,
+        allowedTools: HELPER_TOOLS[helper],
         signal: controller.signal,
         onChunk: (chunk) => emit("output", { chunk }),
       })
