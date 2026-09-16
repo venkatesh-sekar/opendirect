@@ -26,5 +26,10 @@
       "outputs": ["dist/**"]
     }
   },
-  "globalEnv": ["NODE_ENV"]
+  "globalEnv": [
+    "NODE_ENV",
+    "OPENDIRECT_DEV_SERVER_URL",
+    "REPLICATE_API_TOKEN",
+    "OPENROUTER_API_KEY"
+  ]
 }

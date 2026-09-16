@@ -2,10 +2,15 @@ import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 
 import { disposeIpcHandlers, registerIpcHandlers } from "./ipc"
+import { loadDevEnv } from "./settings-service"
 import { initAutoUpdater, stopAutoUpdater } from "./updater"
 import { createMainWindow, prepareProductionRenderer } from "./window"
 
 log.initialize()
+
+// Development-only `.env.local` fallback for the provider keys. Runs before any
+// handler so the first `settings:keys:summary` already sees the env source.
+loadDevEnv()
 
 // Registers the `app://` scheme; electron-serve requires this before ready.
 prepareProductionRenderer()

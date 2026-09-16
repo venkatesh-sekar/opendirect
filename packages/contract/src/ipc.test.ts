@@ -8,6 +8,9 @@ import {
   ipcResultSchema,
   isIpcChannel,
   isIpcEventChannel,
+  keysSummarySchema,
+  settingsDefaults,
+  settingsSchema,
 } from "./ipc"
 
 describe("ipcContract", () => {
@@ -102,5 +105,72 @@ describe("ipcResultSchema", () => {
     expect(ipcResultSchema.safeParse({ ok: false }).success).toBe(false)
     expect(ipcResultSchema.safeParse({ data: 1 }).success).toBe(false)
     expect(ipcResultSchema.safeParse(null).success).toBe(false)
+  })
+})
+
+describe("settings channels", () => {
+  it("declares every settings channel", () => {
+    for (const channel of [
+      "settings:get",
+      "settings:set",
+      "settings:projectRoot:choose",
+      "settings:keys:summary",
+      "settings:keys:set",
+      "settings:keys:clear",
+      "settings:keys:verify",
+    ] as const) {
+      expect(ipcChannels).toContain(channel)
+    }
+  })
+
+  it("matches the documented settings defaults", () => {
+    expect(settingsSchema.parse(settingsDefaults)).toEqual(settingsDefaults)
+    expect(settingsDefaults.maxConcurrentJobs).toBe(2)
+    expect(settingsDefaults.pollIntervalMs).toBe(3000)
+  })
+
+  it("rejects out-of-range settings", () => {
+    expect(
+      settingsSchema.safeParse({ ...settingsDefaults, maxConcurrentJobs: 0 })
+        .success
+    ).toBe(false)
+    expect(
+      settingsSchema.safeParse({ ...settingsDefaults, pollIntervalMs: 10 })
+        .success
+    ).toBe(false)
+  })
+
+  it("accepts a partial patch for settings:set", () => {
+    const parsed = ipcContract["settings:set"].input.parse({ theme: "dark" })
+    expect(parsed).toEqual({ theme: "dark" })
+  })
+
+  it("only allows the two known providers on a key channel", () => {
+    const { input } = ipcContract["settings:keys:set"]
+    expect(
+      input.safeParse({ provider: "replicate", key: "r8_x" }).success
+    ).toBe(true)
+    expect(input.safeParse({ provider: "midjourney", key: "x" }).success).toBe(
+      false
+    )
+    expect(input.safeParse({ provider: "replicate", key: "" }).success).toBe(
+      false
+    )
+  })
+
+  it("keeps the key summary redacted — presence, tail and source only", () => {
+    const status = { present: true, last4: "3456", source: "vault" }
+    const parsed = keysSummarySchema.parse({
+      encryptionAvailable: true,
+      replicate: status,
+      openrouter: { present: false, last4: null, source: "none" },
+      secret: "should be stripped",
+    })
+    expect(JSON.stringify(parsed)).not.toContain("should be stripped")
+    expect(Object.keys(parsed.replicate).sort()).toEqual([
+      "last4",
+      "present",
+      "source",
+    ])
   })
 })
