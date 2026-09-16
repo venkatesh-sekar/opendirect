@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react"
 import { useRouter } from "next/navigation"
 import { useHotkeys } from "react-hotkeys-hook"
 import {
@@ -49,6 +49,36 @@ import { StatusBar } from "./status-bar"
  */
 const DRAG_ACTIVATION_DISTANCE = 6
 
+/**
+ * Whether the Electron preload has put the IPC bridge on `window` — `null`
+ * until we are allowed to look.
+ *
+ * The renderer is a static export: `index.html` is prerendered in Node, where
+ * no preload has run, and that one file is then opened both by the Electron
+ * window, where the bridge exists, and by a plain browser tab, where it does
+ * not. Reading the bridge *during* render therefore makes the first client
+ * render disagree with the prerendered HTML, and React answers a mismatch by
+ * throwing the server's DOM away and rebuilding the tree — which also destroys
+ * and recreates next-themes' blocking theme script, a script that only does its
+ * job when the parser runs it.
+ *
+ * `useSyncExternalStore` is how React is told that this is a value the server
+ * cannot know: it hands back the server snapshot for the prerender *and* for
+ * hydration, then re-checks once hydration is done and re-renders with the real
+ * answer. The bridge is injected before the bundle runs and never changes
+ * afterwards, so there is nothing to subscribe to.
+ */
+const NO_BRIDGE_SUBSCRIPTION = () => () => {}
+const BRIDGE_UNKNOWN = () => null
+
+function useBridge(): boolean | null {
+  return useSyncExternalStore<boolean | null>(
+    NO_BRIDGE_SUBSCRIPTION,
+    isBridgeAvailable,
+    BRIDGE_UNKNOWN
+  )
+}
+
 function ShellSkeleton() {
   return (
     <div className="flex min-h-svh">
@@ -72,6 +102,7 @@ function ShellSkeleton() {
  */
 export function AppShell() {
   const router = useRouter()
+  const bridge = useBridge()
   const project = useCurrentProject()
   const tree = useContainerTree(project.data != null)
   const dnd = useAssetDnd()
@@ -163,7 +194,11 @@ export function AppShell() {
     [client, creation]
   )
 
-  if (!isBridgeAvailable()) {
+  // Before hydration is over we cannot know which of the two windows this is,
+  // and the skeleton is the one answer that is honest either way.
+  if (bridge === null) return <ShellSkeleton />
+
+  if (!bridge) {
     return (
       <main className="flex min-h-svh items-center justify-center p-8">
         <p className="max-w-sm text-center text-sm text-muted-foreground">
