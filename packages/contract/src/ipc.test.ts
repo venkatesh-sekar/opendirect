@@ -339,3 +339,128 @@ describe("generation submission", () => {
     expect(quote.confidence).toBe("unknown")
   })
 })
+
+describe("canvas channels", () => {
+  it("declares every canvas channel", () => {
+    for (const channel of [
+      "canvas:get",
+      "canvas:node:create",
+      "canvas:node:update",
+      "canvas:node:move",
+      "canvas:node:delete",
+      "canvas:node:pick",
+      "canvas:edge:create",
+      "canvas:edge:update",
+      "canvas:edge:delete",
+      "canvas:migrate",
+    ] as const) {
+      expect(ipcChannels).toContain(channel)
+      expect(isIpcChannel(channel)).toBe(true)
+    }
+  })
+
+  it("only accepts the four node types", () => {
+    const { input } = ipcContract["canvas:node:create"]
+    const base = { x: 0, y: 0, width: 320, height: 180 }
+    for (const type of ["text", "media", "image_gen", "video_gen"]) {
+      expect(input.safeParse({ ...base, type }).success).toBe(true)
+    }
+    expect(input.safeParse({ ...base, type: "audio_gen" }).success).toBe(false)
+    expect(input.safeParse({ ...base, type: "media", width: 0 }).success).toBe(
+      false
+    )
+  })
+
+  it("moves many nodes in one call, resizing only when asked", () => {
+    const parsed = ipcContract["canvas:node:move"].input.parse({
+      moves: [
+        { id: "n1", x: 10, y: 20 },
+        { id: "n2", x: 30, y: 40, width: 100, height: 100 },
+      ],
+    })
+    expect(parsed.moves).toHaveLength(2)
+    expect(parsed.moves[0]?.width).toBeUndefined()
+    expect(parsed.moves[1]?.height).toBe(100)
+  })
+
+  it("lets a text edge carry no slot field, but never an empty one", () => {
+    const { input } = ipcContract["canvas:edge:create"]
+    const base = { sourceNodeId: "n1", targetNodeId: "n2" }
+    expect(input.safeParse(base).success).toBe(true)
+    expect(input.safeParse({ ...base, slotField: null }).success).toBe(true)
+    expect(
+      input.safeParse({ ...base, slotField: "reference_images" }).success
+    ).toBe(true)
+    expect(input.safeParse({ ...base, slotField: "" }).success).toBe(false)
+  })
+
+  it("leaves a patch's omitted fields out rather than nulling them", () => {
+    const parsed = ipcContract["canvas:node:update"].input.parse({
+      id: "n1",
+      patch: { pickAssetId: "a2" },
+    })
+    expect(parsed.patch).toEqual({ pickAssetId: "a2" })
+    // `null` is a value here — "no pick" — not an absence.
+    expect(
+      ipcContract["canvas:node:update"].input.parse({
+        id: "n1",
+        patch: { pickAssetId: null },
+      }).patch.pickAssetId
+    ).toBeNull()
+  })
+
+  it("parses a node with its resolved generation and no asset", () => {
+    const parsed = ipcContract["canvas:node:pick"].output.parse({
+      id: "n1",
+      projectId: "p1",
+      type: "image_gen",
+      x: 0,
+      y: 0,
+      width: 512,
+      height: 512,
+      assetId: null,
+      generationId: null,
+      batchId: "b1",
+      pickAssetId: null,
+      text: null,
+      color: null,
+      createdAt: 1,
+      updatedAt: 2,
+      asset: null,
+      generation: null,
+    })
+    expect(parsed.batchId).toBe("b1")
+    expect(parsed.asset).toBeNull()
+  })
+})
+
+describe("batched generation requests", () => {
+  it("defaults batchId to null so an existing caller still validates", () => {
+    const parsed = ipcContract["generations:submit"].input.parse({
+      modelKey: "replicate:bytedance/seedance-2.5",
+      containerId: null,
+      prompt: null,
+      params: {},
+      references: [],
+      estimatedCostUsd: null,
+      costConfidence: null,
+      parentGenerationId: null,
+    })
+    expect(parsed.batchId).toBeNull()
+  })
+
+  it("carries a batch id when the canvas sets one", () => {
+    const parsed = ipcContract["generations:submit"].input.parse({
+      modelKey: "replicate:bytedance/seedance-2.5",
+      containerId: null,
+      prompt: null,
+      params: {},
+      references: [],
+      estimatedCostUsd: null,
+      costConfidence: null,
+      parentGenerationId: null,
+      batchId: "b1",
+    })
+    expect(parsed.batchId).toBe("b1")
+  })
+})

@@ -59,6 +59,19 @@ export const queryKeys = {
     all: ["jobs"] as const,
     list: ["jobs", "list"] as const,
   },
+  /**
+   * The visual canvas. One key for the whole surface: `canvas:get` returns
+   * every node and edge in one go, because that is how it is rendered, and a
+   * per-node key would mean re-fetching the surface to find out which node
+   * changed.
+   *
+   * `all` is what a mutation invalidates — node, edge and pick writes all land
+   * back in the same query.
+   */
+  canvas: {
+    all: ["canvas"] as const,
+    graph: ["canvas", "graph"] as const,
+  },
   generations: {
     all: ["generations"] as const,
     byContainer: (containerId: string, options?: PageKey) =>

@@ -7,6 +7,14 @@ import {
   aiToolIdSchema,
   aiToolsSchema,
 } from "./ai"
+import {
+  canvasEdgeSchema,
+  canvasNodeMoveSchema,
+  canvasNodePatchSchema,
+  canvasNodeSchema,
+  canvasNodeTypeSchema,
+  canvasSchema,
+} from "./canvas"
 import { costQuoteSchema, generationRequestSchema } from "./generation"
 import {
   catalogListingSchema,
@@ -356,6 +364,36 @@ export const ipcContract = {
   },
 
   /**
+   * The same thing, N times — what the canvas sends when the user asks a node
+   * for several results.
+   *
+   * The count is what the user asked for, not a job count: main reads the
+   * model's own schema (`planBatch` in `canvas-batch.ts`) and decides whether
+   * that is one prediction with `num_outputs: 4` or four sibling predictions.
+   * The renderer would otherwise have to hold the same opinion to know what it
+   * is about to spend.
+   *
+   * ⛔ Paid, and only ever from a click on Generate. Every sibling is written
+   * to SQLite as a `queued` row before any provider is called, exactly as the
+   * single-run channel does — the batch id and the ids come back so the node
+   * can store what it just queued.
+   */
+  "generations:submitBatch": {
+    input: z.object({
+      request: generationRequestSchema,
+      /**
+       * How many results. Capped well below anything a person would click for
+       * on purpose, because this is the number that multiplies the bill.
+       */
+      count: z.number().int().min(1).max(16),
+    }),
+    output: z.object({
+      batchId: z.string(),
+      generations: z.array(generationSchema),
+    }),
+  },
+
+  /**
    * Generation *records*. Submitting one only queues a row; running it is the
    * job runner's job; `jobs:list` is where its progress shows up.
    */
@@ -385,6 +423,103 @@ export const ipcContract = {
     input: z.object({ id: z.string() }),
     output: lineageSchema,
   },
+
+  /**
+   * The whole canvas for the open project: every node with its resolved asset
+   * and generation, and every edge. One fetch, because the surface is rendered
+   * all at once and a per-node round trip would mean a request storm on open.
+   */
+  "canvas:get": { input: z.void(), output: canvasSchema },
+
+  /**
+   * Places a node. A media node names the asset it shows; a text node carries
+   * its note. Nothing here runs anything — a generate node starts out empty
+   * and stays that way until Generate is pressed.
+   */
+  "canvas:node:create": {
+    input: z.object({
+      type: canvasNodeTypeSchema,
+      x: z.number(),
+      y: z.number(),
+      width: z.number().positive(),
+      height: z.number().positive(),
+      assetId: z.string().min(1).nullable().optional(),
+      text: z.string().nullable().optional(),
+      color: z.string().nullable().optional(),
+    }),
+    output: canvasNodeSchema,
+  },
+
+  /** Partial update: position, size, text, colour, pick, run. */
+  "canvas:node:update": {
+    input: z.object({ id: z.string().min(1), patch: canvasNodePatchSchema }),
+    output: canvasNodeSchema,
+  },
+
+  /**
+   * Positions, in bulk. An array because box-select then drag moves many nodes
+   * at once, and one debounced write per gesture beats one per node.
+   */
+  "canvas:node:move": {
+    input: z.object({ moves: z.array(canvasNodeMoveSchema) }),
+    output: okSchema,
+  },
+
+  /**
+   * Removes nodes and the edges attached to them — and nothing else. The
+   * assets and the generations they point at stay in the project, reachable
+   * from their sidebar container, because a node is a placement rather than
+   * ownership.
+   */
+  "canvas:node:delete": {
+    input: z.object({ ids: z.array(z.string().min(1)) }),
+    output: okSchema,
+  },
+
+  /**
+   * Chooses which tile of a batch downstream edges resolve to. Deletes
+   * nothing, re-runs nothing: the old pick's asset is still there and no
+   * downstream node is touched.
+   */
+  "canvas:node:pick": {
+    input: z.object({ id: z.string().min(1), assetId: z.string().min(1) }),
+    output: canvasNodeSchema,
+  },
+
+  /**
+   * Wires one node into another's next run. ⛔ Drawing an edge submits
+   * nothing and marks nothing stale.
+   */
+  "canvas:edge:create": {
+    input: z.object({
+      sourceNodeId: z.string().min(1),
+      targetNodeId: z.string().min(1),
+      /** Null for a text edge, which prepends rather than filling a slot. */
+      slotField: z.string().min(1).nullable().optional(),
+    }),
+    output: canvasEdgeSchema,
+  },
+
+  /** Moves an edge to a different input slot of the same target. */
+  "canvas:edge:update": {
+    input: z.object({
+      id: z.string().min(1),
+      slotField: z.string().min(1).nullable(),
+    }),
+    output: canvasEdgeSchema,
+  },
+
+  "canvas:edge:delete": {
+    input: z.object({ ids: z.array(z.string().min(1)) }),
+    output: okSchema,
+  },
+
+  /**
+   * Lays an existing project's lineage out as a canvas, for a project that
+   * predates it. Idempotent by intent: a project that already has canvas rows
+   * is handed back unchanged rather than laid out twice.
+   */
+  "canvas:migrate": { input: z.void(), output: canvasSchema },
 
   /**
    * Hands an asset's file to the operating system: `shell.openPath` for Open,

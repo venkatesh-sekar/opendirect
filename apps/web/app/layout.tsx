@@ -1,6 +1,9 @@
 import { Geist_Mono, Inter } from "next/font/google"
 
 import "@workspace/ui/globals.css"
+// React Flow's stylesheet, imported once for the whole window and re-themed
+// onto our tokens. See the file for why it is not in `packages/ui`.
+import "./react-flow.css"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { Toaster } from "@workspace/ui/components/sonner"

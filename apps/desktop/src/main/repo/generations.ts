@@ -66,6 +66,8 @@ export interface CreateGenerationInput {
   estimatedCostUsd?: number | null
   costConfidence?: string | null
   parentGenerationId?: string | null
+  /** Groups the sibling runs of one canvas batch. Null for every other run. */
+  batchId?: string | null
   branchNote?: string | null
   inputs?: GenerationInputSlot[]
   status?: GenerationStatus
@@ -136,6 +138,7 @@ export function createGeneration(
     predictTimeSeconds: null,
     costConfidence: input.costConfidence ?? null,
     parentGenerationId: input.parentGenerationId ?? null,
+    batchId: input.batchId ?? null,
     branchNote: input.branchNote ?? null,
     createdAt: input.now ?? Date.now(),
     startedAt: null,

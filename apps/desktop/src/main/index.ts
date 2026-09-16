@@ -2,6 +2,8 @@ import { app, BrowserWindow, Menu } from "electron"
 import log from "electron-log/main"
 
 import { initAiTools, stopAiRuns } from "./ai/ai-service"
+import { migrateCanvas } from "./canvas-migrate"
+import { setCanvasMigrator } from "./canvas-service"
 import { disposeIpcHandlers, registerIpcHandlers } from "./ipc"
 import { recoverJobs, stopJobRunner } from "./jobs-service"
 import { prepareMediaProtocol, registerMediaProtocol } from "./media-service"
@@ -58,6 +60,15 @@ prepareMediaProtocol()
 // belongs to would query a connection that is no longer open, and in-flight
 // results would be written into a project the user has already left.
 onProjectClose(() => stopJobRunner())
+
+// The canvas service keeps the `canvas:migrate` channel; `canvas-migrate.ts`
+// keeps elkjs and the lineage reading. Neither imports the other — this is the
+// one place that knows both, which is what lets the migrator stay Electron-free
+// and testable against `:memory:`.
+//
+// ⛔ Installing it migrates nothing. Migration only ever runs when the renderer
+// explicitly calls `canvas:migrate`; opening a project does not rewrite it.
+setCanvasMigrator(migrateCanvas)
 
 // Handlers exist before any renderer loads, so an early `invoke` cannot race them.
 registerIpcHandlers()

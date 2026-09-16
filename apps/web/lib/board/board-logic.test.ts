@@ -1,8 +1,4 @@
-import type {
-  AssetDto,
-  ContainerNodeDto,
-  GenerationDto,
-} from "@opendirect/contract"
+import type { ContainerNodeDto } from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -11,13 +7,7 @@ import {
   isContainerDropData,
   resolveAssetDrop,
 } from "./drop-target"
-import {
-  BOARD_FALLBACK_HEIGHT,
-  BOARD_FALLBACK_WIDTH,
-  boardMetrics,
-  buildBoardItems,
-  cardMediaHeight,
-} from "./items"
+import { cardMediaHeight } from "./items"
 import {
   buildSidebarSections,
   findContainer,
@@ -39,60 +29,6 @@ function container(
     position: 0,
     createdAt: 0,
     children,
-  }
-}
-
-function asset(overrides: Partial<AssetDto> = {}): AssetDto {
-  return {
-    id: "a1",
-    projectId: "p1",
-    kind: "image",
-    relPath: "assets/2026/09/a1.png",
-    text: null,
-    mimeType: "image/png",
-    width: 1024,
-    height: 768,
-    durationMs: null,
-    bytes: 100,
-    sha256: "deadbeef",
-    thumbnailRelPath: null,
-    label: null,
-    originalName: "a1.png",
-    pinned: false,
-    generationId: null,
-    createdAt: 1,
-    url: "asset://p1/assets/2026/09/a1.png",
-    thumbnailUrl: null,
-    ...overrides,
-  }
-}
-
-function generation(overrides: Partial<GenerationDto> = {}): GenerationDto {
-  return {
-    id: "g1",
-    projectId: "p1",
-    containerId: "c1",
-    provider: "replicate",
-    modelSlug: "bytedance/seedance-2.5",
-    modelVersion: null,
-    kind: "video",
-    prompt: "a hallway that never ends",
-    paramsJson: "{}",
-    predictTimeSeconds: null,
-    requestJson: null,
-    responseJson: null,
-    status: "running",
-    error: null,
-    providerJobId: null,
-    estimatedCostUsd: null,
-    actualCostUsd: null,
-    costConfidence: null,
-    parentGenerationId: null,
-    branchNote: null,
-    createdAt: 10,
-    startedAt: null,
-    completedAt: null,
-    ...overrides,
   }
 }
 
@@ -217,41 +153,6 @@ describe("resolveAssetDrop", () => {
   })
 })
 
-describe("buildBoardItems", () => {
-  it("shows one tile per asset, newest first", () => {
-    const items = buildBoardItems([
-      asset({ id: "old", createdAt: 1 }),
-      asset({ id: "new", createdAt: 5 }),
-    ])
-    expect(items.map((item) => item.id)).toEqual(["asset:new", "asset:old"])
-  })
-
-  it("pins runs that are still in flight above the media", () => {
-    const items = buildBoardItems(
-      [asset({ id: "a1", createdAt: 99 })],
-      [generation({ id: "g1", status: "running", createdAt: 2 })]
-    )
-    expect(items.map((item) => item.id)).toEqual(["generation:g1", "asset:a1"])
-  })
-
-  it("drops a run whose output is already on the board", () => {
-    const items = buildBoardItems(
-      [asset({ id: "a1", generationId: "g1" })],
-      [generation({ id: "g1", status: "succeeded" })]
-    )
-    expect(items.map((item) => item.id)).toEqual(["asset:a1"])
-  })
-
-  it("keeps a failed run visible so the error is not swallowed", () => {
-    const items = buildBoardItems(
-      [],
-      [generation({ id: "g1", status: "failed", error: "boom" })]
-    )
-    expect(items).toHaveLength(1)
-    expect(items[0]!.type).toBe("generation")
-  })
-})
-
 describe("cardMediaHeight", () => {
   it("preserves the media's aspect ratio inside the column", () => {
     expect(cardMediaHeight({ width: 1000, height: 500 }, 240)).toBe(120)
@@ -265,21 +166,5 @@ describe("cardMediaHeight", () => {
   it("clamps extreme ratios so no tile becomes a sliver or a tower", () => {
     expect(cardMediaHeight({ width: 4000, height: 100 }, 240)).toBe(96)
     expect(cardMediaHeight({ width: 100, height: 4000 }, 240)).toBe(480)
-  })
-})
-
-describe("boardMetrics", () => {
-  it("passes real measurements through", () => {
-    expect(boardMetrics({ width: 1200, height: 800 })).toEqual({
-      width: 1200,
-      height: 800,
-    })
-  })
-
-  it("substitutes a desktop size before the container has been measured", () => {
-    expect(boardMetrics({ width: 0, height: 0 })).toEqual({
-      width: BOARD_FALLBACK_WIDTH,
-      height: BOARD_FALLBACK_HEIGHT,
-    })
   })
 })

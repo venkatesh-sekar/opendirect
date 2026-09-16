@@ -30,3 +30,14 @@ describe("queryKeys", () => {
     expect(queryKeys.generations.lineage("g1")[0]).toBe("generations")
   })
 })
+
+describe("canvas keys", () => {
+  it("keeps the whole surface under one invalidatable prefix", () => {
+    expect(queryKeys.canvas.graph[0]).toBe(queryKeys.canvas.all[0])
+    expect(queryKeys.canvas.graph).toEqual(["canvas", "graph"])
+  })
+
+  it("does not collide with another domain's key", () => {
+    expect(queryKeys.canvas.all).not.toEqual(queryKeys.generations.all)
+  })
+})

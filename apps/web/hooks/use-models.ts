@@ -70,13 +70,30 @@ export function useRecommendedModels(): UseQueryResult<{
 }
 
 /**
+ * The descriptor query, as an options object.
+ *
+ * Split out because the canvas needs the *same* query outside a render: when
+ * an edge is drawn, the slot it lands in comes from the target model's own
+ * schema, and that decision is taken inside an event handler where a hook
+ * cannot go. One definition, whether it is read through `useModel` or through
+ * `queryClient.fetchQuery`, so the two can never drift into fetching the same
+ * model under two keys.
+ */
+export function modelDescriptorQuery(key: string) {
+  return {
+    queryKey: modelQueryKey(key),
+    queryFn: () => invoke("models:get", { key }),
+    staleTime: Infinity,
+  } as const
+}
+
+/**
  * One full descriptor — the model's own input schema included — fetched on
  * demand. `enabled` keeps it from firing until a model is actually picked.
  */
 export function useModel(key: string | null): UseQueryResult<ModelDescriptor> {
   return useQuery({
-    queryKey: modelQueryKey(key ?? ""),
-    queryFn: () => invoke("models:get", { key: key! }),
+    ...modelDescriptorQuery(key ?? ""),
     enabled: key !== null,
   })
 }

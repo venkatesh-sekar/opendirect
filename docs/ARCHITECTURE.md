@@ -70,8 +70,22 @@ descriptor into promoted common controls, reference slots, and everything else;
 the partition is *total*, asserted property by property in tests, so a
 parameter we have never heard of still reaches the user under **Advanced**.
 
-**`masonic` for the board.** Virtualized masonry — a container with 500 assets
-has to stay at 60fps, which CSS-column masonry cannot promise.
+**`@xyflow/react` for the canvas.** The project workspace is a node graph, and
+pan, zoom, edge rendering, handles, selection and the minimap are all things a
+mature library already does well. Custom node types are plain React components
+registered in a `nodeTypes` map, so every node is still our own shadcn and
+Hugeicons markup. React Flow's stylesheet is imported once and re-themed by
+overriding its CSS custom properties with our Tailwind v4 tokens, so the canvas
+follows light and dark mode and `default-src 'self'` stands unchanged. It
+replaced `masonic`, which laid out the old masonry board.
+
+**`elkjs` for the migration layout.** A project that predates the canvas is
+turned into nodes and edges once, from its own lineage, by a layered ELK layout
+in the main process. It is dual licensed EPL-2.0 or GPL-3.0-or-later; we take it
+under EPL-2.0 and list it in the installers' third-party notices. If a layout
+throws, **nothing is written** — the project opens on an empty canvas with a
+"Lay out my existing work" button, because a half-written layout would be worse
+than none.
 
 **`p-queue` over durable SQLite rows.** Concurrency limiting from a library,
 durability from the database, so jobs survive a restart. No external broker for
@@ -160,9 +174,25 @@ This is the only part of the app that spends money, so it is the part with the
 most rules.
 
 ```
-creation bar → generations:submit → queued row in SQLite → p-queue
+prompt bar → generations:submit → queued row in SQLite → p-queue
    → submitting → running (poll) → downloading → succeeded | failed | canceled
 ```
+
+The canvas changed where a request is composed, and nothing else on this path.
+The prompt bar under the selected generate node builds the same
+`GenerationRequest` the old creation bar built — the node's incoming edges
+become its `references`, each carrying the `slotField` the edge is labelled
+with, and any text node feeding it is prepended to the prompt. There is no
+workflow engine, no execution order and no auto-run: pressing Generate on one
+node runs one node.
+
+A batch is the one addition. `canvas-batch.ts` reads the model's own input
+schema for a field that reads as an output count; when there is one, N goes in
+that field and one job is submitted, and when there is not, N identical requests
+are submitted sharing a `batch_id` (a new nullable, indexed column on
+`generations`). Either way the node ends up with N results and exactly one
+**pick**, which is the asset its outgoing edges resolve to. Picking re-runs
+nothing.
 
 - The **row is written before the request**, so a crash in between leaves a free
   `queued` row rather than a paid provider job nothing knows about.

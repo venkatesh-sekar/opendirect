@@ -1,0 +1,112 @@
+{
+  "cover_image_url": null,
+  "created_at": "2024-07-31T00:07:53.244Z",
+  "description": "The fastest image generation model tailored for local development and personal use",
+  "github_url": "https://github.com/black-forest-labs/flux",
+  "latest_version": {
+    "id": "c846a69991daf4c0e5d016514849d14ee5b2e6846ce6b9d6f21369e564cfe51e",
+    "created_at": "2024-10-01T18:32:57.334862Z",
+    "cog_version": "0.9.23",
+    "openapi_schema": {
+      "openapi": "3.0.2",
+      "info": { "title": "Cog", "version": "0.1.0" },
+      "components": {
+        "schemas": {
+          "aspect_ratio": {
+            "type": "string",
+            "title": "aspect_ratio",
+            "enum": ["1:1", "16:9", "21:9", "3:2", "2:3", "4:5", "9:16"],
+            "description": "An enumeration."
+          },
+          "output_format": {
+            "type": "string",
+            "title": "output_format",
+            "enum": ["webp", "jpg", "png"],
+            "description": "An enumeration."
+          },
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Prompt for generated image"
+              },
+              "aspect_ratio": {
+                "allOf": [{ "$ref": "#/components/schemas/aspect_ratio" }],
+                "default": "1:1",
+                "x-order": 1,
+                "description": "Aspect ratio for the generated image"
+              },
+              "num_outputs": {
+                "type": "integer",
+                "title": "Num Outputs",
+                "default": 1,
+                "maximum": 4,
+                "minimum": 1,
+                "x-order": 2,
+                "description": "Number of outputs to generate"
+              },
+              "num_inference_steps": {
+                "type": "integer",
+                "title": "Num Inference Steps",
+                "default": 4,
+                "maximum": 4,
+                "minimum": 1,
+                "x-order": 3,
+                "description": "Number of denoising steps. 4 is recommended, and lower number of steps produce lower quality outputs, faster."
+              },
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "x-order": 4,
+                "description": "Random seed. Set for reproducible generation"
+              },
+              "output_format": {
+                "allOf": [{ "$ref": "#/components/schemas/output_format" }],
+                "default": "webp",
+                "x-order": 5,
+                "description": "Format of the output images"
+              },
+              "output_quality": {
+                "type": "integer",
+                "title": "Output Quality",
+                "default": 80,
+                "maximum": 100,
+                "minimum": 0,
+                "x-order": 6,
+                "description": "Quality when saving the output images, from 0 to 100. 100 is best quality, 0 is lowest quality. Not relevant for .png outputs"
+              },
+              "megapixels": {
+                "type": "string",
+                "title": "Megapixels",
+                "default": "1",
+                "x-order": 7,
+                "description": "Approximate number of megapixels for generated image"
+              },
+              "go_fast": {
+                "type": "boolean",
+                "title": "Go Fast",
+                "default": true,
+                "x-order": 8,
+                "description": "Run faster predictions with model optimized for speed"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": "https://github.com/black-forest-labs/flux/blob/main/model_licenses/LICENSE-FLUX1-schnell",
+  "name": "flux-schnell",
+  "owner": "black-forest-labs",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 402118316,
+  "url": "https://replicate.com/black-forest-labs/flux-schnell",
+  "visibility": "public",
+  "weights_url": null
+}

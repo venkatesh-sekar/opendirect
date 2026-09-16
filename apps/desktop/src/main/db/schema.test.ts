@@ -110,6 +110,8 @@ describe("migrations", () => {
       "generations",
       "generation_inputs",
       "jobs",
+      "canvas_nodes",
+      "canvas_edges",
     ]) {
       expect(names).toContain(table)
     }
@@ -146,6 +148,9 @@ describe("migrations", () => {
       "generations_project_id_idx",
       "generations_parent_generation_id_idx",
       "jobs_state_idx",
+      "generations_batch_id_idx",
+      "canvas_nodes_project_id_idx",
+      "canvas_edges_source_node_id_idx",
     ]) {
       expect(indexes).toContain(index)
     }

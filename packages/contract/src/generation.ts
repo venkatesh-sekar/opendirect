@@ -49,6 +49,13 @@ export const generationRequestSchema = z.object({
   costConfidence: costConfidenceSchema.nullable(),
   /** Set when the run is a variant of an earlier one. */
   parentGenerationId: z.string().nullable(),
+  /**
+   * Groups the sibling runs the canvas submits when the user asks for N
+   * results and the model has no native output-count field. Defaulted rather
+   * than required so every existing caller — the creation bar, a branch, a
+   * retry — keeps building a valid request without knowing the canvas exists.
+   */
+  batchId: z.string().nullable().default(null),
 })
 export type GenerationRequest = z.output<typeof generationRequestSchema>
 

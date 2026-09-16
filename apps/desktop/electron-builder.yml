@@ -13,6 +13,11 @@ files:
 extraResources:
   - from: ../web/out
     to: web
+  # Attribution that has to travel with the binary rather than sit in the repo:
+  # elkjs is EPL-2.0, which asks for notice and for source availability. Kept
+  # outside app.asar so it is a readable file in the installed app.
+  - from: THIRD-PARTY-NOTICES.md
+    to: THIRD-PARTY-NOTICES.md
 asarUnpack:
   - "**/*.node"
   # sharp loads its libvips binary from sibling `@img/*` packages by path, which

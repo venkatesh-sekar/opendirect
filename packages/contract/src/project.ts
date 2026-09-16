@@ -150,6 +150,12 @@ export const generationSchema = z.object({
   predictTimeSeconds: z.number().nullable(),
   costConfidence: z.string().nullable(),
   parentGenerationId: z.string().nullable(),
+  /**
+   * The batch this run is a sibling of, or null for a run submitted on its
+   * own. The renderer groups a canvas node's tiles by it, which is the reason
+   * it is on the DTO rather than left inside `requestJson`.
+   */
+  batchId: z.string().nullable(),
   branchNote: z.string().nullable(),
   createdAt: z.number(),
   startedAt: z.number().nullable(),

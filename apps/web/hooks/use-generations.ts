@@ -124,3 +124,44 @@ export function useSubmitGeneration(): UseMutationResult<
     },
   })
 }
+
+export interface BatchSubmissionInput {
+  request: GenerationRequest
+  /** How many results the node was asked for — not how many jobs that costs. */
+  count: number
+}
+
+export interface BatchSubmissionResult {
+  batchId: string
+  generations: GenerationDto[]
+}
+
+/**
+ * Queues a canvas node's batch.
+ *
+ * The count is what the user asked for. Whether that becomes one prediction
+ * with the model's own `num_outputs` set or N siblings is main's decision,
+ * taken from the model's schema (`planBatch`), so the renderer cannot hold a
+ * second opinion about what is being spent.
+ *
+ * ⛔ Paid, and only from a click on Generate. Every sibling is a `queued` row
+ * in SQLite before the runner hears about any of them; the batch id comes back
+ * so the node can find its own tiles.
+ */
+export function useSubmitBatch(): UseMutationResult<
+  BatchSubmissionResult,
+  Error,
+  BatchSubmissionInput
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ request, count }: BatchSubmissionInput) =>
+      invoke("generations:submitBatch", { request, count }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.generations.all })
+      // The node that asked stores the ids it got back, so the surface is
+      // re-read rather than patched in place.
+      client.invalidateQueries({ queryKey: queryKeys.canvas.all })
+    },
+  })
+}

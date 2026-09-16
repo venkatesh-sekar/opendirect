@@ -173,6 +173,12 @@ export const generations = sqliteTable(
     predictTimeSeconds: real("predict_time_seconds"),
     costConfidence: text("cost_confidence"),
     /**
+     * Groups the sibling runs of one canvas batch. Nullable and indexed:
+     * every existing row and every non-canvas run has none, and the canvas
+     * needs a queryable grouping key rather than a scan of `request_json`.
+     */
+    batchId: text("batch_id"),
+    /**
      * Branching. `set null` rather than `cascade`: pruning one run must not
      * silently wipe every variant descended from it.
      */
@@ -189,6 +195,7 @@ export const generations = sqliteTable(
     index("generations_project_id_idx").on(t.projectId),
     index("generations_container_id_idx").on(t.containerId),
     index("generations_parent_generation_id_idx").on(t.parentGenerationId),
+    index("generations_batch_id_idx").on(t.batchId),
   ]
 )
 
@@ -210,6 +217,93 @@ export const generationInputs = sqliteTable(
   (t) => [
     index("generation_inputs_generation_id_idx").on(t.generationId),
     index("generation_inputs_asset_id_idx").on(t.assetId),
+  ]
+)
+
+/**
+ * The visual canvas: where the user put things.
+ *
+ * A node is a *placement*, not ownership. That is what the delete rules say:
+ *
+ * - deleting a **node** cascades to its edges only — the asset and the
+ *   generation it pointed at stay in the project;
+ * - deleting an **asset** cascades a media node away (a media node with no
+ *   asset is nothing) but only nulls `pick_asset_id` on a generate node,
+ *   because a run that happened is still a run that happened;
+ * - deleting a **generation** nulls `generation_id` and leaves the node in
+ *   place, empty and ready to run again — the same rule as `assets`, where
+ *   pruning a run never destroys media or lineage.
+ */
+export const canvasNodes = sqliteTable(
+  "canvas_nodes",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    /** "text" | "media" | "image_gen" | "video_gen" — `canvasNodeTypeSchema`. */
+    type: text("type").notNull(),
+    x: real("x").notNull(),
+    y: real("y").notNull(),
+    width: real("width").notNull(),
+    height: real("height").notNull(),
+    /** The asset a media node shows. Gone with the asset. */
+    assetId: text("asset_id").references(() => assets.id, {
+      onDelete: "cascade",
+    }),
+    generationId: text("generation_id").references(
+      (): AnySQLiteColumn => generations.id,
+      { onDelete: "set null" }
+    ),
+    /** Groups the sibling runs of one batch; matches `generations.batch_id`. */
+    batchId: text("batch_id"),
+    /** Which tile downstream edges resolve to. The user's decision. */
+    pickAssetId: text("pick_asset_id").references(
+      (): AnySQLiteColumn => assets.id,
+      { onDelete: "set null" }
+    ),
+    text: text("text"),
+    color: text("color"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    index("canvas_nodes_project_id_idx").on(t.projectId),
+    index("canvas_nodes_generation_id_idx").on(t.generationId),
+    index("canvas_nodes_batch_id_idx").on(t.batchId),
+  ]
+)
+
+/**
+ * An edge is a reference input and nothing else: "when the target runs, feed
+ * it the source". It never triggers anything, which is why there is no state
+ * on it beyond which slot it fills.
+ */
+export const canvasEdges = sqliteTable(
+  "canvas_edges",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    sourceNodeId: text("source_node_id")
+      .notNull()
+      .references((): AnySQLiteColumn => canvasNodes.id, {
+        onDelete: "cascade",
+      }),
+    targetNodeId: text("target_node_id")
+      .notNull()
+      .references((): AnySQLiteColumn => canvasNodes.id, {
+        onDelete: "cascade",
+      }),
+    /** The model's own field name; null for a text edge, which prepends. */
+    slotField: text("slot_field"),
+    createdAt: integer("created_at").notNull(),
+  },
+  (t) => [
+    index("canvas_edges_project_id_idx").on(t.projectId),
+    index("canvas_edges_source_node_id_idx").on(t.sourceNodeId),
+    index("canvas_edges_target_node_id_idx").on(t.targetNodeId),
   ]
 )
 
@@ -247,6 +341,8 @@ export const projectRelations = relations(projects, ({ many }) => ({
   containers: many(containers),
   assets: many(assets),
   generations: many(generations),
+  canvasNodes: many(canvasNodes),
+  canvasEdges: many(canvasEdges),
 }))
 
 export const containerRelations = relations(containers, ({ one, many }) => ({
@@ -270,6 +366,8 @@ export const assetRelations = relations(assets, ({ one, many }) => ({
   }),
   containerAssets: many(containerAssets),
   generationInputs: many(generationInputs),
+  canvasNodes: many(canvasNodes, { relationName: "canvasNodeAsset" }),
+  canvasPicks: many(canvasNodes, { relationName: "canvasNodePick" }),
 }))
 
 export const containerAssetRelations = relations(
@@ -297,6 +395,7 @@ export const generationRelations = relations(generations, ({ one, many }) => ({
   }),
   inputs: many(generationInputs),
   jobs: many(jobs),
+  canvasNodes: many(canvasNodes),
 }))
 
 export const generationInputRelations = relations(
@@ -312,6 +411,46 @@ export const generationInputRelations = relations(
     }),
   })
 )
+
+export const canvasNodeRelations = relations(canvasNodes, ({ one, many }) => ({
+  project: one(projects, {
+    fields: [canvasNodes.projectId],
+    references: [projects.id],
+  }),
+  asset: one(assets, {
+    fields: [canvasNodes.assetId],
+    references: [assets.id],
+    relationName: "canvasNodeAsset",
+  }),
+  pick: one(assets, {
+    fields: [canvasNodes.pickAssetId],
+    references: [assets.id],
+    relationName: "canvasNodePick",
+  }),
+  generation: one(generations, {
+    fields: [canvasNodes.generationId],
+    references: [generations.id],
+  }),
+  outgoing: many(canvasEdges, { relationName: "canvasEdgeSource" }),
+  incoming: many(canvasEdges, { relationName: "canvasEdgeTarget" }),
+}))
+
+export const canvasEdgeRelations = relations(canvasEdges, ({ one }) => ({
+  project: one(projects, {
+    fields: [canvasEdges.projectId],
+    references: [projects.id],
+  }),
+  source: one(canvasNodes, {
+    fields: [canvasEdges.sourceNodeId],
+    references: [canvasNodes.id],
+    relationName: "canvasEdgeSource",
+  }),
+  target: one(canvasNodes, {
+    fields: [canvasEdges.targetNodeId],
+    references: [canvasNodes.id],
+    relationName: "canvasEdgeTarget",
+  }),
+}))
 
 export const jobRelations = relations(jobs, ({ one }) => ({
   generation: one(generations, {
@@ -331,5 +470,9 @@ export type Generation = typeof generations.$inferSelect
 export type NewGeneration = typeof generations.$inferInsert
 export type GenerationInput = typeof generationInputs.$inferSelect
 export type NewGenerationInput = typeof generationInputs.$inferInsert
+export type CanvasNode = typeof canvasNodes.$inferSelect
+export type NewCanvasNode = typeof canvasNodes.$inferInsert
+export type CanvasEdge = typeof canvasEdges.$inferSelect
+export type NewCanvasEdge = typeof canvasEdges.$inferInsert
 export type Job = typeof jobs.$inferSelect
 export type NewJob = typeof jobs.$inferInsert

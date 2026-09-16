@@ -1,0 +1,194 @@
+/**
+ * Incoming edges → the inputs of the next run.
+ *
+ * Step 1 of the run flow, and the whole of it that has rules worth testing.
+ * A generate node's incoming edges are walked in creation order and turned
+ * into two things: the `references` the request carries, and the text that is
+ * prepended to its prompt.
+ *
+ * What each source contributes:
+ *
+ * | Source node | Contribution                                       |
+ * | ----------- | -------------------------------------------------- |
+ * | text        | its text, prepended to the prompt, never a slot    |
+ * | media       | its `assetId`, in the edge's slot                  |
+ * | generate    | its `pickAssetId`, in the edge's slot              |
+ *
+ * ⛔ Nothing here submits anything, and an edge never triggers a run. This is
+ * a pure function over rows the canvas already has; the only thing it can do
+ * is describe the run the user has not pressed Generate on yet.
+ *
+ * It blocks rather than guesses. A generate node with no pick does not fall
+ * back to its first output — picking is the user's decision, and a run that
+ * quietly used a tile they did not choose would be a paid mistake. A slot the
+ * current model no longer declares blocks too, in front of the same guard
+ * `submitGeneration` already enforces in the main process.
+ */
+import type {
+  CanvasEdgeDto,
+  CanvasNodeDto,
+  GenerationReference,
+  ReferenceSlot,
+} from "@opendirect/contract"
+
+/** Why a run cannot be built yet. The UI shows `message` verbatim. */
+export type CanvasBlockCode =
+  /** An upstream generate node has produced nothing the user has picked. */
+  | "no-pick"
+  /** A media edge carries no slot field at all. */
+  | "unresolved-slot"
+  /** The edge names a field this model's schema does not declare. */
+  | "unknown-slot"
+  /** A media node whose asset row is gone. */
+  | "missing-asset"
+
+export interface CanvasInputsBlocked {
+  blocked: string
+  code: CanvasBlockCode
+  /** The edge that cannot be resolved, so the canvas can highlight it. */
+  edgeId: string
+  /** The node on the other end of it. */
+  nodeId: string
+}
+
+export interface CanvasInputs {
+  references: GenerationReference[]
+  /** Joined text of every incoming text edge. Empty when there is none. */
+  promptPrefix: string
+}
+
+export type CanvasInputsResult = CanvasInputs | CanvasInputsBlocked
+
+export function isBlocked(
+  result: CanvasInputsResult
+): result is CanvasInputsBlocked {
+  return "blocked" in result
+}
+
+export interface EdgesToInputsInput {
+  /** The generate node about to be run. */
+  targetNodeId: string
+  nodes: readonly CanvasNodeDto[]
+  edges: readonly CanvasEdgeDto[]
+  /** The chosen model's own slots — `descriptor.referenceSlots`. */
+  slots: readonly ReferenceSlot[]
+}
+
+/** What separates two notes feeding the same node. */
+export const PROMPT_PREFIX_SEPARATOR = "\n\n"
+
+/**
+ * Edge creation order, which is the order the user drew them and therefore
+ * the order their contributions are sent in. `createdAt` is epoch ms and two
+ * edges drawn in the same millisecond are ordered by id, so the result never
+ * depends on the order the rows came back in.
+ */
+export function orderEdges(edges: readonly CanvasEdgeDto[]): CanvasEdgeDto[] {
+  return [...edges].sort(
+    (a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id)
+  )
+}
+
+/** The edges feeding one node, in creation order. */
+export function incomingEdges(
+  edges: readonly CanvasEdgeDto[],
+  targetNodeId: string
+): CanvasEdgeDto[] {
+  return orderEdges(edges.filter((edge) => edge.targetNodeId === targetNodeId))
+}
+
+function blockedBy(
+  code: CanvasBlockCode,
+  message: string,
+  edge: CanvasEdgeDto,
+  node: CanvasNodeDto
+): CanvasInputsBlocked {
+  return { blocked: message, code, edgeId: edge.id, nodeId: node.id }
+}
+
+/** A node's own name for an error message, without inventing a title. */
+function describe(node: CanvasNodeDto): string {
+  if (node.type === "media") return "A media node"
+  if (node.type === "text") return "A text node"
+  return "An upstream generate node"
+}
+
+export function edgesToInputs(input: EdgesToInputsInput): CanvasInputsResult {
+  const byId = new Map(input.nodes.map((node) => [node.id, node]))
+  const slotFields = new Set(input.slots.map((slot) => slot.field))
+
+  const references: GenerationReference[] = []
+  const filled = new Map<string, number>()
+  const texts: string[] = []
+
+  for (const edge of incomingEdges(input.edges, input.targetNodeId)) {
+    const source = byId.get(edge.sourceNodeId)
+    // A dangling edge is a row the node it pointed at has already taken with
+    // it. It describes nothing, so it contributes nothing rather than
+    // blocking a run over a node that no longer exists.
+    if (!source) continue
+
+    if (source.type === "text") {
+      const text = (source.text ?? "").trim()
+      if (text !== "") texts.push(text)
+      continue
+    }
+
+    const assetId =
+      source.type === "media" ? source.assetId : source.pickAssetId
+    if (!assetId) {
+      if (source.type === "media") {
+        return blockedBy(
+          "missing-asset",
+          `${describe(source)} has no asset any more. Remove the connection or replace the node.`,
+          edge,
+          source
+        )
+      }
+      return blockedBy(
+        "no-pick",
+        `${describe(source)} has no pick selected. Choose which result to use before running this node.`,
+        edge,
+        source
+      )
+    }
+
+    if (!edge.slotField) {
+      return blockedBy(
+        "unresolved-slot",
+        "A connection has no input slot. Choose the slot it feeds from the edge label.",
+        edge,
+        source
+      )
+    }
+    if (!slotFields.has(edge.slotField)) {
+      return blockedBy(
+        "unknown-slot",
+        `This model has no input called "${edge.slotField}". Choose a slot it does have from the edge label.`,
+        edge,
+        source
+      )
+    }
+
+    // Position is the edge's rank *within its own slot*, so two references in
+    // one slot are first and second and a reference in another slot is first.
+    const position = filled.get(edge.slotField) ?? 0
+    filled.set(edge.slotField, position + 1)
+    references.push({ slotField: edge.slotField, assetId, position })
+  }
+
+  return { references, promptPrefix: texts.join(PROMPT_PREFIX_SEPARATOR) }
+}
+
+/**
+ * The prompt a run is submitted with: the notes feeding it, then what the
+ * user typed. An empty prefix leaves the prompt exactly as it was typed, and
+ * an empty prompt leaves the notes standing on their own.
+ */
+export function composePrompt(promptPrefix: string, prompt: string): string {
+  const prefix = promptPrefix.trim()
+  const body = prompt.trim()
+  if (prefix === "") return body
+  if (body === "") return prefix
+  return `${prefix}${PROMPT_PREFIX_SEPARATOR}${body}`
+}

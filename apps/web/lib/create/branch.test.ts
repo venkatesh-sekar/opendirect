@@ -33,6 +33,7 @@ function generation(overrides: Partial<GenerationDto> = {}): GenerationDto {
     predictTimeSeconds: null,
     costConfidence: "estimated",
     parentGenerationId: null,
+    batchId: null,
     branchNote: null,
     createdAt: 1,
     startedAt: 2,

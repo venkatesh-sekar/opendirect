@@ -283,22 +283,48 @@ maps a container's `kind` to its heading and treats a `project`-kind container
 as transparent, hoisting its children, so a project that wraps everything in one
 root and a project that files characters at the top level render identically.
 
-The board is `masonic`'s `useMasonry` (not `<Masonry>`), because the grid
-scrolls inside a panel rather than the browser window: the scroll box is
-measured with a `ResizeObserver` and its `scrollTop` is fed to the hook
-directly. An unmeasured box reports `0`, which `boardMetrics` turns into a
-desktop-sized guess so the first paint is a grid instead of nothing.
+Selecting a container in the sidebar is what points the workspace at it: the
+shell derives the selection from the tree rather than storing it, so it opens on
+the first container without an effect and falls back on its own the moment the
+selected one is deleted underneath it. That container id is handed straight to
+`<Canvas containerId={…} />`, which is what the board used to be given.
 
-Board tiles mix assets and generations. A finished run is already on the board
-as its output assets, so its own record is dropped; a queued, running or failed
-run has no asset yet and gets a placeholder tile (`buildBoardItems`).
+**The canvas** (`components/canvas/`) is the workspace, and it replaced the
+masonry board. `@xyflow/react` owns pan, zoom, edges, handles, selection and the
+minimap; the node types (`text`, `media`, `image_gen`, `video_gen`) are plain
+React components in a `nodeTypes` map. Two stores meet here and the line between
+them is deliberate: React Flow's own store holds the transient state (viewport,
+the drag in flight, the connection line being drawn) and none of it is
+persisted, while TanStack Query over `canvas:*` IPC holds the rows. Positions
+are the only high-frequency write and the only debounced one
+(`useCanvasNodeMover` coalesces a gesture into one `canvas:node:move`); adds,
+deletes, edge changes and picks are written immediately.
+
+An **edge is a reference input and nothing else** — it says what the *next* run
+should be fed, it never starts one and it never marks anything stale. Each edge
+carries the model's own `slotField`, derived from the model's schema. A **text
+node** has no slot; its text is prepended to the target's prompt at run time.
+
+A generate node holds a whole **batch**. Asking for four images gives one node
+with four tiles, and exactly one of them is the **pick** (`pickAssetId`), which
+is what outgoing edges resolve to. Changing the pick deletes nothing and re-runs
+nothing. Deleting a node removes the node only: the asset and the generation
+stay in the project, reachable from their container.
+
+A project made before the canvas is migrated once, on open, by `canvas:migrate`
+— lineage to a layered `elkjs` layout in the main process. A layout that throws
+writes nothing, and the canvas offers "Lay out my existing work" instead.
+
+The canvas mounts **inside the shell's `DndContext`**, because it accepts the
+sidebar's asset drag on its own droppable (`CANVAS_DROPPABLE_ID`) and turns the
+drop into a media node at the point it landed.
 
 **Drag and drop.** A card is a `role="button"` tile: Enter selects it, Space
 picks it up for the `KeyboardSensor` and the arrow keys walk it to a container.
 Dropping a card on a container **adds** it — an asset
 legitimately lives in many containers and a copy is the non-destructive
 default. Starting the drag with Shift held **moves** it: the same add, then an
-unlink from the source board, in that order and only on success. The decision
+unlink from the source container, in that order and only on success. The decision
 is `lib/board/drop-target.ts`; the mutations are `hooks/use-asset-dnd.ts`,
 which tracks Shift for the whole drag so the overlay says what the drop will
 actually do.
@@ -307,23 +333,33 @@ actually do.
 resolved through `webUtils.getPathForFile` in the preload, exposed as
 `window.opendirect.pathForFile` and wrapped by `pathsForFiles` in
 `apps/web/lib/ipc.ts`. Outside Electron it returns an empty list rather than
-throwing, and the board says "Nothing to import" instead of firing a no-op
-mutation. The Import button uses the `assets:choose` dialog channel instead.
-Either way the board reports the counts the main process returns — imported,
-already here, failed — and lists the files it could not read.
+throwing, and nothing is imported instead of firing a no-op mutation. The
+rail's Import button uses the `assets:choose` dialog channel instead. Either way
+the counts the main process returns — imported, already here, failed — are what
+is reported, along with the files it could not read.
 
 Component tests run under jsdom via a `// @vitest-environment jsdom` pragma.
 `vitest.config.ts` sets the automatic JSX runtime (the renderer's tsconfig says
 `jsx: "preserve"`, which the transformer cannot emit) and the `@/…` alias;
 `vitest.setup.ts` stubs `ResizeObserver`, `matchMedia` and
-`Element.prototype.getAnimations`, which jsdom lacks and which `masonic`, the
+`Element.prototype.getAnimations`, which jsdom lacks and which React Flow, the
 shadcn sidebar and Base UI's ScrollArea require; it also registers the
 `@testing-library/jest-dom` matchers.
 
-## Creation bar
+## The prompt bar
 
-The bar (`apps/web/components/create/*`) is a `sticky bottom-0` sibling of the
-board's panel group, so it stays put while the board scrolls under it.
+The bar (`apps/web/components/canvas/prompt-bar.tsx`) is a React Flow
+`NodeToolbar` anchored under the selected generate node, so it travels with the
+node it belongs to. It holds the reference tray (one thumbnail per incoming
+edge, each labelled with its slot), the prompt, a model chip, a settings chip
+over an icon grid built from the model's own enum values, a count stepper, the
+cost estimate and the Generate button. ⛔ Generate is the only control in the
+app that spends money.
+
+The pieces the bar reuses still live under `apps/web/components/create/*` — the
+reference picker, the advanced RJSF form, the cost badge and the schema-form
+widgets. What went with the old masonry board is the always-on creation bar at
+the bottom of the window.
 
 **The schema split.** `lib/schema-form/split-schema.ts` partitions a
 `ModelDescriptor`'s input schema into three: the promoted **common** controls
@@ -421,13 +457,15 @@ step in the project that spends money, and nothing automated may perform it.
 
 1. `pnpm dev:desktop`, and open or create a project.
 2. Settings → paste a Replicate or OpenRouter key and verify it.
-3. Pick a **cheap image model** (not a video model) in the creation bar.
+3. Add an image generate node, select it, and pick a **cheap image model** (not
+   a video model) in its prompt bar. Leave the count at 1.
 4. Type a short prompt and read the cost badge. If it says "Cost unknown",
    stop and find out why before pressing anything.
 5. Press **Generate once**. Do not press it again while the job list shows the
    run as active.
 6. Watch the job list: `Queued → Submitting → Running → Downloading → Done`.
-7. Confirm the output appears on the board and that the file is on disk under
+7. Confirm the output appears as a tile on the node, becomes its pick, and that
+   the file is on disk under
    `<project>/generations/<generation-id>/0.<ext>`.
 8. Confirm the recorded cost: OpenRouter reports the exact figure, Replicate
    leaves the estimate in place (it publishes no per-run cost).

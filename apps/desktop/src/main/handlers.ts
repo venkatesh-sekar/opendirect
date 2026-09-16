@@ -16,8 +16,9 @@
  */
 import { dialog, shell } from "electron"
 
+import { registerCanvasHandlers } from "./canvas-service"
 import type { ModelCatalog } from "./catalog"
-import { submitGeneration } from "./generations-submit"
+import { submitBatch, submitGeneration } from "./generations-submit"
 import { getJobRunner } from "./jobs-service"
 import type { IpcRegistrar } from "./ipc-registry"
 import type { ProjectDatabase } from "./db/client"
@@ -274,6 +275,57 @@ export function registerProjectHandlers(
 
     return generation
   })
+
+  /**
+   * ⛔ The same channel, N times — the canvas node's count stepper.
+   *
+   * Main decides what N costs in jobs, because only main has the model's
+   * schema: `submitBatch` may write one row with `num_outputs: 4` or four
+   * sibling rows sharing a batch id. Either way every row is `queued` in
+   * SQLite before a single one is handed to the runner, so a crash midway
+   * through leaves runs that cost nothing rather than provider jobs nobody
+   * recorded.
+   */
+  handle("generations:submitBatch", async ({ request, count }) => {
+    const { db, project } = requireProject()
+    const batch = await submitBatch(
+      { db, project },
+      { getModel: (key) => catalog().getModel(key) },
+      request,
+      count
+    )
+
+    const runner = getJobRunner()
+    return {
+      batchId: batch.batchId,
+      generations: batch.generations.map((generation) => {
+        try {
+          runner.enqueue(generation.id)
+        } catch (error) {
+          // One sibling failing to enqueue must not hide the others, and none
+          // of them may be left claiming to be queued with nothing to pick it
+          // up. Each row answers for itself.
+          const message =
+            error instanceof Error
+              ? error.message
+              : "The job runner is unavailable"
+          return updateStatus(db, generation.id, {
+            status: "failed",
+            error: message,
+          })
+        }
+        return generation
+      }),
+    }
+  })
+
+  /**
+   * The canvas: nodes, edges, picks and the layout the user arranged.
+   *
+   * ⛔ None of them submits anything — an edge is a statement about the next
+   * run, never a trigger. See `canvas-service.ts`.
+   */
+  registerCanvasHandlers(handle)
 
   /** The job list sheet. Reads the `jobs` table, so it survives a restart. */
   handle("jobs:list", ({ limit }) => {

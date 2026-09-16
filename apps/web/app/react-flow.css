@@ -1,0 +1,90 @@
+/*
+ * React Flow, wearing our tokens.
+ *
+ * The library's stylesheet is imported exactly once — here — and then
+ * re-themed by overriding its own CSS custom properties with the shadcn
+ * tokens defined in `@workspace/ui/globals.css`. Nothing below is a colour
+ * literal: every value is `var(--something)` that already flips with
+ * `.dark`, so the canvas follows light and dark mode with the rest of the
+ * app and there is no second palette to keep in step.
+ *
+ * It lives in `apps/web` rather than in `packages/ui` because `@xyflow/react`
+ * is the renderer's dependency; the UI package knows nothing about the canvas.
+ *
+ * ⛔ Nothing here loads a remote asset. React Flow ships no font, no image and
+ * no `url()` to a network origin, which is why `default-src 'self'` in
+ * `lib/csp.ts` stands unchanged — see `lib/csp.test.ts`.
+ */
+@import "@xyflow/react/dist/style.css";
+
+:root {
+  /* The surface itself, and the dot grid drawn on it. */
+  --xy-background-color: var(--background);
+  --xy-background-pattern-color: var(--border);
+
+  /* Edges: a reference connection, and the line while one is being drawn. */
+  --xy-edge-stroke: var(--muted-foreground);
+  --xy-edge-stroke-selected: var(--primary);
+  --xy-edge-stroke-width: 1.5;
+  --xy-connectionline-stroke: var(--primary);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-edge-label-background-color: var(--popover);
+  --xy-edge-label-color: var(--popover-foreground);
+
+  /* Handles. The nodes draw their own chrome; this is the dot you grab. */
+  --xy-handle-background-color: var(--primary);
+  --xy-handle-border-color: var(--background);
+
+  /*
+   * The built-in node skin is switched off rather than recoloured: every node
+   * on this canvas is one of our own components with its own card, border and
+   * selection ring, so a second border underneath it would double up.
+   */
+  --xy-node-background-color: transparent;
+  --xy-node-color: var(--foreground);
+  --xy-node-border: none;
+  --xy-node-border-selected: none;
+  --xy-node-border-radius: var(--radius);
+  --xy-node-boxshadow-hover: none;
+  --xy-node-boxshadow-selected: none;
+  --xy-node-group-background-color: var(--muted);
+
+  /* Shift-drag box select. */
+  --xy-selection-background-color: color-mix(
+    in oklab,
+    var(--primary) 12%,
+    transparent
+  );
+  --xy-selection-border: 1px dotted var(--primary);
+
+  /* The minimap, bottom right. */
+  --xy-minimap-background-color: var(--card);
+  --xy-minimap-mask-background-color: color-mix(
+    in oklab,
+    var(--background) 70%,
+    transparent
+  );
+  --xy-minimap-mask-stroke-color: var(--border);
+  --xy-minimap-mask-stroke-width: 1;
+  --xy-minimap-node-background-color: var(--muted-foreground);
+  --xy-minimap-node-stroke-color: var(--border);
+
+  --xy-attribution-background-color: transparent;
+  --xy-resize-background-color: var(--primary);
+}
+
+/*
+ * The minimap is a `<svg>` with its own background attribute, and the panel it
+ * sits in needs our border and radius to read as part of the app rather than
+ * as a window pane dropped on top of it.
+ */
+.react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* The attribution link is text on our surface, not on a white chip. */
+.react-flow__attribution a {
+  color: var(--muted-foreground);
+}

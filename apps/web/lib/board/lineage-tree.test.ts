@@ -28,6 +28,7 @@ function gen(
     predictTimeSeconds: null,
     costConfidence: null,
     parentGenerationId,
+    batchId: null,
     branchNote: null,
     createdAt: 1,
     startedAt: null,
@@ -90,9 +91,7 @@ describe("buildLineageTree", () => {
       ancestors: [],
       descendants: [gen("video-53", "image-42"), gen("cut-9", "video-53")],
     })
-    expect(
-      tree.nodes.map((node) => [node.generation.id, node.depth])
-    ).toEqual([
+    expect(tree.nodes.map((node) => [node.generation.id, node.depth])).toEqual([
       ["image-42", 0],
       ["video-53", 1],
       ["cut-9", 2],

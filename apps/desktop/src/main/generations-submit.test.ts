@@ -6,11 +6,11 @@ import type { GenerationRequest, ModelDescriptor } from "@opendirect/contract"
 import sharp from "sharp"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { submitGeneration } from "./generations-submit"
+import { submitBatch, submitGeneration } from "./generations-submit"
 import { createProject, openProject, type OpenProject } from "./project"
 import { importFiles } from "./repo/assets"
 import { createContainer } from "./repo/containers"
-import { listByContainer, listInputs } from "./repo/generations"
+import { getGeneration, listByContainer, listInputs } from "./repo/generations"
 
 let root: string
 let opened: OpenProject
@@ -76,6 +76,7 @@ function request(
     estimatedCostUsd: 1.156,
     costConfidence: "estimated",
     parentGenerationId: null,
+    batchId: null,
     ...overrides,
   }
 }
@@ -218,5 +219,136 @@ describe("submitGeneration", () => {
     expect(listByContainer(opened.handle.db, { containerId }).items).toEqual([
       expect.objectContaining({ id: generation.id, status: "queued" }),
     ])
+  })
+})
+
+/**
+ * ⛔ Not one provider call in here either. A batch is N queued rows, and the
+ * assertions stop at what SQLite holds — `deps()` is a stub catalog and msw
+ * runs with `onUnhandledRequest: "error"`, so an escape would fail the suite
+ * rather than spend money.
+ */
+describe("submitBatch", () => {
+  /** A model that counts its own outputs, capped at four per prediction. */
+  const nativeCount = {
+    inputSchema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string" },
+        num_outputs: { type: "integer", minimum: 1, maximum: 4 },
+      },
+    },
+  }
+
+  it("writes one queued row per sibling when the model counts nothing", async () => {
+    const batch = await submitBatch(context(), deps(), request(), 3)
+
+    expect(batch.generations).toHaveLength(3)
+    for (const generation of batch.generations) {
+      expect(generation.status).toBe("queued")
+      expect(generation.providerJobId).toBeNull()
+      expect(generation.startedAt).toBeNull()
+    }
+    expect(
+      listByContainer(opened.handle.db, { containerId }).items
+    ).toHaveLength(3)
+  })
+
+  it("gives every sibling the same batch id, in the row and in the request", () => {
+    return submitBatch(context(), deps(), request(), 3).then((batch) => {
+      const ids = new Set(
+        batch.generations.map((generation) => generation.batchId)
+      )
+      expect(ids).toEqual(new Set([batch.batchId]))
+
+      for (const generation of batch.generations) {
+        const row = getGeneration(opened.handle.db, generation.id)
+        expect(row?.batchId).toBe(batch.batchId)
+        expect(JSON.parse(row!.requestJson!).batchId).toBe(batch.batchId)
+      }
+    })
+  })
+
+  it("writes one row with the count param when the model has a count field", async () => {
+    const batch = await submitBatch(
+      context(),
+      deps(nativeCount),
+      request({ params: {} }),
+      4
+    )
+
+    expect(batch.generations).toHaveLength(1)
+    const generation = batch.generations[0]!
+    expect(generation.status).toBe("queued")
+    expect(JSON.parse(generation.paramsJson)).toEqual({ num_outputs: 4 })
+    expect(generation.batchId).toBe(batch.batchId)
+  })
+
+  it("splits a count past the field's maximum into native-count siblings", async () => {
+    const batch = await submitBatch(
+      context(),
+      deps(nativeCount),
+      request({ params: {} }),
+      10
+    )
+
+    expect(
+      batch.generations.map(
+        (generation) => JSON.parse(generation.paramsJson).num_outputs
+      )
+    ).toEqual([4, 4, 2])
+    expect(
+      new Set(batch.generations.map((generation) => generation.batchId))
+    ).toEqual(new Set([batch.batchId]))
+  })
+
+  it("links every sibling's references to their slots", async () => {
+    const batch = await submitBatch(
+      context(),
+      deps(),
+      request({
+        references: [{ slotField: "reference_images", assetId, position: 0 }],
+      }),
+      2
+    )
+
+    for (const generation of batch.generations) {
+      expect(listInputs(opened.handle.db, generation.id)).toEqual([
+        expect.objectContaining({ slotField: "reference_images", position: 0 }),
+      ])
+    }
+  })
+
+  it("asks the catalog once for the whole batch", async () => {
+    const catalog = deps()
+    await submitBatch(context(), catalog, request(), 4)
+    expect(catalog.getModel).toHaveBeenCalledTimes(1)
+  })
+
+  it("refuses the whole batch rather than queueing a bad half of it", async () => {
+    await expect(
+      submitBatch(
+        context(),
+        deps(),
+        request({
+          references: [
+            { slotField: "reference_images", assetId: "ghost", position: 0 },
+          ],
+        }),
+        3
+      )
+    ).rejects.toThrow(/ghost/)
+
+    expect(listByContainer(opened.handle.db, { containerId }).items).toEqual([])
+  })
+
+  it("keeps a batch id the caller already minted for the node", async () => {
+    const batch = await submitBatch(
+      context(),
+      deps(),
+      request({ batchId: "batch-from-the-node" }),
+      2
+    )
+    expect(batch.batchId).toBe("batch-from-the-node")
   })
 })

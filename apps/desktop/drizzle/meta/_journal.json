@@ -22,6 +22,13 @@
       "when": 1789572687877,
       "tag": "0002_dizzy_aaron_stack",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1789582364866,
+      "tag": "0003_free_wolverine",
+      "breakpoints": true
     }
   ]
 }

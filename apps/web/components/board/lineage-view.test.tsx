@@ -30,6 +30,7 @@ function gen(
     predictTimeSeconds: null,
     costConfidence: null,
     parentGenerationId,
+    batchId: null,
     branchNote: null,
     createdAt: 1,
     startedAt: null,

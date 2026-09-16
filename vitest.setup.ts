@@ -12,7 +12,7 @@ afterAll(() => server.close())
 
 /**
  * jsdom ships neither `ResizeObserver` nor `matchMedia`, and the renderer's
- * shell depends on both — `masonic` measures cells with the first and the
+ * shell depends on both — the canvas measures its surface with the first and the
  * shadcn sidebar picks its layout with the second. Stubbing them here keeps
  * every component test from re-declaring the same two shims.
  */

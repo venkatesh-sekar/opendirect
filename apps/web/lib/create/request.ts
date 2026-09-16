@@ -51,6 +51,11 @@ export interface BuildRequestInput {
   /** The quote the cost badge was showing when Generate was pressed. */
   quote?: CostQuote | null
   parentGenerationId?: string | null
+  /**
+   * Groups the sibling runs of one canvas batch. The creation bar never sets
+   * one — a single Generate is a single run — so it defaults to null.
+   */
+  batchId?: string | null
 }
 
 /** True for a value the user has actually supplied. */
@@ -105,6 +110,7 @@ export function buildGenerationRequest(
       quote && quote.confidence !== "unknown" ? quote.amount : null,
     costConfidence: quote ? quote.confidence : null,
     parentGenerationId: input.parentGenerationId ?? null,
+    batchId: input.batchId ?? null,
   }
 }
 

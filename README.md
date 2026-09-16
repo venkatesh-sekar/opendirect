@@ -98,6 +98,25 @@ bridge. SQLite, the project folder, the provider HTTP calls, the job runner and
 child-process spawning never touch the renderer; local media reaches it over a
 containment-checked `asset://` protocol rather than `file://`.
 
+**The workspace is a canvas.** A project is not a grid of finished tiles; it is
+a graph you lay out yourself. Every asset and every run is a node, and an edge
+from one node into another means "use this as a reference on the next run" —
+nothing more. An edge never starts a job and never marks anything stale. Pan,
+zoom, edges, handles, selection and the minimap are
+[`@xyflow/react`](https://reactflow.dev); the node bodies are our own shadcn and
+Hugeicons markup. A project made before the canvas existed is laid out once from
+its own lineage with [`elkjs`](https://github.com/kieler/elkjs) in the main
+process, and a layout that fails writes nothing and offers to try again.
+
+**A run can ask for several results, and one of them is the pick.** Asking for
+four images gives one node with four tiles, not four nodes. If the model's own
+schema declares an output-count field (`num_outputs`, `num_images`, `n`, …) one
+job is submitted with that field set; otherwise four sibling jobs are submitted
+sharing one `batch_id`, because each sibling is separately paid and a partial
+failure has to stay retryable on its own. Exactly one tile is the **pick**, and
+that is the tile outgoing edges resolve to. Changing the pick costs nothing,
+deletes nothing and re-runs nothing.
+
 **Models are not hardcoded.** Replicate hands back literal JSON Schema and
 OpenRouter a typed parameter map; both are normalised into a `ModelDescriptor`
 and rendered into a form with `@rjsf/shadcn`. A parameter OpenDirect has never
@@ -147,3 +166,9 @@ buttons. `apps/desktop` and `packages/contract` were added on top.
 ## License
 
 [MIT](LICENSE).
+
+Third-party components that ship inside the installers and ask for more than a
+bundled licence file are listed in
+[`apps/desktop/THIRD-PARTY-NOTICES.md`](apps/desktop/THIRD-PARTY-NOTICES.md),
+which is packaged next to the app. Today that is `elkjs` (EPL-2.0), used for
+the canvas migration layout.
