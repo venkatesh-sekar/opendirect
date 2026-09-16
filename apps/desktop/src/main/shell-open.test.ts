@@ -3,7 +3,7 @@
  * path Electron would be allowed to open.
  */
 import { randomUUID } from "node:crypto"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -59,33 +59,68 @@ describe("resolveOpenPath", () => {
     await writeFile(join(opened.project.path, "assets", "lobby.png"), "png")
     const id = insertAsset("assets/lobby.png")
 
-    expect(resolveOpenPath(ctx(), id)).toBe(
-      join(opened.project.path, "assets", "lobby.png")
+    await expect(resolveOpenPath(ctx(), id)).resolves.toBe(
+      await realpath(join(opened.project.path, "assets", "lobby.png"))
     )
   })
 
-  it("refuses a stored path that walks out of the project folder", () => {
+  it("refuses a stored path that walks out of the project folder", async () => {
     const id = insertAsset("../../etc/passwd")
-    expect(() => resolveOpenPath(ctx(), id)).toThrow(/outside the project/i)
+    await expect(resolveOpenPath(ctx(), id)).rejects.toThrow(
+      /outside the project/i
+    )
   })
 
-  it("refuses an absolute stored path", () => {
+  it("refuses an absolute stored path", async () => {
     const id = insertAsset("/etc/passwd")
-    expect(() => resolveOpenPath(ctx(), id)).toThrow(/outside the project/i)
+    await expect(resolveOpenPath(ctx(), id)).rejects.toThrow(
+      /outside the project/i
+    )
   })
 
-  it("says so when the file is gone rather than opening nothing", () => {
+  it("refuses a symlink inside the project that points out of it", async () => {
+    // The lexical check passes — the link itself is under `assets/` — so only
+    // the realpath containment catches this one, and it must catch it *before*
+    // the path is handed to the operating system.
+    const outside = await mkdtemp(join(tmpdir(), "opendirect-outside-"))
+    await writeFile(join(outside, "secret.png"), "secret")
+    await symlink(
+      join(outside, "secret.png"),
+      join(opened.project.path, "assets", "escape.png")
+    )
+    const id = insertAsset("assets/escape.png")
+
+    await expect(resolveOpenPath(ctx(), id)).rejects.toThrow(
+      /outside the project/i
+    )
+    await rm(outside, { recursive: true, force: true })
+  })
+
+  it("follows a symlink that stays inside the project", async () => {
+    await writeFile(join(opened.project.path, "assets", "lobby.png"), "png")
+    await symlink(
+      join(opened.project.path, "assets", "lobby.png"),
+      join(opened.project.path, "assets", "alias.png")
+    )
+    const id = insertAsset("assets/alias.png")
+
+    await expect(resolveOpenPath(ctx(), id)).resolves.toBe(
+      await realpath(join(opened.project.path, "assets", "lobby.png"))
+    )
+  })
+
+  it("says so when the file is gone rather than opening nothing", async () => {
     const id = insertAsset("assets/missing.png")
-    expect(() => resolveOpenPath(ctx(), id)).toThrow(/no longer/i)
+    await expect(resolveOpenPath(ctx(), id)).rejects.toThrow(/no longer/i)
   })
 
-  it("refuses an asset that has no file at all", () => {
+  it("refuses an asset that has no file at all", async () => {
     const id = insertAsset(null)
-    expect(() => resolveOpenPath(ctx(), id)).toThrow(/no file/i)
+    await expect(resolveOpenPath(ctx(), id)).rejects.toThrow(/no file/i)
   })
 
-  it("refuses an asset that does not exist", () => {
-    expect(() => resolveOpenPath(ctx(), "nope")).toThrow(/not found/i)
+  it("refuses an asset that does not exist", async () => {
+    await expect(resolveOpenPath(ctx(), "nope")).rejects.toThrow(/not found/i)
   })
 })
 

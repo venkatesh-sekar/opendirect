@@ -106,6 +106,8 @@ export interface CreationController {
 
   /** Why the last drop did nothing, when it did nothing. */
   notice: string | null
+  /** Says something in the bar's notice line — a failure the user should see. */
+  notify: (message: string) => void
   dismissNotice: () => void
 
   request: GenerationRequest | null
@@ -547,6 +549,7 @@ export function useCreation(options: UseCreationOptions): CreationController {
     cancelPicker,
 
     notice,
+    notify: setNotice,
     dismissNotice: () => setNotice(null),
 
     request,

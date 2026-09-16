@@ -215,7 +215,7 @@ export function registerProjectHandlers(
   handle("shell:openAsset", async ({ assetId }) => {
     const { db, project } = requireProject()
     const failure = await shell.openPath(
-      resolveOpenPath({ db, project }, assetId)
+      await resolveOpenPath({ db, project }, assetId)
     )
     // `openPath` reports "no application could open this" as a string rather
     // than by rejecting, and silence would look like success.
@@ -223,9 +223,9 @@ export function registerProjectHandlers(
     return { ok: true as const }
   })
 
-  handle("shell:revealAsset", ({ assetId }) => {
+  handle("shell:revealAsset", async ({ assetId }) => {
     const { db, project } = requireProject()
-    shell.showItemInFolder(resolveOpenPath({ db, project }, assetId))
+    shell.showItemInFolder(await resolveOpenPath({ db, project }, assetId))
     return { ok: true as const }
   })
 

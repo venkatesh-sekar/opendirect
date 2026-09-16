@@ -146,6 +146,14 @@ export function OutputCard({
           open={detailsOpen}
           onOpenChange={setDetailsOpen}
           onBranch={onBranch}
+          onSelectGeneration={(chosen) => {
+            // The lineage names runs; the board shows assets. When the chosen
+            // run's output is on this board, select it there too.
+            const output = siblings.find(
+              (sibling) => sibling.generationId === chosen
+            )
+            if (output) onSelect?.(output)
+          }}
         />
       ) : null}
     </div>

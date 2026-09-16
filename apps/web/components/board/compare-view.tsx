@@ -96,9 +96,12 @@ function label(asset: AssetDto): string {
 function Pane({
   asset,
   videoRef,
+  onDuration,
 }: {
   asset: AssetDto
   videoRef?: React.RefObject<HTMLVideoElement | null>
+  /** Reported once the browser knows how long this clip is. */
+  onDuration?: (seconds: number) => void
 }) {
   return (
     <figure className="flex min-w-0 flex-col gap-2">
@@ -110,6 +113,9 @@ function Pane({
           preload="metadata"
           muted
           playsInline
+          onLoadedMetadata={(event) =>
+            onDuration?.(event.currentTarget.duration || 0)
+          }
           className="w-full rounded-md bg-muted"
         />
       ) : asset.url ? (
@@ -150,7 +156,21 @@ export function CompareView({
   const rightVideo = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(false)
   const [time, setTime] = useState(0)
-  const [duration, setDuration] = useState(0)
+  /** Per asset, so swapping the right-hand clip re-measures instead of
+   *  keeping the length of one that is no longer on screen. */
+  const [durations, setDurations] = useState<Record<string, number>>({})
+
+  const reportDuration = useCallback(
+    (assetId: string, seconds: number) =>
+      setDurations((current) => ({ ...current, [assetId]: seconds })),
+    []
+  )
+
+  /** The pair is as long as its longer half, so the scrub bar covers both. */
+  const duration = Math.max(
+    durations[left.id] ?? 0,
+    right ? (durations[right.id] ?? 0) : 0
+  )
 
   const leftGeneration = useGeneration(open ? left.generationId : null)
   const rightGeneration = useGeneration(open ? (right?.generationId ?? null) : null)
@@ -224,7 +244,11 @@ export function CompareView({
         ) : (
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Pane asset={left} videoRef={leftVideo} />
+              <Pane
+                asset={left}
+                videoRef={leftVideo}
+                onDuration={(seconds) => reportDuration(left.id, seconds)}
+              />
               <div className="flex min-w-0 flex-col gap-2">
                 <Select
                   value={rightId ?? undefined}
@@ -248,7 +272,13 @@ export function CompareView({
                     ))}
                   </SelectContent>
                 </Select>
-                {right ? <Pane asset={right} videoRef={rightVideo} /> : null}
+                {right ? (
+                  <Pane
+                    asset={right}
+                    videoRef={rightVideo}
+                    onDuration={(seconds) => reportDuration(right.id, seconds)}
+                  />
+                ) : null}
               </div>
             </div>
 
@@ -289,20 +319,8 @@ export function CompareView({
                   className="flex-1 accent-primary"
                 />
                 <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                  {time.toFixed(2)}s
+                  {time.toFixed(2)}s / {duration.toFixed(2)}s
                 </span>
-                {/* Duration is whichever clip runs longest. */}
-                <video
-                  aria-hidden
-                  className="hidden"
-                  src={left.url ?? undefined}
-                  preload="metadata"
-                  onLoadedMetadata={(event) =>
-                    setDuration((current) =>
-                      Math.max(current, event.currentTarget.duration || 0)
-                    )
-                  }
-                />
               </div>
             ) : null}
 

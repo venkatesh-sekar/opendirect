@@ -19,7 +19,7 @@
  */
 import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises"
 import { isAbsolute, join, relative, resolve, sep } from "node:path"
 
 import { z } from "zod"
@@ -279,6 +279,33 @@ export function resolveAssetPath(
   // `startsWith("..")` alone would also reject a legitimate `..hidden` name;
   // only the traversal segment itself and anything under it escapes the root.
   if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+    throw new Error(`Refusing a path outside the project: ${relPath}`)
+  }
+  return target
+}
+
+/**
+ * The same check, after the filesystem has had its say.
+ *
+ * `resolveAssetPath` is lexical, which is the right first test — it costs
+ * nothing and refuses an obvious `../` before any attacker-chosen path is
+ * touched. It cannot see a *symlink*, though: a link planted under `assets/`
+ * is lexically inside the project and really points at `~/.ssh/id_rsa`. So
+ * anything about to be handed to the operating system — the media protocol,
+ * `shell.openPath`, `shell.showItemInFolder` — resolves the real path and
+ * checks containment again.
+ *
+ * Rejects a file that does not exist, because `realpath` cannot answer for one
+ * and "it is not there" is the honest answer to every caller here.
+ */
+export async function realAssetPath(
+  project: Pick<ProjectRef, "path">,
+  relPath: string
+): Promise<string> {
+  const lexical = resolveAssetPath(project, relPath)
+  const root = await realpath(project.path)
+  const target = await realpath(lexical)
+  if (target !== root && !target.startsWith(root + sep)) {
     throw new Error(`Refusing a path outside the project: ${relPath}`)
   }
   return target

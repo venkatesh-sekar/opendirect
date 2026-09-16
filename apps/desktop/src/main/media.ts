@@ -25,10 +25,9 @@
  * This module is Electron-free and pure; `media-service.ts` registers the
  * scheme and serves the bytes.
  */
-import { realpath } from "node:fs/promises"
-import { extname, sep } from "node:path"
+import { extname } from "node:path"
 
-import { resolveAssetPath, type ProjectRef } from "./project"
+import { realAssetPath, type ProjectRef } from "./project"
 
 export const MEDIA_SCHEME = "asset"
 /**
@@ -168,17 +167,9 @@ export async function resolveMediaRequest(
     throw new Error(`Refusing to serve outside the media folders: ${relPath}`)
   }
 
-  // Lexical check first: it costs nothing and rejects the obvious traversal
-  // before any filesystem call is made on an attacker-chosen path.
-  const path = resolveAssetPath(project, relPath)
-
-  // …then the real one. `realpath` also fails for a file that does not exist,
-  // which is the 404 the handler wants anyway.
-  const root = await realpath(project.path)
-  const target = await realpath(path)
-  if (target !== root && !target.startsWith(root + sep)) {
-    throw new Error(`Refusing a path outside the project: ${relPath}`)
-  }
+  // Lexical containment, then real containment — and `realpath` also fails for
+  // a file that does not exist, which is the 404 the handler wants anyway.
+  const target = await realAssetPath(project, relPath)
 
   // The type comes from the URL, not the link target: a `.png` request is a
   // `.png` response, whatever the symlink happened to point at.

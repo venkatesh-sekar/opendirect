@@ -173,6 +173,12 @@ function Harness() {
       <button type="button" onClick={() => creation.branchFrom(BRANCH_PREFILL)}>
         Branch from a run
       </button>
+      <button
+        type="button"
+        onClick={() => creation.notify("That run could not be loaded.")}
+      >
+        Report a failure
+      </button>
       <CreationBar creation={creation} />
     </DndContext>
   )
@@ -431,5 +437,18 @@ describe("branching", () => {
         ],
       })
     })
+  })
+
+  it("shows a failure the shell reports rather than doing nothing", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(
+      await screen.findByRole("button", { name: "Report a failure" })
+    )
+
+    expect(
+      await screen.findByText("That run could not be loaded.")
+    ).toBeInTheDocument()
   })
 })

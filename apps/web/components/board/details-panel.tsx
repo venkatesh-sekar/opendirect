@@ -44,6 +44,8 @@ export interface DetailsPanelProps {
   onOpenChange: (open: boolean) => void
   /** ⛔ Pre-fills the creation bar from this run; it never submits. */
   onBranch?: (generationId: string) => void
+  /** Selects another run from the lineage — the board follows the panel. */
+  onSelectGeneration?: (generationId: string) => void
 }
 
 function parseJson(value: string | null): unknown {
@@ -217,9 +219,22 @@ export function DetailsPanel({
   open,
   onOpenChange,
   onBranch,
+  onSelectGeneration,
 }: DetailsPanelProps) {
-  const detail = useGeneration(open ? generationId : null)
-  const lineage = useLineage(open ? generationId : null)
+  /**
+   * Which run the panel is *showing*, which is the one it was opened on until
+   * a lineage row is clicked. Walking a branch history without closing and
+   * reopening the sheet is the whole reason the history is in here.
+   */
+  const [focusedId, setFocusedId] = useState(generationId)
+  const [openedOn, setOpenedOn] = useState(generationId)
+  if (openedOn !== generationId) {
+    setOpenedOn(generationId)
+    setFocusedId(generationId)
+  }
+
+  const detail = useGeneration(open ? focusedId : null)
+  const lineage = useLineage(open ? focusedId : null)
   const generation = detail.data?.generation
 
   return (
@@ -333,7 +348,13 @@ export function DetailsPanel({
 
               <TabsContent value="lineage">
                 {lineage.data ? (
-                  <LineageView lineage={lineage.data} />
+                  <LineageView
+                    lineage={lineage.data}
+                    onSelect={(chosen) => {
+                      setFocusedId(chosen.id)
+                      onSelectGeneration?.(chosen.id)
+                    }}
+                  />
                 ) : lineage.error ? (
                   <p className="text-sm text-destructive">
                     {lineage.error.message}

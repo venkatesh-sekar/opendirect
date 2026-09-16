@@ -133,7 +133,14 @@ export function AppShell() {
           queryFn: () => invoke("generations:get", { id: generationId }),
         })
         .then((detail) => creation.branchFrom(branchPrefill(detail)))
-        .catch(() => {})
+        .catch((error: unknown) =>
+          // Silence here would look like a branch that simply did nothing.
+          creation.notify(
+            error instanceof Error
+              ? `That run could not be loaded to branch from: ${error.message}`
+              : "That run could not be loaded to branch from."
+          )
+        )
     },
     [client, creation]
   )

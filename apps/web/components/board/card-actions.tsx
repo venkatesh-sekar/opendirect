@@ -3,7 +3,7 @@
 /**
  * What you can do with an output, in one list.
  *
- * The same six actions are reachable two ways — right-click anywhere on the
+ * The same actions are reachable two ways — right-click anywhere on the
  * tile, or the ⋯ button that appears on hover and is in the tab order — so the
  * list is declared once, as data, and rendered twice. A menu that drifts
  * between its two surfaces is how a keyboard user ends up with fewer options
