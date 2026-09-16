@@ -1,4 +1,4 @@
-import { BrowserWindow, session, shell } from "electron"
+import { app, BrowserWindow, session, shell } from "electron"
 import type { Session } from "electron"
 import serve from "electron-serve"
 
@@ -18,17 +18,35 @@ import {
 let loadProduction: ((window: BrowserWindow) => Promise<void>) | undefined
 let cspApplied = false
 
-function productionLoader(): (window: BrowserWindow) => Promise<void> {
-  loadProduction ??= serve({ directory: resolveRendererDirectory(__dirname) })
-  return loadProduction
+/**
+ * Registers the `app://` scheme that serves the static renderer bundle.
+ *
+ * **Must run before `app.whenReady()`**: `electron-serve` registers its
+ * privileged scheme in a microtask and attaches its protocol handler on the
+ * app's `ready` event, so calling it afterwards would register a scheme too
+ * late and never attach a handler at all.
+ */
+export function prepareProductionRenderer(): void {
+  if (isDevelopment() || loadProduction) return
+  loadProduction = serve({
+    directory: resolveRendererDirectory({
+      mainDir: __dirname,
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    }),
+  })
 }
 
 /**
- * Sets the CSP on every response served to the production renderer.
+ * Defence-in-depth CSP header for anything served through Chromium's network
+ * stack in production.
  *
- * A response header beats a meta tag (it also covers assets and cannot be
- * stripped by injected markup) and it is skipped in development, where the
- * Next.js dev server needs eval and a websocket for HMR.
+ * It does **not** cover the `app://` renderer itself: `electron-serve` v3
+ * answers those requests from `session.protocol.handle`, which bypasses the
+ * `webRequest` module entirely. The renderer's own policy therefore ships as a
+ * `<meta http-equiv="Content-Security-Policy">` tag emitted by the Next.js root
+ * layout in production builds (`apps/web/lib/csp.ts`), and the two policies are
+ * kept identical by `test/csp.test.ts`.
  */
 function applyContentSecurityPolicy(target: Session): void {
   if (cspApplied) return
@@ -90,7 +108,12 @@ export async function createMainWindow(): Promise<BrowserWindow> {
     await win.loadURL(rendererOrigin)
     win.webContents.openDevTools({ mode: "detach" })
   } else {
-    await productionLoader()(win)
+    if (!loadProduction) {
+      throw new Error(
+        "prepareProductionRenderer() must be called before app.whenReady()"
+      )
+    }
+    await loadProduction(win)
   }
 
   return win

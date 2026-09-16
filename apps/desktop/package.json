@@ -2,10 +2,18 @@
   "name": "@opendirect/desktop",
   "private": true,
   "version": "0.0.0",
+  "description": "OpenDirect — a local-first desktop workspace for generative media.",
+  "author": {
+    "name": "OpenDirect",
+    "email": "releases@opendirect.app"
+  },
+  "homepage": "https://github.com/REPLACE_WITH_GITHUB_OWNER/opendirect",
   "main": "dist/main/index.js",
   "scripts": {
     "build": "pnpm build:main",
     "build:main": "tsup",
+    "dist": "electron-builder --publish never",
+    "dist:dir": "electron-builder --dir --publish never",
     "dev": "cross-env NODE_ENV=development electron dist/main/index.js",
     "lint": "eslint",
     "start": "electron dist/main/index.js",

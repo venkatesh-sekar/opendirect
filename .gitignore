@@ -20,6 +20,8 @@ out/
 # production
 build
 dist
+# ...except electron-builder's buildResources dir, which is source, not output.
+!apps/desktop/build/
 
 # turbo
 .turbo

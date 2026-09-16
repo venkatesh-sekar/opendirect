@@ -1,12 +1,17 @@
 import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 
-import { createMainWindow } from "./window"
+import { initAutoUpdater, stopAutoUpdater } from "./updater"
+import { createMainWindow, prepareProductionRenderer } from "./window"
 
 log.initialize()
 
+// Registers the `app://` scheme; electron-serve requires this before ready.
+prepareProductionRenderer()
+
 void app.whenReady().then(async () => {
-  await createMainWindow()
+  const win = await createMainWindow()
+  initAutoUpdater(win)
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) void createMainWindow()
@@ -14,6 +19,7 @@ void app.whenReady().then(async () => {
 })
 
 app.on("window-all-closed", () => {
+  stopAutoUpdater()
   if (process.platform !== "darwin") app.quit()
 })
 

@@ -1,0 +1,45 @@
+appId: com.opendirect.app
+productName: OpenDirect
+copyright: Copyright © 2026 OpenDirect
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - package.json
+# The renderer is a static Next.js export built by the `web` workspace. It is
+# copied beside app.asar rather than into it, so `resolveRendererDirectory()`
+# finds it at `<resources>/web` (see src/main/resolve.ts).
+extraResources:
+  - from: ../web/out
+    to: web
+asarUnpack:
+  - "**/*.node"
+publish:
+  provider: github
+  owner: REPLACE_WITH_GITHUB_OWNER
+  repo: opendirect
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+win:
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+linux:
+  target: [AppImage, deb]
+  category: Graphics
+  # Without this the binary is named after the scoped package (`@opendirectdesktop`).
+  executableName: opendirect
+  maintainer: OpenDirect <releases@opendirect.app>
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

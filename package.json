@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm build && pnpm --filter @opendirect/desktop dist",
     "dev": "turbo dev",
     "dev:desktop": "concurrently -k \"pnpm --filter web dev\" \"wait-on http://localhost:3000 && pnpm --filter @opendirect/desktop build:main && cross-env NODE_ENV=development pnpm --filter @opendirect/desktop start\"",
     "lint": "turbo lint",
@@ -13,6 +16,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@types/node": "^20.19.43",
     "@vitest/coverage-v8": "^5.0.1",
     "@workspace/eslint-config": "*",

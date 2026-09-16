@@ -8,7 +8,14 @@
 export const APP_ORIGIN = "app://-"
 
 /**
- * Content-Security-Policy applied to the production `app://` renderer.
+ * Content-Security-Policy applied as a response header in production.
+ *
+ * This is defence in depth only. The `app://` renderer is served by
+ * `electron-serve` v3 through `session.protocol.handle`, which bypasses the
+ * `webRequest` module, so those responses never see this header — the
+ * renderer's real policy is the `<meta http-equiv>` tag emitted by the Next.js
+ * root layout from `apps/web/lib/csp.ts`. `test/csp.test.ts` keeps the two
+ * strings identical.
  *
  * `'unsafe-inline'` is required for scripts and styles because a Next.js static
  * export inlines its hydration bootstrap and critical CSS. Everything else is
