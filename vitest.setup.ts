@@ -1,3 +1,5 @@
+import "@testing-library/jest-dom/vitest"
+
 import { afterAll, afterEach, beforeAll } from "vitest"
 
 import { server } from "./test/msw/server"
@@ -41,5 +43,21 @@ if (browser.window !== undefined) {
         removeListener: () => {},
         dispatchEvent: () => false,
       }) as unknown as MediaQueryList
+  }
+}
+
+/**
+ * jsdom implements no Web Animations API, and Base UI's ScrollArea asks the
+ * viewport for its running animations on a timer — which throws *after* the
+ * test that mounted it has finished, so it surfaces as an unhandled error
+ * rather than a failure. A no-op list is the honest answer: nothing is
+ * animating in jsdom.
+ */
+if (browser.window !== undefined && typeof Element !== "undefined") {
+  const element = Element.prototype as Element & {
+    getAnimations?: () => unknown[]
+  }
+  if (typeof element.getAnimations !== "function") {
+    element.getAnimations = () => []
   }
 }

@@ -1,4 +1,4 @@
-import type { PriceHint } from "@opendirect/contract"
+import type { CostQuote, PriceHint } from "@opendirect/contract"
 
 /** `0.0000107` → `$0.0000107`; a small rate keeps its significant digits. */
 export function formatUsd(amount: number): string {
@@ -22,4 +22,18 @@ export function formatPriceHint(hint: PriceHint | null | undefined): string {
   if (!hint) return "price unknown"
   const estimate = hint.source === "local_table" ? " est." : ""
   return `from ${formatUsd(hint.amount)}/${hint.unit}${estimate}`
+}
+
+/**
+ * The creation bar's cost badge.
+ *
+ * `~$0.64` for an estimate, `$0.64` for a provider-reported figure, and
+ * `Cost unknown` when there is no usable rate — never `$0.00`. A model whose
+ * price we cannot know must say so; a zero would read as "free", which is the
+ * one thing it is not.
+ */
+export function formatCostQuote(quote: CostQuote | null | undefined): string {
+  if (!quote || quote.confidence === "unknown") return "Cost unknown"
+  const prefix = quote.confidence === "estimated" ? "~" : ""
+  return `${prefix}${formatUsd(quote.amount)}`
 }

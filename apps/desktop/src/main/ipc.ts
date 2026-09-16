@@ -73,7 +73,7 @@ export function registerIpcHandlers(): void {
 
   // Project folder, containers, assets and generations — all scoped to the
   // currently open project (`project-service.ts`).
-  registerProjectHandlers(handle)
+  registerProjectHandlers(handle, getModelCatalog)
 }
 
 /** Tears every handler down — used on quit and by hot-reload in development. */

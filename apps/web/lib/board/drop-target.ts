@@ -22,6 +22,25 @@ export interface ContainerDropData {
   containerId: string
 }
 
+/**
+ * A container being *dragged* — onto the creation bar's reference tray, which
+ * is the one place a whole container means something. It carries the name so
+ * the reference dialog can say which container the assets came from without a
+ * second lookup.
+ */
+export interface ContainerDragData {
+  type: "container"
+  containerId: string
+  name: string
+}
+
+export function isContainerDragData(
+  value: unknown
+): value is ContainerDragData {
+  if (!isContainerDropData(value)) return false
+  return typeof (value as Partial<ContainerDragData>).name === "string"
+}
+
 export interface AssetDrop {
   action: "add" | "move"
   assetId: string

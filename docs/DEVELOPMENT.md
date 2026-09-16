@@ -302,8 +302,48 @@ already here, failed — and lists the files it could not read.
 Component tests run under jsdom via a `// @vitest-environment jsdom` pragma.
 `vitest.config.ts` sets the automatic JSX runtime (the renderer's tsconfig says
 `jsx: "preserve"`, which the transformer cannot emit) and the `@/…` alias;
-`vitest.setup.ts` stubs `ResizeObserver` and `matchMedia`, which jsdom lacks and
-both `masonic` and the shadcn sidebar require.
+`vitest.setup.ts` stubs `ResizeObserver`, `matchMedia` and
+`Element.prototype.getAnimations`, which jsdom lacks and which `masonic`, the
+shadcn sidebar and Base UI's ScrollArea require; it also registers the
+`@testing-library/jest-dom` matchers.
+
+## Creation bar
+
+The bar (`apps/web/components/create/*`) is a `sticky bottom-0` sibling of the
+board's panel group, so it stays put while the board scrolls under it.
+
+**The schema split.** `lib/schema-form/split-schema.ts` partitions a
+`ModelDescriptor`'s input schema into three: the promoted **common** controls
+(whatever `commonControls` named — prompt, aspect ratio, duration, resolution,
+seed, audio), the **reference slots**, and **advanced**, which is everything
+else. The partition is total and `split-schema.test.ts` asserts it property by
+property: a field OpenDirect has never heard of still reaches the user, under
+Advanced. Common controls get hand-built shadcn widgets picked from the
+schema's own shape (`lib/schema-form/widgets.tsx`); Advanced is rendered by
+`@rjsf/shadcn` with the `@rjsf/validator-ajv8` validator, alongside a read-only
+preview of the request.
+
+**Reference limits.** Dropping an asset or a whole container on the tray goes
+through `lib/create/references.ts`. When the drop exceeds the slot's capacity
+(`maxItems`, or 1 for a single-value slot) OpenDirect **does not pick**: the
+plan comes back as `choose` and `reference-picker.tsx` opens with nothing
+selected and the model's limit stated. The `✨ Suggest N` button is present but
+disabled until the local `claude`/`codex` helper exists (Task 18). A container
+is dragged by its sidebar label, which is a `useDraggable` handle on the row's
+button only — the chevron and the rename field keep working as themselves.
+
+**Cost.** `cost:estimate` runs `providers/cost.ts` in main, so the pricing
+table lives in exactly one place. `costParams` re-attaches the filled reference
+slots before quoting, because Replicate's dearer tier is selected by the
+presence of a video input. `~$0.64` is an estimate, `$0.64` a provider-reported
+figure, and a model with no usable rate reads **Cost unknown** with the reason
+on hover — never `$0.00`.
+
+**Submitting.** Generate builds a `GenerationRequest`
+(`lib/create/request.ts`) and calls `generations:submit`, which in the main
+process writes one `queued` row with its reference links and stops
+(`apps/desktop/src/main/generations-submit.ts`). ⛔ No provider is called: the
+job runner arrives in Task 16.
 
 ## CI
 

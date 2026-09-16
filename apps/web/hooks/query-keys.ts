@@ -40,6 +40,16 @@ export const queryKeys = {
       ["assets", containerId, page(options)] as const,
     detail: (id: string) => ["assets", "detail", id] as const,
   },
+  /**
+   * The creation bar's live quote. The params are part of the key — a quote is
+   * a function of them, and sharing one key across param sets would show the
+   * price of the previous settings.
+   */
+  cost: {
+    all: ["cost"] as const,
+    estimate: (modelKey: string, params: unknown) =>
+      ["cost", modelKey, params] as const,
+  },
   generations: {
     all: ["generations"] as const,
     byContainer: (containerId: string, options?: PageKey) =>

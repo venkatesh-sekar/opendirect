@@ -64,6 +64,8 @@ describe("project channels", () => {
       "generations:list",
       "generations:get",
       "generations:lineage",
+      "generations:submit",
+      "cost:estimate",
     ]) {
       expect(isIpcChannel(channel)).toBe(true)
     }
@@ -273,5 +275,55 @@ describe("settings channels", () => {
       "present",
       "source",
     ])
+  })
+})
+
+describe("generation submission", () => {
+  const request = {
+    modelKey: "replicate:bytedance/seedance-2.5",
+    containerId: "c1",
+    prompt: "a bellhop opens the lift",
+    params: { duration: 5, resolution: "720p" },
+    references: [{ slotField: "reference_images", assetId: "a1", position: 0 }],
+    estimatedCostUsd: 1.156,
+    costConfidence: "estimated",
+    parentGenerationId: null,
+  }
+
+  it("accepts a fully formed request", () => {
+    expect(
+      ipcContract["generations:submit"].input.safeParse(request).success
+    ).toBe(true)
+  })
+
+  it("rejects a request with no model", () => {
+    expect(
+      ipcContract["generations:submit"].input.safeParse({
+        ...request,
+        modelKey: "",
+      }).success
+    ).toBe(false)
+  })
+
+  it("rejects a reference with no slot to go in", () => {
+    expect(
+      ipcContract["generations:submit"].input.safeParse({
+        ...request,
+        references: [{ assetId: "a1", position: 0 }],
+      }).success
+    ).toBe(false)
+  })
+
+  it("lets a cost be unknown without inventing a number", () => {
+    const quote = ipcContract["cost:estimate"].output.parse({
+      amount: 0,
+      currency: "USD",
+      basis: "unknown",
+      confidence: "unknown",
+      source: "none",
+      note: "No published rate.",
+      sku: null,
+    })
+    expect(quote.confidence).toBe("unknown")
   })
 })

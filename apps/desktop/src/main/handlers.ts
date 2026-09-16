@@ -16,6 +16,8 @@
  */
 import { dialog } from "electron"
 
+import type { ModelCatalog } from "./catalog"
+import { submitGeneration } from "./generations-submit"
 import type { IpcRegistrar } from "./ipc-registry"
 import type { ProjectDatabase } from "./db/client"
 import type { ProjectRef } from "./project"
@@ -41,6 +43,7 @@ import {
   renameContainer,
   reparentContainer,
 } from "./repo/containers"
+import { estimateCost } from "./providers/cost"
 import {
   getGeneration,
   lineage,
@@ -86,7 +89,10 @@ const IMPORT_FILTERS = [
   { name: "All files", extensions: ["*"] },
 ]
 
-export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
+export function registerProjectHandlers(
+  handle: IpcRegistrar["handle"],
+  catalog: () => ModelCatalog
+): void {
   handle("project:current", () => ({
     project: getCurrentProject()?.project ?? null,
   }))
@@ -197,4 +203,35 @@ export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
   })
 
   handle("generations:lineage", ({ id }) => lineage(requireProject().db, id))
+
+  /**
+   * The creation bar's live price. Always answers — a model with no published
+   * rate comes back as `confidence: "unknown"`, which the badge renders as
+   * "Cost unknown" rather than as a number nobody can stand behind.
+   */
+  handle("cost:estimate", async ({ key, params }) => {
+    const descriptor = await catalog().getModel(key)
+    return estimateCost({
+      provider: descriptor.provider,
+      kind: descriptor.kind,
+      slug: descriptor.slug,
+      pricingSkus: descriptor.pricing.skus,
+      params,
+      inputSchema: descriptor.inputSchema,
+    })
+  })
+
+  /**
+   * ⛔ Queues a run; does not start one. `generations-submit.ts` writes a
+   * `queued` row and stops there — Task 16 adds the runner that calls a
+   * provider.
+   */
+  handle("generations:submit", (request) => {
+    const { db, project } = requireProject()
+    return submitGeneration(
+      { db, project },
+      { getModel: (key) => catalog().getModel(key) },
+      request
+    )
+  })
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useDroppable } from "@dnd-kit/core"
+import { useDraggable, useDroppable } from "@dnd-kit/core"
 import type { ContainerNodeDto } from "@opendirect/contract"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -31,7 +31,10 @@ import {
   useDeleteContainer,
   useRenameContainer,
 } from "@/hooks/use-containers"
-import type { ContainerDropData } from "@/lib/board/drop-target"
+import type {
+  ContainerDragData,
+  ContainerDropData,
+} from "@/lib/board/drop-target"
 
 export interface ContainerTreeProps {
   nodes: ContainerNodeDto[]
@@ -75,6 +78,23 @@ function ContainerRow({
     id: `container:${node.id}`,
     data: dropData,
   })
+
+  /**
+   * The label is also a drag *handle*, so a whole container can be carried to
+   * the creation bar's reference tray. Only the label: the expand chevron and
+   * the inline rename field have to keep working as themselves.
+   */
+  const dragData: ContainerDragData = {
+    type: "container",
+    containerId: node.id,
+    name: node.name,
+  }
+  const {
+    attributes: dragAttributes,
+    listeners: dragListeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: `container-drag:${node.id}`, data: dragData })
 
   const hasChildren = node.children.length > 0
 
@@ -127,7 +147,11 @@ function ContainerRow({
 
             {draftName === null ? (
               <SidebarMenuButton
+                ref={setDragRef}
+                {...dragListeners}
+                {...dragAttributes}
                 className="flex-1"
+                data-dragging={isDragging || undefined}
                 isActive={selectedId === node.id}
                 onClick={() => onSelect(node)}
                 onDoubleClick={() => setDraftName(node.name)}

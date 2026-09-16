@@ -22,14 +22,17 @@ import { Skeleton } from "@workspace/ui/components/skeleton"
 import { useAsset } from "@/hooks/use-assets"
 import { useAssetDnd } from "@/hooks/use-asset-dnd"
 import { useContainerTree, useCurrentProject } from "@/hooks/use-containers"
+import { useCreation } from "@/hooks/use-creation"
 import {
   findContainer,
   firstSelectableContainer,
 } from "@/lib/board/sidebar-tree"
 import { isBridgeAvailable } from "@/lib/ipc"
+import { useSettings } from "@/lib/settings"
 
 import { AssetPreview } from "@/components/board/asset-preview"
 import { Board } from "@/components/board/board"
+import { CreationBar } from "@/components/create/creation-bar"
 
 import { ProjectLauncher } from "./project-launcher"
 import { ProjectSidebar, type BoardSelection } from "./sidebar"
@@ -65,6 +68,7 @@ export function AppShell() {
   const project = useCurrentProject()
   const tree = useContainerTree(project.data != null)
   const dnd = useAssetDnd()
+  const settings = useSettings()
   const [switching, setSwitching] = useState(false)
   const [chosen, setChosen] = useState<BoardSelection | null>(null)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
@@ -99,6 +103,17 @@ export function AppShell() {
     const first = firstSelectableContainer(nodes)
     return first ? { view: "board", containerId: first.id } : null
   }, [chosen, nodes])
+
+  /**
+   * The creation bar's own state. It is a hook rather than internal state
+   * because the drag that fills its reference tray is resolved by the
+   * `DndContext` below, which lives here, and because the board's selection is
+   * what decides where a run's outputs land.
+   */
+  const creation = useCreation({
+    containerId: selection?.containerId ?? null,
+    defaultModelKey: settings.data?.defaultVideoModel ?? null,
+  })
 
   if (!isBridgeAvailable()) {
     return (
@@ -136,7 +151,12 @@ export function AppShell() {
     <DndContext
       sensors={sensors}
       onDragStart={dnd.onDragStart}
-      onDragEnd={dnd.onDragEnd}
+      onDragEnd={(event) => {
+        // Two independent readers of the same drop: the board mutation, and
+        // the creation bar's reference tray. Each ignores what is not its own.
+        dnd.onDragEnd(event)
+        creation.onDragEnd(event)
+      }}
       onDragCancel={dnd.onDragCancel}
     >
       <SidebarProvider>
@@ -196,10 +216,10 @@ export function AppShell() {
           </ResizablePanelGroup>
 
           {/*
-            The creation bar (Task 15) mounts here — a `sticky bottom-0`
-            sibling of the panel group, so it sits above the board's own
-            scroll box rather than scrolling away with it.
+            A `sticky bottom-0` sibling of the panel group, so the bar sits
+            above the board's own scroll box rather than scrolling away with it.
           */}
+          <CreationBar creation={creation} />
         </SidebarInset>
       </SidebarProvider>
 

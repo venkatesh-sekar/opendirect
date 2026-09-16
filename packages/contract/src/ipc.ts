@@ -1,5 +1,6 @@
 import { z } from "zod"
 
+import { costQuoteSchema, generationRequestSchema } from "./generation"
 import {
   catalogListingSchema,
   modelDescriptorSchema,
@@ -227,8 +228,33 @@ export const ipcContract = {
   },
 
   /**
-   * Generation *records*. Submitting one is the job runner's job (Task 16) and
-   * is deliberately not reachable from here.
+   * The pre-flight price for a set of form values, computed by
+   * `providers/cost.ts` in main so the renderer never carries a pricing table.
+   * Always answers — `confidence: "unknown"` is a valid, honest answer.
+   */
+  "cost:estimate": {
+    input: z.object({
+      key: z.string().min(1),
+      params: z.record(z.string(), z.unknown()),
+    }),
+    output: costQuoteSchema,
+  },
+
+  /**
+   * Records a generation the creation bar built.
+   *
+   * ⛔ In Task 15 this is a **stub**: it persists the request as a `queued`
+   * row and returns it. No provider is called; Task 16 adds the runner that
+   * picks queued rows up.
+   */
+  "generations:submit": {
+    input: generationRequestSchema,
+    output: generationSchema,
+  },
+
+  /**
+   * Generation *records*. Submitting one only queues a row; running it is the
+   * job runner's job (Task 16).
    */
   "generations:list": {
     input: z.object({
