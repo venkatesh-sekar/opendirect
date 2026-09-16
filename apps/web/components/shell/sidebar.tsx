@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import type { ContainerNodeDto, ProjectRefDto } from "@opendirect/contract"
@@ -55,6 +55,14 @@ export function ProjectSidebar({
   const pathname = usePathname()
   const tree = useContainerTree()
   const createContainer = useCreateContainer()
+  /**
+   * The container the "+" just made, waiting to be named.
+   *
+   * Creation used to leave an anonymous "Untitled" behind, and three of those
+   * are three handles nobody would type. So the "+" creates *and* opens the
+   * rename on the new row; the handle follows the name in main.
+   */
+  const [autoRenameId, setAutoRenameId] = useState<string | null>(null)
   const sections = useMemo(
     () => buildSidebarSections(tree.data ?? []),
     [tree.data]
@@ -104,11 +112,14 @@ export function ProjectSidebar({
               <SidebarGroupAction
                 aria-label={`New ${section.childKind}`}
                 onClick={() =>
-                  createContainer.mutate({
-                    name: "Untitled",
-                    kind: section.childKind,
-                    parentId: null,
-                  })
+                  createContainer.mutate(
+                    {
+                      name: `New ${section.childKind}`,
+                      kind: section.childKind,
+                      parentId: null,
+                    },
+                    { onSuccess: (created) => setAutoRenameId(created.id) }
+                  )
                 }
               >
                 <HugeiconsIcon icon={PlusSignIcon} />
@@ -123,6 +134,8 @@ export function ProjectSidebar({
                     nodes={section.nodes}
                     selectedId={selectedContainerId}
                     onSelect={onSelectContainer}
+                    autoRenameId={autoRenameId}
+                    onAutoRenameDone={() => setAutoRenameId(null)}
                   />
                 )}
               </SidebarGroupContent>

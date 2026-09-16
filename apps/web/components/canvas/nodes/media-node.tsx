@@ -45,7 +45,12 @@ export function MediaNodeBody({ node }: { node: CanvasNodeDto }) {
     )
   }
 
-  return <AssetTile asset={asset} className="h-full w-full" />
+  /*
+    Right-click turns this picture into a character or a scene — with a
+    handle, with the asset linked and with that asset as the reference image.
+    ⛔ It links what is already in the project; it generates nothing.
+  */
+  return <AssetTile asset={asset} saveAs className="h-full w-full" />
 }
 
 /** The header button that opens the existing preview panel over the node. */

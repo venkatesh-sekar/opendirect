@@ -9,8 +9,10 @@ import {
   ArrowRight01Icon,
   Delete02Icon,
   Folder01Icon,
+  Note01Icon,
   PencilEdit02Icon,
   PlusSignIcon,
+  Tag01Icon,
 } from "@hugeicons/core-free-icons"
 import {
   AlertDialog,
@@ -47,10 +49,22 @@ import type {
   ContainerDropData,
 } from "@/lib/board/drop-target"
 
+import {
+  ContainerDetailsDialog,
+  type ContainerDetailsField,
+} from "./container-details-dialog"
+
 export interface ContainerTreeProps {
   nodes: ContainerNodeDto[]
   selectedId: string | null
   onSelect: (node: ContainerNodeDto) => void
+  /**
+   * The container that was *just* created and has not been named yet: its row
+   * opens straight into the rename field. Null once the name is settled.
+   */
+  autoRenameId?: string | null
+  /** Called when that rename is committed, cancelled or abandoned. */
+  onAutoRenameDone?: () => void
   depth?: number
 }
 
@@ -119,6 +133,8 @@ interface ContainerRowProps {
   node: ContainerNodeDto
   selectedId: string | null
   onSelect: (node: ContainerNodeDto) => void
+  autoRenameId: string | null
+  onAutoRenameDone: () => void
   depth: number
 }
 
@@ -133,14 +149,27 @@ function ContainerRow({
   node,
   selectedId,
   onSelect,
+  autoRenameId,
+  onAutoRenameDone,
   depth,
 }: ContainerRowProps) {
   const [expanded, setExpanded] = useState(true)
-  const [draftName, setDraftName] = useState<string | null>(null)
+  /**
+   * A row created a moment ago mounts with its field already open, because the
+   * "+" that made it is a request to name something — not a request for another
+   * "Untitled" to find later.
+   */
+  const justCreated = node.id === autoRenameId
+  const [draftName, setDraftName] = useState<string | null>(
+    justCreated ? node.name : null
+  )
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [detailsField, setDetailsField] =
+    useState<ContainerDetailsField | null>(null)
 
   const createContainer = useCreateContainer()
   const renameContainer = useRenameContainer()
+  const deleteContainer = useDeleteContainer()
 
   const dropData: ContainerDropData = {
     type: "container",
@@ -169,13 +198,30 @@ function ContainerRow({
   } = useDraggable({ id: `container-drag:${node.id}`, data: dragData })
 
   const hasChildren = node.children.length > 0
+  const mentionable = node.kind === "character" || node.kind === "scene"
 
   const commitRename = () => {
     const name = draftName?.trim()
     setDraftName(null)
+    if (justCreated) onAutoRenameDone()
     if (name && name !== node.name) {
       renameContainer.mutate({ id: node.id, name })
     }
+  }
+
+  /**
+   * Escape backs out. On a row that was created for this rename and left with
+   * no name at all, backing out removes it: the "+" was a false start, and an
+   * unnamed character is exactly the thing this flow exists to stop.
+   */
+  const cancelRename = () => {
+    const typed = draftName?.trim() ?? ""
+    setDraftName(null)
+    if (!justCreated) return
+    onAutoRenameDone()
+    // Nothing typed, or the placeholder left as it was: the row is empty in
+    // every sense that matters, so backing out takes it with it.
+    if (typed === "" || typed === node.name) deleteContainer.mutate(node.id)
   }
 
   return (
@@ -233,6 +279,18 @@ function ContainerRow({
                   className="size-3.5 shrink-0 text-muted-foreground"
                 />
                 <span className="truncate">{node.name}</span>
+                {/*
+                  The handle is the affordance that says this row is
+                  mentionable. Dimmed, after the name, never instead of it.
+                */}
+                {node.handle ? (
+                  <span
+                    data-testid="container-handle"
+                    className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground"
+                  >
+                    @{node.handle}
+                  </span>
+                ) : null}
               </SidebarMenuButton>
             ) : (
               <input
@@ -241,9 +299,10 @@ function ContainerRow({
                 value={draftName}
                 onChange={(event) => setDraftName(event.target.value)}
                 onBlur={commitRename}
+                onFocus={(event) => event.target.select()}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") commitRename()
-                  if (event.key === "Escape") setDraftName(null)
+                  if (event.key === "Escape") cancelRename()
                 }}
                 className="h-8 flex-1 rounded-md bg-transparent px-2 text-sm ring-1 ring-ring outline-none"
               />
@@ -255,7 +314,7 @@ function ContainerRow({
           <ContextMenuItem
             onClick={() =>
               createContainer.mutate({
-                name: "Untitled",
+                name: "New folder",
                 kind: "folder",
                 parentId: node.id,
               })
@@ -268,6 +327,20 @@ function ContainerRow({
             <HugeiconsIcon icon={PencilEdit02Icon} className="size-4" />
             Rename
           </ContextMenuItem>
+          {/* Only a character or a scene is `@`-able; a folder has nothing to
+              edit here. */}
+          {mentionable ? (
+            <>
+              <ContextMenuItem onClick={() => setDetailsField("handle")}>
+                <HugeiconsIcon icon={Tag01Icon} className="size-4" />
+                Edit handle…
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => setDetailsField("description")}>
+                <HugeiconsIcon icon={Note01Icon} className="size-4" />
+                Description…
+              </ContextMenuItem>
+            </>
+          ) : null}
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
@@ -285,6 +358,15 @@ function ContainerRow({
         onOpenChange={setConfirmingDelete}
       />
 
+      {detailsField ? (
+        <ContainerDetailsDialog
+          node={node}
+          field={detailsField}
+          open
+          onOpenChange={(next) => (next ? undefined : setDetailsField(null))}
+        />
+      ) : null}
+
       {hasChildren && expanded ? (
         <SidebarMenuSub
           role="group"
@@ -296,6 +378,8 @@ function ContainerRow({
               node={child}
               selectedId={selectedId}
               onSelect={onSelect}
+              autoRenameId={autoRenameId}
+              onAutoRenameDone={onAutoRenameDone}
               depth={depth + 1}
             />
           ))}
@@ -309,6 +393,8 @@ export function ContainerTree({
   nodes,
   selectedId,
   onSelect,
+  autoRenameId = null,
+  onAutoRenameDone,
   depth = 0,
 }: ContainerTreeProps) {
   return (
@@ -319,6 +405,8 @@ export function ContainerTree({
           node={node}
           selectedId={selectedId}
           onSelect={onSelect}
+          autoRenameId={autoRenameId}
+          onAutoRenameDone={onAutoRenameDone ?? (() => {})}
           depth={depth}
         />
       ))}

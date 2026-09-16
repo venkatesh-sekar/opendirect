@@ -12,19 +12,39 @@
  * `AssetPreview` is still the place an asset is *read*; this is only how it
  * looks inside a node.
  */
+import type { ReactElement } from "react"
 import type { AssetDto } from "@opendirect/contract"
 import { cn } from "@workspace/ui/lib/utils"
+
+import { SaveAsContainerMenu } from "@/components/board/save-as-container"
 
 export interface AssetTileProps {
   asset: AssetDto
   className?: string
+  /**
+   * Adds the right-click "Save as character" / "Save as scene" menu.
+   *
+   * Opt-in, because a tile that already sits inside somebody else's context
+   * menu — a result tile, a filmstrip thumb — must not grow a second one.
+   */
+  saveAs?: boolean
 }
 
 export function assetLabel(asset: AssetDto): string {
   return asset.label ?? asset.originalName ?? asset.kind
 }
 
-export function AssetTile({ asset, className }: AssetTileProps) {
+export function AssetTile({ asset, className, saveAs }: AssetTileProps) {
+  const tile = renderTile(asset, className)
+  return saveAs ? (
+    <SaveAsContainerMenu asset={asset}>{tile}</SaveAsContainerMenu>
+  ) : (
+    tile
+  )
+}
+
+/** The picture itself — one element, so it can be a context menu's trigger. */
+function renderTile(asset: AssetDto, className?: string): ReactElement {
   const label = assetLabel(asset)
 
   if (asset.kind === "video" && asset.url) {

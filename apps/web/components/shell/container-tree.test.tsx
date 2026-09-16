@@ -89,12 +89,127 @@ describe("container delete", () => {
       target: screen.getByTestId("container-row"),
     })
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }))
-    await user.click(
-      await screen.findByRole("button", { name: /^delete$/i })
-    )
+    await user.click(await screen.findByRole("button", { name: /^delete$/i }))
 
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("containers:delete", { id: "shelf" })
     )
+  })
+})
+
+/** A character: the kind that has a handle and can be `@`-mentioned. */
+const venkz: ContainerNodeDto = {
+  ...node,
+  id: "venkz",
+  name: "Venkz",
+  kind: "character",
+  handle: "venkz",
+}
+
+function mountCharacter() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <DndContext>
+        <SidebarProvider>
+          <ContainerTree
+            nodes={[venkz]}
+            selectedId={null}
+            onSelect={() => {}}
+          />
+        </SidebarProvider>
+      </DndContext>
+    </QueryClientProvider>
+  )
+}
+
+describe("a mentionable row", () => {
+  /** The dimmed handle is the affordance that says "this one is @-able". */
+  it("shows the handle beside the name", () => {
+    mountCharacter()
+    expect(screen.getByTestId("container-handle")).toHaveTextContent("@venkz")
+  })
+
+  it("has no handle to show on a folder", () => {
+    mount()
+    expect(screen.queryByTestId("container-handle")).not.toBeInTheDocument()
+  })
+
+  it("opens the rename field on a double click", async () => {
+    const user = userEvent.setup()
+    mountCharacter()
+    await user.dblClick(screen.getByText("Venkz"))
+    expect(await screen.findByRole("textbox", { name: /rename/i })).toHaveValue(
+      "Venkz"
+    )
+  })
+
+  it("edits the handle and the description from the context menu", async () => {
+    invoke.mockResolvedValue({ ...venkz, handle: "v" })
+    const user = userEvent.setup()
+    mountCharacter()
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByTestId("container-row"),
+    })
+    await user.click(
+      await screen.findByRole("menuitem", { name: /edit handle/i })
+    )
+
+    const field = await screen.findByLabelText("Handle")
+    expect(field).toHaveValue("venkz")
+    await user.clear(field)
+    await user.type(field, "v")
+    await user.type(await screen.findByLabelText("Description"), "A tall man")
+    await user.click(screen.getByRole("button", { name: /^save$/i }))
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("containers:setHandle", {
+        id: "venkz",
+        handle: "v",
+      })
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("containers:setDescription", {
+        id: "venkz",
+        description: "A tall man",
+      })
+    )
+  })
+
+  it("refuses to send a handle the pattern rejects", async () => {
+    const user = userEvent.setup()
+    mountCharacter()
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByTestId("container-row"),
+    })
+    await user.click(
+      await screen.findByRole("menuitem", { name: /edit handle/i })
+    )
+
+    const field = await screen.findByLabelText("Handle")
+    await user.clear(field)
+    await user.type(field, "Venkz!")
+
+    expect(screen.getByRole("button", { name: /^save$/i })).toBeDisabled()
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it("offers neither on a folder", async () => {
+    const user = userEvent.setup()
+    mount()
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByTestId("container-row"),
+    })
+    await screen.findByRole("menuitem", { name: /rename/i })
+    expect(
+      screen.queryByRole("menuitem", { name: /edit handle/i })
+    ).not.toBeInTheDocument()
   })
 })

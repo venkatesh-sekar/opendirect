@@ -114,6 +114,36 @@ export function useCreateContainer(): UseMutationResult<
   })
 }
 
+export interface CreateContainerFromAssetVariables {
+  assetId: string
+  kind: "character" | "scene"
+  name: string
+}
+
+/**
+ * "Save as character" — the container, the link and the reference image in one
+ * round trip.
+ *
+ * The asset queries go with the tree because the asset it was made from comes
+ * back pinned, and pinned is what ranks it first among `@venkz`'s images.
+ */
+export function useCreateContainerFromAsset(): UseMutationResult<
+  ContainerDto,
+  Error,
+  CreateContainerFromAssetVariables
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: CreateContainerFromAssetVariables) =>
+      invoke("containers:createFromAsset", variables),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.containers.all })
+      void client.invalidateQueries({ queryKey: queryKeys.assets.all })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+    },
+  })
+}
+
 export function useRenameContainer(): UseMutationResult<
   ContainerDto,
   Error,

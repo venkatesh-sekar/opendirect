@@ -39,6 +39,7 @@ import {
 } from "./repo/assets"
 import {
   createContainer,
+  createContainerFromAsset,
   deleteContainer,
   listTree,
   renameContainer,
@@ -160,6 +161,20 @@ export function registerProjectHandlers(
   handle("containers:setDescription", ({ id, description }) =>
     setContainerDescription(requireProject().db, id, description)
   )
+
+  /**
+   * ⛔ One transaction: the container, the link and the pin. It creates
+   * nothing else and spends nothing.
+   */
+  handle("containers:createFromAsset", ({ assetId, kind, name }) => {
+    const { db, project } = requireProject()
+    return createContainerFromAsset(db, {
+      projectId: project.id,
+      assetId,
+      kind,
+      name,
+    })
+  })
 
   handle("containers:delete", ({ id }) => {
     deleteContainer(requireProject().db, id)

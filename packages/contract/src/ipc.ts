@@ -319,6 +319,22 @@ export const ipcContract = {
     input: z.object({ id: z.string(), description: z.string().nullable() }),
     output: containerSchema,
   },
+  /**
+   * "Save as character": creates the container, links the asset to it and
+   * marks that asset as the reference image — one transaction in main, so a
+   * failed link never leaves an empty character behind.
+   *
+   * ⛔ It links; it never copies, moves or generates. The asset stays on every
+   * board it is already on.
+   */
+  "containers:createFromAsset": {
+    input: z.object({
+      assetId: z.string(),
+      kind: z.enum(["character", "scene"]),
+      name: z.string().min(1),
+    }),
+    output: containerSchema,
+  },
   /** Removes the sub-tree and its asset *links*; the assets themselves stay. */
   "containers:delete": {
     input: z.object({ id: z.string() }),

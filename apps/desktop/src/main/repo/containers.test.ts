@@ -6,6 +6,7 @@ import { resolveMigrationsFolder, runMigrations } from "../db/migrate"
 import { assets, containerAssets, containers, projects } from "../db/schema"
 import {
   createContainer,
+  createContainerFromAsset,
   deleteContainer,
   existingHandles,
   getContainer,
@@ -381,5 +382,85 @@ describe("setContainerDescription", () => {
     expect(() => setContainerDescription(handle.db, "nope", "x")).toThrow(
       /not found/i
     )
+  })
+})
+
+describe("createContainerFromAsset", () => {
+  function seedAsset(id = "a1") {
+    handle.db
+      .insert(assets)
+      .values({
+        id,
+        projectId: PROJECT_ID,
+        kind: "image",
+        relPath: `assets/2026/09/${id}.png`,
+        createdAt: NOW,
+      })
+      .run()
+    return id
+  }
+
+  it("creates the character, links the asset and pins it as the reference", () => {
+    const assetId = seedAsset()
+    const created = createContainerFromAsset(handle.db, {
+      projectId: PROJECT_ID,
+      assetId,
+      kind: "character",
+      name: "Venkz Sekar",
+      now: NOW,
+    })
+
+    expect(created.kind).toBe("character")
+    expect(created.handle).toBe("venkz-sekar")
+    expect(
+      handle.db
+        .select()
+        .from(containerAssets)
+        .where(eq(containerAssets.containerId, created.id))
+        .all()
+        .map((row) => row.assetId)
+    ).toEqual([assetId])
+    expect(
+      handle.db.select().from(assets).where(eq(assets.id, assetId)).get()
+        ?.pinned
+    ).toBe(true)
+  })
+
+  it("makes a scene the same way", () => {
+    const created = createContainerFromAsset(handle.db, {
+      projectId: PROJECT_ID,
+      assetId: seedAsset("a2"),
+      kind: "scene",
+      name: "The Hotel Lobby",
+      now: NOW,
+    })
+    expect(created.kind).toBe("scene")
+    expect(created.handle).toBe("the-hotel-lobby")
+  })
+
+  it("leaves no empty container behind when the link fails", () => {
+    expect(() =>
+      createContainerFromAsset(handle.db, {
+        projectId: PROJECT_ID,
+        assetId: "missing",
+        kind: "character",
+        name: "Venkz",
+        now: NOW,
+      })
+    ).toThrow()
+    expect(handle.db.select().from(containers).all()).toEqual([])
+  })
+
+  it("refuses a kind that is not mentionable", () => {
+    expect(() =>
+      createContainerFromAsset(handle.db, {
+        projectId: PROJECT_ID,
+        assetId: seedAsset("a3"),
+        // A folder has no handle, so it would not be `@`-able.
+        kind: "folder" as "character",
+        name: "Assets",
+        now: NOW,
+      })
+    ).toThrow(/characters and scenes/i)
   })
 })

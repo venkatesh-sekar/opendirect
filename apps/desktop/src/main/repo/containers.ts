@@ -24,7 +24,8 @@ import {
 import { and, asc, eq, isNotNull, isNull, max, ne } from "drizzle-orm"
 
 import type { ProjectDatabase } from "../db/client"
-import { containers, type Container } from "../db/schema"
+import { assets, containers, type Container } from "../db/schema"
+import { addToContainer } from "./assets"
 
 export interface CreateContainerInput {
   projectId: string
@@ -252,6 +253,53 @@ export function setContainerDescription(
     .where(eq(containers.id, id))
     .run()
   return requireContainer(db, id)
+}
+
+export interface CreateContainerFromAssetInput {
+  projectId: string
+  assetId: string
+  kind: "character" | "scene"
+  name: string
+  id?: string
+  now?: number
+}
+
+/**
+ * "Save as character": one asset becomes a new character or scene.
+ *
+ * Three steps in one transaction — create the container, link the asset, mark
+ * the asset as the reference image — because a failed link would otherwise
+ * leave an empty character behind for the user to find and delete.
+ *
+ * ⛔ It copies nothing and moves nothing: `container_assets` is many-to-many,
+ * so the asset stays on every board it is already on. Pinning is how
+ * `rankReferenceImages` learns which image `@venkz` should send, and it is the
+ * only thing here that touches the asset row.
+ */
+export function createContainerFromAsset(
+  db: ProjectDatabase,
+  input: CreateContainerFromAssetInput
+): ContainerDto {
+  if (!isMentionableKind(input.kind)) {
+    throw new Error("Only characters and scenes can be made from an asset")
+  }
+
+  return db.transaction((tx) => {
+    const container = createContainer(tx, {
+      projectId: input.projectId,
+      parentId: null,
+      kind: input.kind,
+      name: input.name,
+      id: input.id,
+      now: input.now,
+    })
+    addToContainer(tx, { containerId: container.id, assetId: input.assetId })
+    tx.update(assets)
+      .set({ pinned: true })
+      .where(eq(assets.id, input.assetId))
+      .run()
+    return container
+  })
 }
 
 /** True when `candidateId` is `id` itself or sits underneath it. */
