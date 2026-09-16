@@ -28,6 +28,7 @@ import type { DragEvent } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useDndMonitor, useDroppable } from "@dnd-kit/core"
 import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import {
   Background,
   MiniMap,
@@ -46,6 +47,7 @@ import type {
   CanvasNodeDto,
   CanvasNodeMove,
   CanvasNodeType,
+  GenerationDto,
   ModelDescriptor,
 } from "@opendirect/contract"
 import {
@@ -95,7 +97,7 @@ import { MediaNode } from "./nodes/media-node"
 import { isGenerateNode } from "./nodes/node-frame"
 import { TextNode } from "./nodes/text-node"
 import type { CanvasFlowEdge, CanvasFlowNode } from "./nodes/types"
-import { PromptBar } from "./prompt-bar"
+import { PromptBar, seedPromptDraft } from "./prompt-bar"
 
 /**
  * Registered once, at module scope. React Flow re-creates every node in the
@@ -418,6 +420,14 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           await deleteNodes.mutateAsync([...ids.values()])
         },
       })
+
+      // Delete/Backspace is a bare keystroke on a surface full of them, and
+      // the undo stack it lands on is invisible. This is the only thing that
+      // says what happened and offers the way back.
+      toast(rows.length > 1 ? `${rows.length} nodes deleted` : "Node deleted", {
+        description: "The files they point at stay in the project.",
+        action: { label: "Undo", onClick: () => void history.undo() },
+      })
     },
     [createEdge, createNode, deleteNodes, history, updateNode]
   )
@@ -653,6 +663,58 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   )
 
   /* ------------------------------------------------------------------ */
+  /* Branching                                                           */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * "Branch from this run" — a sibling node, not a child.
+   *
+   * A branch is another take on the same idea, so it is a fresh generate node
+   * one gap over with the parent's prompt and model already in its draft, and
+   * deliberately *no* edge to the run it came from: an edge would feed the old
+   * output in as a reference, which is a different thing entirely.
+   *
+   * ⛔ It spends nothing. The new node is empty until its Run is pressed.
+   */
+  const branch = useCallback(
+    (origin: CanvasNodeDto, generation: GenerationDto) =>
+      void (async () => {
+        const type: CanvasNodeType =
+          generation.kind === "video" ? "video_gen" : "image_gen"
+        const size = defaultNodeSize(type)
+        const point = spawnPosition({
+          origin: boxOf(origin),
+          direction: "right",
+          size,
+          occupied: latest.current.nodes.map(boxOf),
+        })
+        const node = await addNode(type, point)
+        seedPromptDraft(node.id, {
+          prompt: generation.prompt ?? "",
+          modelKey: modelKeyOf(generation),
+        })
+        setSelectedNodes([node.id])
+        setSelectedEdges([])
+      })().catch((error: unknown) =>
+        toast.error("Could not branch from that run", {
+          description:
+            error instanceof Error ? error.message : "The node was not created.",
+        })
+      ),
+    [addNode]
+  )
+
+  /** The lineage names a run; the canvas selects the node that stands for it. */
+  const selectGeneration = useCallback((generationId: string) => {
+    const match = latest.current.nodes.find(
+      (node) => node.generationId === generationId
+    )
+    if (!match) return
+    setSelectedNodes([match.id])
+    setSelectedEdges([])
+  }, [])
+
+  /* ------------------------------------------------------------------ */
   /* Migration                                                           */
   /* ------------------------------------------------------------------ */
 
@@ -672,6 +734,15 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     canvasQuery.isSuccess &&
     canvas.nodes.length === 0 &&
     hasHistory
+
+  /**
+   * A brand-new project used to open on a dot grid and nothing else: no
+   * onboarding, and no hint that the rail's "+" is where a canvas starts. This
+   * is the smallest honest answer — what this surface is for, and the one
+   * action that begins it.
+   */
+  const showEmptyState =
+    canvasQuery.isSuccess && canvas.nodes.length === 0 && !offerMigration
 
   /* ------------------------------------------------------------------ */
   /* Undo and redo                                                       */
@@ -709,8 +780,16 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   /* ------------------------------------------------------------------ */
 
   const surface: CanvasSurface = useMemo(
-    () => ({ canvas, containerId, history, spawn, pick }),
-    [canvas, containerId, history, spawn, pick]
+    () => ({
+      canvas,
+      containerId,
+      history,
+      spawn,
+      pick,
+      branch,
+      selectGeneration,
+    }),
+    [canvas, containerId, history, spawn, pick, branch, selectGeneration]
   )
 
   /** The prompt bar belongs to exactly one selected generate node. */
@@ -797,6 +876,25 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           <p className="p-4 text-sm text-destructive">
             {canvasQuery.error.message}
           </p>
+        ) : null}
+
+        {showEmptyState ? (
+          <div
+            data-testid="canvas-empty-state"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-8"
+          >
+            <div className="pointer-events-auto flex max-w-sm flex-col items-center gap-3 text-center">
+              <p className="text-sm font-medium">Nothing on the canvas yet</p>
+              <p className="text-sm text-muted-foreground">
+                Add a node to write a prompt, or drop files from Finder anywhere
+                on this surface to bring them in.
+              </p>
+              {/* ⛔ Adds an empty node. Nothing here starts a run. */}
+              <Button size="sm" onClick={() => addFromRail("image_gen")}>
+                Add a node
+              </Button>
+            </div>
+          </div>
         ) : null}
 
         <ReactFlow<CanvasFlowNode, CanvasFlowEdge>

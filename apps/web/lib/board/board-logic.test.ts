@@ -33,12 +33,11 @@ function container(
 }
 
 describe("buildSidebarSections", () => {
-  it("always produces the four fixed headings in product order", () => {
+  it("always produces the three fixed headings in product order", () => {
     expect(buildSidebarSections([]).map((section) => section.label)).toEqual([
       "Characters",
       "Scenes",
       "Assets",
-      "Generations",
     ])
   })
 
@@ -66,10 +65,15 @@ describe("buildSidebarSections", () => {
     expect(sections[1]!.nodes.map((node) => node.id)).toEqual(["the-door"])
   })
 
-  it("marks Generations as a view rather than a set of containers", () => {
-    const generations = buildSidebarSections([])[3]!
-    expect(generations.virtual).toBe(true)
-    expect(generations.nodes).toEqual([])
+  it("offers only the three headings that are real containers", () => {
+    // "Generations" used to be a fourth, virtual, heading. It rendered an
+    // "Every run" row that selected nothing and showed nothing, so it is gone
+    // rather than kept as a nav item that lies.
+    expect(buildSidebarSections([]).map((section) => section.id)).toEqual([
+      "characters",
+      "scenes",
+      "assets",
+    ])
   })
 })
 

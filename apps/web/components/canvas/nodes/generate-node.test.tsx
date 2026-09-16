@@ -9,12 +9,18 @@ import type {
   IpcChannel,
   JobDto,
 } from "@opendirect/contract"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { CanvasSurfaceProvider } from "../canvas-context"
-import { GenerateNodeBody } from "./generate-node"
+import { DetailsAction, GenerateNodeBody } from "./generate-node"
 
 /**
  * The bridge is mocked rather than served: every channel here is a contract
@@ -133,6 +139,30 @@ function node(overrides: Partial<CanvasNodeDto> = {}): CanvasNodeDto {
   }
 }
 
+/** The surface a node sits on, with every action of it a spy. */
+function surfaceStub(containerId: string | null) {
+  return {
+    canvas: { nodes: [], edges: [] },
+    containerId,
+    history: {
+      push: () => {},
+      undo: async () => {},
+      redo: async () => {},
+      clear: () => {},
+      canUndo: false,
+      canRedo: false,
+      undoLabel: null,
+      redoLabel: null,
+      busy: false,
+      depth: 0,
+    },
+    spawn: vi.fn(),
+    pick: vi.fn(),
+    branch: vi.fn(),
+    selectGeneration: vi.fn(),
+  }
+}
+
 function renderNode(row: CanvasNodeDto, containerId: string | null = null) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -143,31 +173,28 @@ function renderNode(row: CanvasNodeDto, containerId: string | null = null) {
       {containerId === null ? (
         body
       ) : (
-        <CanvasSurfaceProvider
-          value={{
-            canvas: { nodes: [], edges: [] },
-            containerId,
-            history: {
-              push: () => {},
-              undo: async () => {},
-              redo: async () => {},
-              clear: () => {},
-              canUndo: false,
-              canRedo: false,
-              undoLabel: null,
-              redoLabel: null,
-              busy: false,
-              depth: 0,
-            },
-            spawn: () => {},
-            pick: () => {},
-          }}
-        >
+        <CanvasSurfaceProvider value={surfaceStub(containerId)}>
           {body}
         </CanvasSurfaceProvider>
       )}
     </QueryClientProvider>
   )
+}
+
+/** The ⓘ button and its sheet, on a surface whose actions can be asserted. */
+function renderDetails(row: CanvasNodeDto = node()) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  const surface = surfaceStub("container-1")
+  render(
+    <QueryClientProvider client={client}>
+      <CanvasSurfaceProvider value={surface}>
+        <DetailsAction generationId={row.generationId!} node={row} />
+      </CanvasSurfaceProvider>
+    </QueryClientProvider>
+  )
+  return surface
 }
 
 beforeEach(() => {
@@ -362,5 +389,127 @@ describe("GenerateNodeBody", () => {
 
     expect(await screen.findByTestId("canvas-tile-asset-1")).toBeVisible()
     expect(screen.getByTestId("canvas-tile-asset-2")).toBeVisible()
+  })
+
+  /**
+   * The two callbacks `DetailsPanel` takes and the canvas used to drop on the
+   * floor: without them the sheet renders neither "Branch from this run" nor a
+   * clickable lineage, and the features simply vanish.
+   */
+  describe("the run details sheet", () => {
+    it("branches from the run it is describing — and submits nothing", async () => {
+      const user = userEvent.setup()
+      const succeeded = generation({ status: "succeeded" })
+      invoke.mockImplementation((channel: IpcChannel) => {
+        if (channel === "generations:get") {
+          return Promise.resolve({ generation: succeeded, inputs: [] })
+        }
+        if (channel === "generations:lineage") {
+          return Promise.resolve({
+            generation: succeeded,
+            ancestors: [],
+            descendants: [],
+          })
+        }
+        return Promise.resolve({ ok: true })
+      })
+
+      const surface = renderDetails()
+      await user.click(screen.getByRole("button", { name: "Run details" }))
+
+      const branch = await screen.findByRole("button", {
+        name: /branch from this run/i,
+      })
+      await user.click(branch)
+
+      expect(surface.branch).toHaveBeenCalledTimes(1)
+      expect(surface.branch.mock.calls[0]![1]).toMatchObject({ id: "gen-1" })
+      // ⛔ A branch is a composition, never a submission.
+      expect(
+        invoke.mock.calls.filter(
+          ([channel]) => channel === "generations:submitBatch"
+        )
+      ).toHaveLength(0)
+    })
+
+    it("follows the lineage by selecting the node that ran it", async () => {
+      const user = userEvent.setup()
+      const parent = generation({
+        id: "gen-0",
+        status: "succeeded",
+        prompt: "the lift doors stay shut",
+      })
+      const child = generation({
+        id: "gen-1",
+        status: "succeeded",
+        parentGenerationId: "gen-0",
+      })
+      invoke.mockImplementation((channel: IpcChannel) => {
+        if (channel === "generations:get") {
+          return Promise.resolve({ generation: child, inputs: [] })
+        }
+        if (channel === "generations:lineage") {
+          return Promise.resolve({
+            generation: child,
+            ancestors: [parent],
+            descendants: [],
+          })
+        }
+        return Promise.resolve({ ok: true })
+      })
+
+      const surface = renderDetails()
+      await user.click(screen.getByRole("button", { name: "Run details" }))
+      await user.click(await screen.findByRole("tab", { name: /lineage/i }))
+
+      await user.click(
+        await screen.findByRole("button", { name: /the lift doors stay shut/i })
+      )
+
+      expect(surface.selectGeneration).toHaveBeenCalledWith("gen-0")
+    })
+  })
+
+  it("offers the output's own actions on right-click", async () => {
+    const user = userEvent.setup()
+    invoke.mockImplementation((channel: IpcChannel) => {
+      if (channel === "generations:list") {
+        return Promise.resolve({
+          items: [generation({ status: "succeeded" })],
+          total: 1,
+          nextOffset: null,
+        })
+      }
+      if (channel === "assets:list") {
+        return Promise.resolve({ items: [asset()], total: 1, nextOffset: null })
+      }
+      if (channel === "jobs:list") return Promise.resolve([])
+      return Promise.resolve({ ok: true })
+    })
+
+    renderNode(node({ pickAssetId: "asset-1" }), "container-1")
+
+    const tile = await screen.findByTestId("canvas-tile-asset-1")
+    fireEvent.contextMenu(tile)
+
+    for (const label of [
+      /add to/i,
+      /compare/i,
+      /^open$/i,
+      /reveal in folder/i,
+      /details/i,
+      /remove from this board/i,
+    ]) {
+      expect(await screen.findByRole("menuitem", { name: label })).toBeVisible()
+    }
+
+    await user.click(
+      screen.getByRole("menuitem", { name: /reveal in folder/i })
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("shell:revealAsset", {
+        assetId: "asset-1",
+      })
+    )
   })
 })

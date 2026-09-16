@@ -44,6 +44,20 @@ export interface MenuOptions {
   dev: boolean
   platform: NodeJS.Platform
   appName: string
+  /**
+   * Toggles Settings in the renderer.
+   *
+   * `CmdOrCtrl+,` is an application-menu accelerator, and a menu accelerator
+   * wins over anything the renderer binds — so the renderer's own ⌘, never
+   * fires in a packaged build. This item therefore has to carry the *same*
+   * semantics the renderer's hotkey has (to Settings, or back out of it),
+   * which it does by asking the renderer to toggle rather than to push.
+   *
+   * Optional, and the item is omitted when it is missing: the menu is built in
+   * a plain Node test with no window to push to, and a "Settings…" that does
+   * nothing would be exactly the dead end this item exists to fix.
+   */
+  onToggleSettings?: () => void
 }
 
 /**
@@ -58,12 +72,24 @@ export function buildMenuTemplate(
 
   const template: MenuItemConstructorOptions[] = []
 
+  const settingsItem: MenuItemConstructorOptions[] = options.onToggleSettings
+    ? [
+        {
+          label: "Settings…",
+          accelerator: "CmdOrCtrl+,",
+          click: options.onToggleSettings,
+        },
+        { type: "separator" },
+      ]
+    : []
+
   if (mac) {
     template.push({
       label: options.appName,
       submenu: [
         { role: "about" },
         { type: "separator" },
+        ...settingsItem,
         { role: "services" },
         { type: "separator" },
         { role: "hide" },
@@ -77,7 +103,9 @@ export function buildMenuTemplate(
 
   template.push({
     label: "File",
-    submenu: mac ? [{ role: "close" }] : [{ role: "quit" }],
+    submenu: mac
+      ? [{ role: "close" }]
+      : [...settingsItem, { role: "quit" as const }],
   })
 
   // Editing roles are kept in full: the prompt is a textarea, and a desktop app

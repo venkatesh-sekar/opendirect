@@ -18,6 +18,7 @@ import {
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import {
   PROVIDER_ENV_VARS,
@@ -27,6 +28,8 @@ import {
   useSaveKey,
   useVerifyKey,
 } from "@/lib/settings"
+
+import { FieldError } from "./field-error"
 
 const PROVIDERS: readonly ProviderId[] = ["replicate", "openrouter"]
 
@@ -63,7 +66,9 @@ function ProviderRow({ provider }: { provider: ProviderId }) {
     <div className="flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0">
       <div className="flex items-center justify-between gap-3">
         <Label htmlFor={inputId}>{PROVIDER_LABELS[provider]} API key</Label>
-        <StatusBadge status={status} />
+        <span id={`${inputId}-status`}>
+          <StatusBadge status={status} />
+        </span>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -79,6 +84,7 @@ function ProviderRow({ provider }: { provider: ProviderId }) {
           }
           className="min-w-64 flex-1"
           value={draft}
+          aria-describedby={`${inputId}-status ${inputId}-help`}
           onChange={(event) => {
             setDraft(event.target.value)
             setVerified(null)
@@ -95,15 +101,28 @@ function ProviderRow({ provider }: { provider: ProviderId }) {
         >
           Save
         </Button>
+        {/*
+          Tests the key in the field when there is one, and the stored key
+          otherwise — so paste → Test → Save works, which is the order people
+          actually try. The draft is sent for the check only; Save is still the
+          only thing that writes it.
+        */}
         <Button
           variant="outline"
-          disabled={busy || !status.present}
+          disabled={busy || (!status.present && draft.trim().length === 0)}
           onClick={() => {
             setVerified(null)
-            verify.mutate(provider, { onSuccess: setVerified })
+            verify.mutate(
+              { provider, key: draft.trim() || undefined },
+              { onSuccess: setVerified }
+            )
           }}
         >
-          {verify.isPending ? "Testing…" : "Test"}
+          {verify.isPending
+            ? "Testing…"
+            : draft.trim().length > 0
+              ? "Test this key"
+              : "Test"}
         </Button>
         <Button
           variant="ghost"
@@ -117,31 +136,26 @@ function ProviderRow({ provider }: { provider: ProviderId }) {
         </Button>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p id={`${inputId}-help`} className="text-xs text-muted-foreground">
         Test calls only the provider&apos;s read-only model listing endpoint —
         it never starts a paid generation. Without a saved key, OpenDirect falls
         back to <code className="font-mono">{PROVIDER_ENV_VARS[provider]}</code>{" "}
         from <code className="font-mono">.env.local</code> during development.
       </p>
 
-      {verified ? (
-        <p
-          role="status"
-          className={
-            verified.valid
-              ? "text-xs text-muted-foreground"
-              : "text-xs text-destructive"
-          }
-        >
-          {verified.valid
-            ? "Key verified against the provider's model listing."
-            : (verified.message ?? "The provider rejected this key.")}
+      {verified?.valid ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          Key verified against the provider&apos;s model listing.
         </p>
-      ) : null}
+      ) : (
+        <FieldError>
+          {verified
+            ? (verified.message ?? "The provider rejected this key.")
+            : null}
+        </FieldError>
+      )}
 
-      {save.isError ? (
-        <p className="text-xs text-destructive">{save.error.message}</p>
-      ) : null}
+      <FieldError>{save.isError ? save.error.message : null}</FieldError>
     </div>
   )
 }
@@ -178,9 +192,26 @@ export function ProviderKeysForm() {
           </Alert>
         ) : null}
 
-        {PROVIDERS.map((provider) => (
-          <ProviderRow key={provider} provider={provider} />
-        ))}
+        {/*
+          Until the summary lands, every row would otherwise paint its
+          `{present: false}` fallback and tell a user who *has* saved a key
+          that it is "Not set" — a false negative on the one piece of state
+          this screen exists for.
+        */}
+        {summary.isPending
+          ? PROVIDERS.map((provider) => (
+              <div
+                key={provider}
+                data-testid="provider-row-skeleton"
+                className="flex flex-col gap-3 border-t pt-6 first:border-t-0 first:pt-0"
+              >
+                <Skeleton className="h-5 w-40" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ))
+          : PROVIDERS.map((provider) => (
+              <ProviderRow key={provider} provider={provider} />
+            ))}
       </CardContent>
     </Card>
   )

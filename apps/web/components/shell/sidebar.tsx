@@ -2,12 +2,13 @@
 
 import { useMemo } from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import type { ContainerNodeDto, ProjectRefDto } from "@opendirect/contract"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
-  Layers01Icon,
   PlusSignIcon,
   Settings01Icon,
+  UnfoldMoreIcon,
 } from "@hugeicons/core-free-icons"
 import {
   Sidebar,
@@ -29,20 +30,16 @@ import { buildSidebarSections } from "@/lib/board/sidebar-tree"
 
 import { ContainerTree } from "./container-tree"
 
-export type BoardSelection =
-  | { view: "board"; containerId: string }
-  | { view: "generations"; containerId: string | null }
-
 export interface ProjectSidebarProps {
   project: ProjectRefDto
-  selection: BoardSelection | null
+  /** The container the workspace is pointed at, or null for an empty project. */
+  selectedContainerId: string | null
   onSelectContainer: (node: ContainerNodeDto) => void
-  onSelectGenerations: () => void
   onSwitchProject: () => void
 }
 
 /**
- * The left rail: the project, then the four headings the product names.
+ * The left rail: the project, then the three headings the product names.
  *
  * Headings are a view over `containers:tree`, not rows of their own — see
  * `lib/board/sidebar-tree.ts`. Creating from a heading creates a container of
@@ -51,11 +48,11 @@ export interface ProjectSidebarProps {
  */
 export function ProjectSidebar({
   project,
-  selection,
+  selectedContainerId,
   onSelectContainer,
-  onSelectGenerations,
   onSwitchProject,
 }: ProjectSidebarProps) {
+  const pathname = usePathname()
   const tree = useContainerTree()
   const createContainer = useCreateContainer()
   const sections = useMemo(
@@ -63,19 +60,33 @@ export function ProjectSidebar({
     [tree.data]
   )
 
-  const selectedContainerId =
-    selection?.view === "board" ? selection.containerId : null
+  // `trailingSlash: true` in the static export, so "/settings" arrives as
+  // "/settings/" in the packaged app and without the slash in development.
+  const onSettings = (pathname ?? "/").startsWith("/settings")
 
   return (
     <Sidebar collapsible="icon" className="border-r">
+      {/*
+        The project name *is* the project switcher, which nothing used to say:
+        no icon, no label, only a hover colour. The chevron pair is the
+        conventional "this opens a picker" glyph, and the accessible name says
+        so outright — including when the rail is collapsed to icons and the
+        name itself is clipped away.
+      */}
       <SidebarHeader className="h-11 justify-center border-b px-3">
         <button
           type="button"
           onClick={onSwitchProject}
           title={project.path}
-          className="flex w-full items-center gap-2 rounded-md text-left text-sm font-medium hover:text-foreground/80"
+          aria-label={`Switch project — ${project.name}`}
+          className="flex w-full items-center justify-between gap-2 rounded-md text-left text-sm font-medium hover:text-foreground/80"
         >
           <span className="truncate">{project.name}</span>
+          <HugeiconsIcon
+            icon={UnfoldMoreIcon}
+            aria-hidden
+            className="size-3.5 shrink-0 text-muted-foreground"
+          />
         </button>
       </SidebarHeader>
 
@@ -90,37 +101,20 @@ export function ProjectSidebar({
           sections.map((section) => (
             <SidebarGroup key={section.id}>
               <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
-              {section.virtual ? null : (
-                <SidebarGroupAction
-                  aria-label={`New ${section.childKind}`}
-                  onClick={() =>
-                    createContainer.mutate({
-                      name: "Untitled",
-                      kind: section.childKind,
-                      parentId: null,
-                    })
-                  }
-                >
-                  <HugeiconsIcon icon={PlusSignIcon} />
-                </SidebarGroupAction>
-              )}
+              <SidebarGroupAction
+                aria-label={`New ${section.childKind}`}
+                onClick={() =>
+                  createContainer.mutate({
+                    name: "Untitled",
+                    kind: section.childKind,
+                    parentId: null,
+                  })
+                }
+              >
+                <HugeiconsIcon icon={PlusSignIcon} />
+              </SidebarGroupAction>
               <SidebarGroupContent>
-                {section.virtual ? (
-                  <SidebarMenu>
-                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        isActive={selection?.view === "generations"}
-                        onClick={onSelectGenerations}
-                      >
-                        <HugeiconsIcon
-                          icon={Layers01Icon}
-                          className="size-3.5 text-muted-foreground"
-                        />
-                        <span>Every run</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  </SidebarMenu>
-                ) : section.nodes.length === 0 ? (
+                {section.nodes.length === 0 ? (
                   <p className="px-2 py-1 text-xs text-muted-foreground">
                     Nothing here yet.
                   </p>
@@ -140,7 +134,10 @@ export function ProjectSidebar({
       <SidebarFooter className="border-t">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton render={<Link href="/settings" />}>
+            <SidebarMenuButton
+              isActive={onSettings}
+              render={<Link href="/settings" />}
+            >
               <HugeiconsIcon
                 icon={Settings01Icon}
                 className="size-3.5 text-muted-foreground"

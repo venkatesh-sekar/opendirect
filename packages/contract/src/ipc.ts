@@ -222,7 +222,16 @@ export const ipcContract = {
    * See `apps/desktop/src/main/settings.ts` — never a generation endpoint.
    */
   "settings:keys:verify": {
-    input: z.object({ provider: providerIdSchema }),
+    input: z.object({
+      provider: providerIdSchema,
+      /**
+       * A key the user has typed but not saved. Without it "Test" could only
+       * check the *stored* key, which made the natural paste → Test → Save
+       * order impossible. The draft is used for the check and nothing else —
+       * it is never written to the vault by this call.
+       */
+      key: z.string().optional(),
+    }),
     output: z.object({ valid: z.boolean(), message: z.string().optional() }),
   },
 
@@ -641,6 +650,25 @@ export function isIpcChannel(value: unknown): value is IpcChannel {
   )
 }
 
+/**
+ * Where the application menu asks the renderer to go.
+ *
+ * The menu lives in the main process and the router lives in the renderer, so
+ * "Settings…" can only be a push. The path is an enum rather than a string:
+ * main may name a screen the app actually has, and nothing else.
+ */
+export const navigateRequestSchema = z.object({
+  path: z.enum(["/", "/settings"]),
+  /**
+   * When true the renderer treats the push as a *toggle*: already on `path`
+   * means go back to "/". The accelerator that fires this (`CmdOrCtrl+,`) is
+   * owned by the application menu, which pre-empts the renderer's own hotkey
+   * in a packaged build — so the toggle has to live on this side of the wire,
+   * where the current route is actually known.
+   */
+  toggle: z.boolean().optional(),
+})
+
 /** Main→renderer pushes. Same rule as `ipcContract`: no channel without an entry. */
 export const ipcEvents = {
   "updater:status": { payload: updaterStatusSchema },
@@ -657,6 +685,8 @@ export const ipcEvents = {
    * chunks are the CLI's own stdout/stderr — never the prompt.
    */
   "ai:progress": { payload: aiProgressSchema },
+  /** A menu item asking the renderer's router for a screen. */
+  "shell:navigate": { payload: navigateRequestSchema },
 } as const
 
 export type IpcEvents = typeof ipcEvents

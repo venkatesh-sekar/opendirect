@@ -18,6 +18,7 @@
  * ⛔ Nothing here submits anything. Choosing a cell writes one field into the
  * draft params of a node that has not been run.
  */
+import type { ReactNode } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Settings02Icon } from "@hugeicons/core-free-icons"
 import { Button } from "@workspace/ui/components/button"
@@ -41,6 +42,15 @@ export interface SettingsPopoverProps {
   values: Readonly<Record<string, unknown>>
   onChange: (field: string, value: string) => void
   disabled?: boolean
+  /**
+   * Controls that belong in the prompt bar but do not fit in it.
+   *
+   * At narrow widths the bar hands its count stepper and cost badge down here
+   * rather than wrapping them onto a line of their own — the bar is anchored
+   * to a node, so growing taller pushes Run off the viewport just as growing
+   * wider does.
+   */
+  footer?: ReactNode
 }
 
 /** The longest side of an aspect-ratio glyph, in pixels. */
@@ -151,10 +161,12 @@ export function SettingsPopover({
   values,
   onChange,
   disabled,
+  footer,
 }: SettingsPopoverProps) {
   // No row means the model promotes none of these three. A chip that opened an
-  // empty popover would be a promise of controls that do not exist.
-  if (grid.rows.length === 0) return null
+  // empty popover would be a promise of controls that do not exist — unless
+  // the bar has handed something else down to it.
+  if (grid.rows.length === 0 && !footer) return null
 
   const summary = iconGridSummary(grid, values)
 
@@ -178,6 +190,14 @@ export function SettingsPopover({
         {grid.rows.map((row) => (
           <Row key={row.field} row={row} values={values} onChange={onChange} />
         ))}
+        {footer ? (
+          <div
+            data-testid="settings-popover-footer"
+            className="flex flex-col gap-1.5 border-t pt-3 first:border-t-0 first:pt-0"
+          >
+            {footer}
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   )

@@ -85,6 +85,23 @@ void app.whenReady().then(async () => {
         dev: isDevelopment(),
         platform: process.platform,
         appName: app.getName(),
+        // The menu has no router; the renderer does. "Settings…" is therefore
+        // a push on a declared event channel, and it is a no-op rather than a
+        // throw when there is no window to push to.
+        //
+        // `toggle: true` because this item owns ⌘, — a menu accelerator
+        // pre-empts the renderer's hotkey — so it has to behave the way that
+        // hotkey does and take the user back out of Settings too. Only the
+        // renderer knows which route is mounted, so the toggle is decided
+        // there; see `app-shell.tsx`.
+        onToggleSettings: () => {
+          const [window] = BrowserWindow.getAllWindows()
+          if (!window || window.isDestroyed()) return
+          window.webContents.send("shell:navigate", {
+            path: "/settings",
+            toggle: true,
+          })
+        },
       })
     )
   )

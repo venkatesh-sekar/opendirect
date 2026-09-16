@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { toast } from "sonner"
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import type { ContainerNodeDto } from "@opendirect/contract"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -11,6 +12,16 @@ import {
   PencilEdit02Icon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -43,6 +54,67 @@ export interface ContainerTreeProps {
   depth?: number
 }
 
+export interface DeleteContainerDialogProps {
+  node: Pick<ContainerNodeDto, "id" | "name" | "children">
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+/**
+ * The confirmation a container delete now has to pass.
+ *
+ * Deleting cascades to sub-containers and there is no undo for it — the canvas
+ * history refuses non-canvas operations — so the only thing standing between a
+ * mis-aimed right-click and a lost shelf is this dialog. The copy says what
+ * survives, because the reassurance used to live in a code comment.
+ */
+export function DeleteContainerDialog({
+  node,
+  open,
+  onOpenChange,
+}: DeleteContainerDialogProps) {
+  const deleteContainer = useDeleteContainer()
+  const nested = node.children.length
+
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete “{node.name}”?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {nested > 0
+              ? `This also deletes ${nested} container${nested === 1 ? "" : "s"} inside it. `
+              : ""}
+            Assets stay in the project; only the container and its
+            sub-containers are removed. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep it</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={deleteContainer.isPending}
+            onClick={() =>
+              deleteContainer.mutate(node.id, {
+                onSuccess: () =>
+                  toast.success(`Deleted “${node.name}”`, {
+                    description: "Its assets are still in the project.",
+                  }),
+                onError: (error) =>
+                  toast.error(`Could not delete “${node.name}”`, {
+                    description: error.message,
+                  }),
+              })
+            }
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 interface ContainerRowProps {
   node: ContainerNodeDto
   selectedId: string | null
@@ -65,10 +137,10 @@ function ContainerRow({
 }: ContainerRowProps) {
   const [expanded, setExpanded] = useState(true)
   const [draftName, setDraftName] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const createContainer = useCreateContainer()
   const renameContainer = useRenameContainer()
-  const deleteContainer = useDeleteContainer()
 
   const dropData: ContainerDropData = {
     type: "container",
@@ -199,13 +271,19 @@ function ContainerRow({
           <ContextMenuSeparator />
           <ContextMenuItem
             variant="destructive"
-            onClick={() => deleteContainer.mutate(node.id)}
+            onClick={() => setConfirmingDelete(true)}
           >
             <HugeiconsIcon icon={Delete02Icon} className="size-4" />
             Delete
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+
+      <DeleteContainerDialog
+        node={node}
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+      />
 
       {hasChildren && expanded ? (
         <SidebarMenuSub

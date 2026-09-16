@@ -1,7 +1,15 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { useHotkeys } from "react-hotkeys-hook"
 import {
   DndContext,
@@ -12,9 +20,10 @@ import {
   useSensors,
 } from "@dnd-kit/core"
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
-import type { ContainerNodeDto } from "@opendirect/contract"
 import { SidebarInset, SidebarProvider } from "@workspace/ui/components/sidebar"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+
+import { isBridgeAvailable, subscribe } from "@/lib/ipc"
 
 import { useAssetDnd } from "@/hooks/use-asset-dnd"
 import { useBridge } from "@/hooks/use-bridge"
@@ -24,10 +33,8 @@ import {
   firstSelectableContainer,
 } from "@/lib/board/sidebar-tree"
 
-import { Canvas } from "@/components/canvas/canvas"
-
 import { ProjectLauncher } from "./project-launcher"
-import { ProjectSidebar, type BoardSelection } from "./sidebar"
+import { ProjectSidebar } from "./sidebar"
 import { StatusBar } from "./status-bar"
 
 /**
@@ -50,7 +57,23 @@ function ShellSkeleton() {
 }
 
 /**
- * The window: sidebar, canvas, and the drag context that joins them.
+ * The container the workspace is pointed at, published for whichever route is
+ * mounted inside the shell.
+ *
+ * The sidebar lives above the router now, so the selection it owns can no
+ * longer be handed to the canvas as a prop — the canvas is a *child* route.
+ * A context is the smallest thing that spans the two.
+ */
+const WorkspaceContainerContext = createContext<string | null>(null)
+
+/** The selected container id, or null when the project has none. */
+export function useWorkspaceContainerId(): string | null {
+  return useContext(WorkspaceContainerContext)
+}
+
+/**
+ * The window: sidebar, the route's content, and the drag context that joins
+ * them.
  *
  * The `DndContext` wraps both panes because a drag starts in one and ends in
  * the other — a sidebar asset dropped on the canvas becomes a media node, and
@@ -61,29 +84,61 @@ function ShellSkeleton() {
  * the container mutation and the canvas owns its own droppable; the rows and
  * tiles only declare themselves.
  */
-export function AppShell() {
+export function AppShell({ children }: { children?: ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
+  const onSettings = (pathname ?? "/").startsWith("/settings")
   const bridge = useBridge()
   const project = useCurrentProject()
   const tree = useContainerTree(project.data != null)
   const dnd = useAssetDnd()
   const [switching, setSwitching] = useState(false)
-  const [chosen, setChosen] = useState<BoardSelection | null>(null)
+  const [chosen, setChosen] = useState<string | null>(null)
+
+  const toSettings = useCallback(
+    () => router.push(onSettings ? "/" : "/settings"),
+    [router, onSettings]
+  )
 
   /**
-   * ⌘, opens Settings, the way it does in every other desktop app. It is
+   * ⌘, toggles Settings, the way it does in every other desktop app. It is
    * registered on the shell rather than the sidebar's link because it has to
-   * work while the caret is in the prompt, which is where it usually is.
+   * work while the caret is in the prompt, which is where it usually is — and
+   * because the shell now outlives the route, the same chord gets you back.
+   *
+   * In the packaged app this chord never reaches here: `CmdOrCtrl+,` is an
+   * application-menu accelerator and the menu wins. That is why the menu item
+   * sends `toggle: true` below — the two paths have to mean the same thing,
+   * and this hotkey is what the browser dev path (`pnpm dev:web`, no menu)
+   * actually uses.
    */
   useHotkeys(
     "mod+comma",
     (event) => {
       event.preventDefault()
-      router.push("/settings")
+      toSettings()
     },
     { enableOnFormTags: true, enableOnContentEditable: true },
-    [router]
+    [toSettings]
   )
+
+  /**
+   * The application menu's "Settings…" item. The menu lives in main and the
+   * router lives here, so the item can only be a push — and it is subscribed
+   * on the shell, which now outlives every route, so it works from anywhere.
+   *
+   * `toggle` is how ⌘, keeps one meaning across both worlds: main cannot know
+   * which route is mounted, so it asks for a toggle and this decides. Without
+   * it the menu accelerator would be a one-way trip into Settings while the
+   * same chord in the browser toggled.
+   */
+  useEffect(() => {
+    if (!isBridgeAvailable()) return
+    return subscribe("shell:navigate", ({ path, toggle }) => {
+      const current = pathname ?? "/"
+      router.push(toggle && current.startsWith(path) ? "/" : path)
+    })
+  }, [router, pathname])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -108,11 +163,9 @@ export function AppShell() {
    * so the shell opens on the first container without an effect and falls back
    * on its own the moment the selected container is deleted underneath it.
    */
-  const selection = useMemo<BoardSelection | null>(() => {
-    if (chosen?.view === "generations") return chosen
-    if (chosen && findContainer(nodes, chosen.containerId)) return chosen
-    const first = firstSelectableContainer(nodes)
-    return first ? { view: "board", containerId: first.id } : null
+  const containerId = useMemo<string | null>(() => {
+    if (chosen && findContainer(nodes, chosen)) return chosen
+    return firstSelectableContainer(nodes)?.id ?? null
   }, [chosen, nodes])
 
   // Before hydration is over we cannot know which of the two windows this is,
@@ -132,6 +185,13 @@ export function AppShell() {
 
   if (project.isPending) return <ShellSkeleton />
   if (!project.data || switching) {
+    // Settings is the one screen that means something without a project open —
+    // it is where the provider keys are, which is what a first-run user is
+    // usually sent here for. It keeps its own way back (see the page).
+    // The same column the inset gives it when a project *is* open, so the page
+    // fills the window instead of collapsing to its content.
+    if (onSettings)
+      return <div className="flex min-h-svh flex-col">{children}</div>
     return (
       <ProjectLauncher
         onCancel={
@@ -141,79 +201,58 @@ export function AppShell() {
     )
   }
 
-  const selectedContainer: ContainerNodeDto | null =
-    selection?.view === "board"
-      ? findContainer(nodes, selection.containerId)
-      : null
-
-  /**
-   * The container the canvas imports into and reads runs from — the same
-   * expression the board was handed, so selecting a container in the sidebar
-   * still switches the workspace and nothing else about the tree changes.
-   */
-  const containerId =
-    selection?.view === "generations"
-      ? selection.containerId
-      : (selectedContainer?.id ?? null)
-
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={dnd.onDragStart}
-      onDragEnd={dnd.onDragEnd}
-      onDragCancel={dnd.onDragCancel}
-    >
-      <SidebarProvider>
-        <ProjectSidebar
-          project={project.data}
-          selection={selection}
-          onSelectContainer={(node) =>
-            setChosen({ view: "board", containerId: node.id })
-          }
-          onSelectGenerations={() =>
-            setChosen({
-              view: "generations",
-              containerId: selectedContainer?.id ?? null,
-            })
-          }
-          onSwitchProject={() => setSwitching(true)}
-        />
+    <WorkspaceContainerContext.Provider value={containerId}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={dnd.onDragStart}
+        onDragEnd={dnd.onDragEnd}
+        onDragCancel={dnd.onDragCancel}
+      >
+        <SidebarProvider>
+          <ProjectSidebar
+            project={project.data}
+            selectedContainerId={containerId}
+            onSelectContainer={(node) => setChosen(node.id)}
+            onSwitchProject={() => setSwitching(true)}
+          />
 
-        <SidebarInset className="flex min-h-svh min-w-0 flex-col">
-          {/*
-            The canvas is the workspace. It mounts inside this `DndContext` on
-            purpose: it watches for the sidebar's asset drag and accepts it on
-            its own droppable, turning the drop into a media node.
+          <SidebarInset className="flex min-h-svh min-w-0 flex-col">
+            {/*
+            Whichever route is mounted. The canvas is one of them and Settings
+            is the other, and both of them keep the sidebar, the status strip
+            and ⌘, because those are rendered here, above the router.
 
-            It also carries its own prompt bar, anchored under the selected
-            generate node, which is why there is no creation bar down here any
-            more. ⛔ Nothing on this path spends money without a click on that
-            bar's Generate button.
+            The canvas mounts inside this `DndContext` on purpose: it watches
+            for the sidebar's asset drag and accepts it on its own droppable,
+            turning the drop into a media node. ⛔ Nothing on this path spends
+            money without a click on the prompt bar's Generate button.
           */}
-          <Canvas containerId={containerId} />
+            {children}
 
-          {/*
+            {/*
             The status strip: the only permanent sign that work is happening in
             the background, and the way into the job list.
           */}
-          <StatusBar />
-        </SidebarInset>
-      </SidebarProvider>
+            <StatusBar />
+          </SidebarInset>
+        </SidebarProvider>
 
-      <DragOverlay dropAnimation={null}>
-        {dnd.activeDrag ? (
-          <div className="flex flex-col gap-0.5 rounded-md bg-primary px-2 py-1.5 text-xs text-primary-foreground shadow-lg">
-            <span>
-              {dnd.moveIntent ? "Move to container" : "Add to container"}
-            </span>
-            <span className="text-primary-foreground/70">
-              {dnd.moveIntent
-                ? "Release Shift to keep a copy here"
-                : "Hold Shift to move"}
-            </span>
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+        <DragOverlay dropAnimation={null}>
+          {dnd.activeDrag ? (
+            <div className="flex flex-col gap-0.5 rounded-md bg-primary px-2 py-1.5 text-xs text-primary-foreground shadow-lg">
+              <span>
+                {dnd.moveIntent ? "Move to container" : "Add to container"}
+              </span>
+              <span className="text-primary-foreground/70">
+                {dnd.moveIntent
+                  ? "Release Shift to keep a copy here"
+                  : "Hold Shift to move"}
+              </span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </WorkspaceContainerContext.Provider>
   )
 }

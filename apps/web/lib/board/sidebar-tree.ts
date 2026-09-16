@@ -1,6 +1,6 @@
 /**
- * Turns the flat-ish container tree main hands us into the four fixed sidebar
- * sections the product asks for: Characters, Scenes, Assets, Generations.
+ * Turns the flat-ish container tree main hands us into the three fixed sidebar
+ * sections the product asks for: Characters, Scenes, Assets.
  *
  * The sections are a *view*, not rows in the database. A container knows its
  * `kind`; the sidebar knows which heading a kind belongs under. Keeping that
@@ -15,8 +15,7 @@
  */
 import type { ContainerKind, ContainerNodeDto } from "@opendirect/contract"
 
-export type SidebarSectionId =
-  "characters" | "scenes" | "assets" | "generations"
+export type SidebarSectionId = "characters" | "scenes" | "assets"
 
 export interface SidebarSection {
   id: SidebarSectionId
@@ -25,16 +24,11 @@ export interface SidebarSection {
   childKind: ContainerKind
   /** Root containers filed under this heading, in tree order. */
   nodes: ContainerNodeDto[]
-  /**
-   * True for a heading that is a saved view over the project rather than a set
-   * of containers — `Generations` lists runs, which live on containers already.
-   */
-  virtual: boolean
 }
 
 const SECTION_FOR_KIND: Record<
   Exclude<ContainerKind, "project">,
-  Exclude<SidebarSectionId, "generations">
+  SidebarSectionId
 > = {
   character: "characters",
   scene: "scenes",
@@ -45,10 +39,11 @@ const SECTION_FOR_KIND: Record<
 export function buildSidebarSections(
   tree: ContainerNodeDto[]
 ): SidebarSection[] {
-  const buckets: Record<
-    Exclude<SidebarSectionId, "generations">,
-    ContainerNodeDto[]
-  > = { characters: [], scenes: [], assets: [] }
+  const buckets: Record<SidebarSectionId, ContainerNodeDto[]> = {
+    characters: [],
+    scenes: [],
+    assets: [],
+  }
 
   const classify = (nodes: ContainerNodeDto[]): void => {
     for (const node of nodes) {
@@ -67,28 +62,18 @@ export function buildSidebarSections(
       label: "Characters",
       childKind: "character",
       nodes: buckets.characters,
-      virtual: false,
     },
     {
       id: "scenes",
       label: "Scenes",
       childKind: "scene",
       nodes: buckets.scenes,
-      virtual: false,
     },
     {
       id: "assets",
       label: "Assets",
       childKind: "folder",
       nodes: buckets.assets,
-      virtual: false,
-    },
-    {
-      id: "generations",
-      label: "Generations",
-      childKind: "folder",
-      nodes: [],
-      virtual: true,
     },
   ]
 }

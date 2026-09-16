@@ -1,5 +1,6 @@
 "use client"
 
+import { toast } from "sonner"
 import {
   useMutation,
   useQuery,
@@ -41,7 +42,14 @@ export function useUpdateSettings(): UseMutationResult<
   const client = useQueryClient()
   return useMutation({
     mutationFn: (patch: Partial<Settings>) => invoke("settings:set", patch),
-    onSuccess: (next) => client.setQueryData(settingsQueryKey, next),
+    onSuccess: (next) => {
+      client.setQueryData(settingsQueryKey, next)
+      // The General tab commits on blur with no Save button, so the toast is
+      // the only thing that says a write happened at all.
+      toast.success("Preferences saved")
+    },
+    onError: (error) =>
+      toast.error("Could not save that", { description: error.message }),
   })
 }
 
@@ -61,12 +69,19 @@ export function useSaveKey(): UseMutationResult<
   return useMutation({
     mutationFn: (input: { provider: ProviderId; key: string }) =>
       invoke("settings:keys:set", input),
-    onSuccess: () => {
+    onSuccess: (_result, { provider }) => {
       void client.invalidateQueries({ queryKey: keysQueryKey })
       // The catalog is a function of which providers hold a key, so a key
       // change makes every cached model list obsolete.
       void client.invalidateQueries({ queryKey: ["models"] })
+      // The field clears itself on success, which on its own reads as "it lost
+      // my key". This is the sentence that says otherwise.
+      toast.success(`${PROVIDER_LABELS[provider]} key saved`)
     },
+    onError: (error, { provider }) =>
+      toast.error(`Could not save the ${PROVIDER_LABELS[provider]} key`, {
+        description: error.message,
+      }),
   })
 }
 
@@ -79,25 +94,47 @@ export function useClearKey(): UseMutationResult<
   return useMutation({
     mutationFn: (provider: ProviderId) =>
       invoke("settings:keys:clear", { provider }),
-    onSuccess: () => {
+    onSuccess: (_result, provider) => {
       void client.invalidateQueries({ queryKey: keysQueryKey })
       void client.invalidateQueries({ queryKey: ["models"] })
+      toast.success(`${PROVIDER_LABELS[provider]} key cleared`)
     },
+    onError: (error, provider) =>
+      toast.error(`Could not clear the ${PROVIDER_LABELS[provider]} key`, {
+        description: error.message,
+      }),
   })
 }
 
 /**
- * Verifies a stored key against the provider's listing endpoint.
+ * Verifies a key against the provider's listing endpoint — the one the user
+ * has typed, if they have typed one, otherwise the stored key.
  * The main process picks the endpoint; nothing here can trigger a generation.
  */
 export function useVerifyKey(): UseMutationResult<
   { valid: boolean; message?: string },
   Error,
-  ProviderId
+  { provider: ProviderId; key?: string }
 > {
   return useMutation({
-    mutationFn: (provider: ProviderId) =>
-      invoke("settings:keys:verify", { provider }),
+    mutationFn: ({ provider, key }: { provider: ProviderId; key?: string }) =>
+      invoke("settings:keys:verify", key ? { provider, key } : { provider }),
+    onSuccess: (result, { provider }) => {
+      const label = PROVIDER_LABELS[provider]
+      if (result.valid) {
+        toast.success(`${label} key works`, {
+          description: "Verified against the provider's model listing.",
+        })
+        return
+      }
+      toast.error(`${label} rejected that key`, {
+        description: result.message ?? "The provider rejected this key.",
+      })
+    },
+    onError: (error, { provider }) =>
+      toast.error(`Could not reach ${PROVIDER_LABELS[provider]}`, {
+        description: error.message,
+      }),
   })
 }
 

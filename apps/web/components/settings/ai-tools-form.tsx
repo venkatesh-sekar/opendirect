@@ -11,6 +11,7 @@
  * ⛔ Nothing here runs a prompt. Detection is `which` and `--version`.
  */
 import type { AiToolId } from "@opendirect/contract"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -23,6 +24,8 @@ import { Label } from "@workspace/ui/components/label"
 
 import { useAiTools, useRedetectAiTools } from "@/hooks/use-ai"
 import { useSettings, useUpdateSettings } from "@/lib/settings"
+
+import { FieldError } from "./field-error"
 
 const TOOLS: { id: AiToolId; install: string }[] = [
   { id: "claude", install: "npm i -g @anthropic-ai/claude-code" },
@@ -43,7 +46,8 @@ export function AiToolsForm() {
       <CardHeader>
         <CardTitle>AI helpers</CardTitle>
         <CardDescription>
-          OpenDirect borrows the `claude` or `codex` CLI you already have
+          OpenDirect borrows the <code className="font-mono">claude</code> or{" "}
+          <code className="font-mono">codex</code> CLI you already have
           installed. It runs on your machine, on your own subscription, and only
           when you press one of the ✨ menus. When neither is installed those
           menus are not shown at all.
@@ -57,17 +61,11 @@ export function AiToolsForm() {
               <li key={id} className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 text-sm">
                   <span className="font-mono">{id}</span>
-                  <span
-                    className={
-                      status?.available
-                        ? "text-xs text-muted-foreground"
-                        : "text-xs text-muted-foreground"
-                    }
-                  >
+                  <Badge variant={status?.available ? "secondary" : "outline"}>
                     {status?.available
                       ? (status.version ?? "installed")
                       : "not found on PATH"}
-                  </span>
+                  </Badge>
                 </div>
                 {status?.available ? (
                   <p className="font-mono text-xs text-muted-foreground">
@@ -117,9 +115,9 @@ export function AiToolsForm() {
           >
             {redetect.isPending ? "Looking…" : "Re-detect"}
           </Button>
-          {redetect.isError ? (
-            <p className="text-xs text-destructive">{redetect.error.message}</p>
-          ) : null}
+          <FieldError>
+            {redetect.isError ? redetect.error.message : null}
+          </FieldError>
         </div>
       </CardContent>
     </Card>

@@ -145,6 +145,23 @@ const framed: ModelDescriptor = {
 let quote: CostQuote = estimated
 let served: ModelDescriptor = descriptor
 
+/** Detection, as `ai:tools` answers it. `null` preferred = no CLI, no menu. */
+function tools(preferred: "claude" | null) {
+  return {
+    claude: {
+      id: "claude",
+      available: preferred === "claude",
+      path: preferred === "claude" ? "/usr/bin/claude" : null,
+      version: preferred === "claude" ? "1.0.0" : null,
+    },
+    codex: { id: "codex", available: false, path: null, version: null },
+    preferred,
+    detectedAt: 0,
+  }
+}
+
+let aiTools = tools("claude")
+
 const container: ContainerNodeDto = {
   id: "c1",
   projectId: "p1",
@@ -275,6 +292,7 @@ function submissions() {
 beforeEach(() => {
   quote = estimated
   served = descriptor
+  aiTools = tools("claude")
   clearPromptDrafts()
   invoke.mockReset()
   invoke.mockImplementation(async (channel: IpcChannel, payload: unknown) => {
@@ -291,6 +309,14 @@ beforeEach(() => {
         return { items: [asset("a1")], total: 1, nextOffset: null }
       case "cost:estimate":
         return quote
+      case "ai:tools":
+        return aiTools
+      case "ai:run":
+        return {
+          text: "a bellhop opens the lift, slowly",
+          shots: [],
+          tool: "claude",
+        }
       case "generations:submitBatch":
         return {
           batchId: "batch-1",
@@ -481,6 +507,46 @@ describe("PromptBar", () => {
     expect(submissions()[0]![1]).toMatchObject({ count: 6 })
   })
 
+  /**
+   * The bar is anchored to a node, so it cannot overflow in either direction:
+   * wrapping pushes Run below the viewport and not wrapping pushes it off the
+   * side. Below the sidebar's own breakpoint the two controls that read just
+   * as well from a popover go into one.
+   */
+  it("collapses the count stepper and the cost badge at narrow widths", async () => {
+    const user = userEvent.setup()
+    const wide = window.innerWidth
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 500,
+    })
+    try {
+      renderBar()
+
+      // Run is never given away, whatever the width.
+      const run = await screen.findByRole("button", { name: "Run" })
+      await waitFor(() => expect(run).toBeEnabled())
+      expect(screen.getByLabelText("Prompt")).toBeVisible()
+
+      await waitFor(() =>
+        expect(screen.queryByTestId("count-stepper")).toBeNull()
+      )
+
+      await user.click(screen.getByTestId("settings-chip"))
+      const footer = await screen.findByTestId("settings-popover-footer")
+      expect(footer).toContainElement(screen.getByTestId("count-stepper"))
+
+      // And it is the same stepper, still writing the same draft.
+      await user.click(screen.getByRole("button", { name: "One more result" }))
+      expect(screen.getByTestId("count-value")).toHaveTextContent("2")
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: wide,
+      })
+    }
+  })
+
   it("resizes the node's frame to the aspect ratio the user chose", async () => {
     const user = userEvent.setup()
     served = framed
@@ -514,5 +580,62 @@ describe("PromptBar", () => {
     expect(
       invoke.mock.calls.filter(([channel]) => channel === "canvas:node:update")
     ).toHaveLength(0)
+  })
+
+  it("offers the AI helpers next to Advanced and applies nothing on its own", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.type(await screen.findByLabelText("Prompt"), "a lift opens")
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: /improve prompt/i })
+    )
+
+    await waitFor(() =>
+      expect(
+        invoke.mock.calls.filter(([channel]) => channel === "ai:run")
+      ).toHaveLength(1)
+    )
+    expect(invoke.mock.calls.find(([c]) => c === "ai:run")![1]).toMatchObject({
+      tool: "claude",
+      request: { helper: "improve-prompt", prompt: "a lift opens" },
+    })
+
+    // ⛔ The answer is text until the user presses Apply.
+    expect(await screen.findByTestId("ai-result-text")).toBeVisible()
+    expect(await screen.findByLabelText("Prompt")).toHaveValue("a lift opens")
+
+    await user.click(screen.getByRole("button", { name: "Use this prompt" }))
+    expect(await screen.findByLabelText("Prompt")).toHaveValue(
+      "a bellhop opens the lift, slowly"
+    )
+  })
+
+  it("says so rather than running the prompt helper on an empty prompt", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: /improve prompt/i })
+    )
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/rough prompt/i)
+    expect(invoke.mock.calls.filter(([c]) => c === "ai:run")).toHaveLength(0)
+  })
+
+  it("shows no AI menu at all when no local CLI was found", async () => {
+    aiTools = tools(null)
+    renderBar()
+
+    await screen.findByLabelText("Prompt")
+    await waitFor(() =>
+      expect(
+        invoke.mock.calls.some(([channel]) => channel === "ai:tools")
+      ).toBe(true)
+    )
+    expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
   })
 })

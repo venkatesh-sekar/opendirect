@@ -60,17 +60,23 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
 
+import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useContainerTree } from "@/hooks/use-containers"
 import { useSubmitBatch, useCostEstimate } from "@/hooks/use-generations"
 import { useUpdateCanvasNode } from "@/hooks/use-canvas"
 import { useModel } from "@/hooks/use-models"
-import { firstSelectableContainer } from "@/lib/board/sidebar-tree"
+import {
+  findContainer,
+  firstSelectableContainer,
+} from "@/lib/board/sidebar-tree"
 import {
   composePrompt,
   edgesToInputs,
   isBlocked,
 } from "@/lib/canvas/edges-to-inputs"
+import type { IconGrid } from "@/lib/canvas/icon-grid"
 import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
 import { frameSize, parseAspectRatio } from "@/lib/canvas/layout"
 import {
@@ -80,12 +86,21 @@ import {
 } from "@/lib/create/request"
 import { schemaDefaults, splitSchema } from "@/lib/schema-form/split-schema"
 
+import { HelperMenu } from "@/components/ai/helper-menu"
+import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
 import { AdvancedParams } from "@/components/create/advanced-params"
 import { CostBadge } from "@/components/create/cost-badge"
 import { ModelPicker } from "@/components/models/model-picker"
 
+import { useCanvasSurface } from "./canvas-context"
 import { ReferenceTray } from "./reference-tray"
 import { SettingsPopover } from "./settings-popover"
+
+/**
+ * Stands in for a model that promotes no grid rows, so the popover still has a
+ * shape to render when it is only carrying the narrow-width overflow.
+ */
+const EMPTY_GRID: IconGrid = { rows: [], fields: [] }
 
 /**
  * The most results one click may ask for. It matches the cap
@@ -137,6 +152,26 @@ function subscribe(listener: () => void): () => void {
   return () => {
     listeners.delete(listener)
   }
+}
+
+/**
+ * Fills a node's draft before its bar has ever been mounted — what "Branch
+ * from this run" does with the run it branched from.
+ *
+ * ⛔ It seeds a *composition*, not a run: the user still presses Run. The
+ * model is carried across so the branch starts from the same one, and the
+ * parameters are left to reseed from that model's own defaults.
+ */
+export function seedPromptDraft(
+  nodeId: string,
+  seed: { prompt: string; modelKey: string | null }
+): void {
+  drafts.set(nodeId, {
+    ...EMPTY_DRAFT,
+    prompt: seed.prompt,
+    modelKey: seed.modelKey,
+  })
+  emit()
 }
 
 /** Test seam: a fresh canvas between tests must not inherit yesterday's draft. */
@@ -224,9 +259,41 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
    * project's first container — the same one the board opened on.
    */
   const tree = useContainerTree()
-  const containerId = useMemo(
-    () => firstSelectableContainer(tree.data ?? [])?.id ?? null,
-    [tree.data]
+  const surface = useCanvasSurface()
+  const workspaceContainerId = surface?.containerId ?? null
+  const container = useMemo(() => {
+    const nodes = tree.data ?? []
+    // The container the sidebar is pointed at, which is also the one the node
+    // reads its outputs back from (`GenerateNodeBody`). Filing a run anywhere
+    // else would submit it and then show an empty node.
+    const selected = workspaceContainerId
+      ? findContainer(nodes, workspaceContainerId)
+      : null
+    return selected ?? firstSelectableContainer(nodes) ?? null
+  }, [workspaceContainerId, tree.data])
+  const containerId = container?.id ?? null
+
+  /**
+   * The AI helpers, which are here only if the user already has a `claude` or
+   * `codex` CLI installed — `<HelperMenu/>` renders nothing at all otherwise.
+   *
+   * ⛔ Neither helper touches the prompt by itself: the answer opens in a
+   * dialog and Apply is a button the user presses.
+   */
+  const aiTools = useAiTools()
+  const ai = useAiHelper()
+
+  const appendToPrompt = useCallback(
+    (text: string) => {
+      updateDraft((current) => ({
+        ...current,
+        prompt:
+          current.prompt.trim() === ""
+            ? text
+            : `${current.prompt.trimEnd()}, ${text}`,
+      }))
+    },
+    [updateDraft]
   )
 
   const split = useMemo(
@@ -435,6 +502,64 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       ? { ...cost.data, amount: cost.data.amount * draft.count }
       : cost.data
 
+  /**
+   * The bar is a single row anchored to a node, so at narrow widths it has
+   * nowhere to overflow to: wrapping pushes Run below the viewport and not
+   * wrapping pushes it off the side. The count stepper and the cost badge are
+   * the two controls that can be read and changed just as well from the
+   * settings popover, so below the sidebar's own breakpoint that is where they
+   * go — the prompt, the model and Run always stay on the bar itself.
+   */
+  const narrow = useIsMobile()
+
+  const overflow = (
+    <>
+      <div
+        data-testid="count-stepper"
+        className="flex h-9 shrink-0 items-center gap-1 rounded-md border px-1"
+      >
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          aria-label="One fewer result"
+          disabled={draft.count <= 1}
+          onClick={() => setCount(draft.count - 1)}
+        >
+          <HugeiconsIcon icon={MinusSignIcon} className="size-3.5" />
+        </Button>
+        <span
+          data-testid="count-value"
+          aria-label="Results"
+          className="min-w-5 text-center font-mono text-sm tabular-nums"
+        >
+          {draft.count}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          aria-label="One more result"
+          disabled={draft.count >= maxCount}
+          onClick={() => setCount(draft.count + 1)}
+        >
+          <HugeiconsIcon icon={PlusSignIcon} className="size-3.5" />
+        </Button>
+      </div>
+
+      {plan && plan.runs > 1 ? (
+        <span
+          data-testid="run-count"
+          className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums"
+        >
+          {plan.runs} runs
+        </span>
+      ) : null}
+
+      <CostBadge quote={total} pending={cost.isFetching} />
+    </>
+  )
+
   const advancedSchema =
     split && grid ? withoutIconGridFields(split.advanced, grid) : null
   const advancedCount = advancedSchema
@@ -469,7 +594,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         </p>
       ) : null}
 
-      <div className="flex items-end gap-2">
+      {/* Wraps rather than overflowing: the bar is anchored to a node and a
+          narrow window would otherwise push Run off the viewport. */}
+      <div className="flex flex-wrap items-end gap-2">
         <ReferenceTray
           node={node}
           canvas={canvas}
@@ -487,7 +614,46 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             const prompt = event.target.value
             updateDraft((current) => ({ ...current, prompt }))
           }}
-          className="max-h-32 min-h-9 flex-1 resize-y py-2"
+          className="max-h-32 min-h-9 min-w-48 flex-1 resize-y py-2"
+        />
+
+        {/*
+          The ✨ menu, in the same place the creation bar kept it: between the
+          prompt and the model. It is absent entirely when no local CLI was
+          detected, so the "AI helpers" settings tab and this are one feature.
+        */}
+        <HelperMenu
+          tools={aiTools.data}
+          helpers={["improve-prompt", "suggest-shots"]}
+          disabled={ai.state === "running"}
+          onRun={(helper, tool) => {
+            setNotice(null)
+            if (helper === "improve-prompt") {
+              if (!draft.prompt.trim()) {
+                setNotice(
+                  "Write a rough prompt first — the helper improves what is there."
+                )
+                return
+              }
+              ai.run(
+                {
+                  helper: "improve-prompt",
+                  prompt: draft.prompt,
+                  modelName: descriptor?.name ?? null,
+                },
+                tool
+              )
+              return
+            }
+            ai.run(
+              {
+                helper: "suggest-shots",
+                containerName: container?.name?.trim() || "this sequence",
+                notes: draft.prompt.trim() || null,
+              },
+              tool
+            )
+          }}
         />
 
         <ModelPicker
@@ -502,11 +668,18 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           placeholder="Model"
         />
 
-        {grid ? (
+        {grid || narrow ? (
           <SettingsPopover
-            grid={grid}
+            grid={grid ?? EMPTY_GRID}
             values={draft.common}
             onChange={setCommon}
+            footer={
+              narrow ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {overflow}
+                </div>
+              ) : null
+            }
           />
         ) : null}
 
@@ -526,49 +699,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           ) : null}
         </Button>
 
-        <div
-          data-testid="count-stepper"
-          className="flex h-9 shrink-0 items-center gap-1 rounded-md border px-1"
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label="One fewer result"
-            disabled={draft.count <= 1}
-            onClick={() => setCount(draft.count - 1)}
-          >
-            <HugeiconsIcon icon={MinusSignIcon} className="size-3.5" />
-          </Button>
-          <span
-            data-testid="count-value"
-            aria-label="Results"
-            className="min-w-5 text-center font-mono text-sm tabular-nums"
-          >
-            {draft.count}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label="One more result"
-            disabled={draft.count >= maxCount}
-            onClick={() => setCount(draft.count + 1)}
-          >
-            <HugeiconsIcon icon={PlusSignIcon} className="size-3.5" />
-          </Button>
-        </div>
-
-        {plan && plan.runs > 1 ? (
-          <span
-            data-testid="run-count"
-            className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums"
-          >
-            {plan.runs} runs
-          </span>
-        ) : null}
-
-        <CostBadge quote={total} pending={cost.isFetching} />
+        {/* Below the sidebar's own breakpoint these three live in the
+            settings popover instead — see `overflow` above. */}
+        {narrow ? null : overflow}
 
         <Tooltip>
           <TooltipTrigger
@@ -583,6 +716,22 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           </TooltipContent>
         </Tooltip>
       </div>
+
+      {/*
+        The AI answer, and the only place it can become the prompt: Apply
+        replaces the prompt for an improved one, Insert appends a single
+        suggested shot. Nothing is written into the bar without one of those.
+      */}
+      <HelperResultDialog
+        controller={ai}
+        onApply={
+          ai.helper === "improve-prompt"
+            ? (text) => updateDraft((current) => ({ ...current, prompt: text }))
+            : undefined
+        }
+        applyLabel="Use this prompt"
+        onInsertShot={appendToPrompt}
+      />
 
       {advancedSchema && descriptor ? (
         <AdvancedParams

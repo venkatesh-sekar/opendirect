@@ -153,7 +153,7 @@ export function CanvasRail({
       </Popover>
 
       <RailButton
-        label={mode === "select" ? "Select mode" : "Pan mode"}
+        label="Select mode"
         icon={Cursor01Icon}
         active={mode === "select"}
         onClick={() => onModeChange(mode === "select" ? "pan" : "select")}

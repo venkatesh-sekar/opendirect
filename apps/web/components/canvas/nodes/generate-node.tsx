@@ -30,14 +30,28 @@ import {
   RefreshIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons"
-import type { AssetDto, CanvasNodeDto } from "@opendirect/contract"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@workspace/ui/components/context-menu"
+import type {
+  AssetDto,
+  CanvasNodeDto,
+  GenerationDto,
+} from "@opendirect/contract"
 import type { NodeProps } from "@xyflow/react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { useAssets } from "@/hooks/use-assets"
+import {
+  useAssets,
+  useOpenAsset,
+  useRemoveAssetFromContainer,
+  useRevealAsset,
+} from "@/hooks/use-assets"
 import { usePickCanvasNode } from "@/hooks/use-canvas"
-import { useGenerations } from "@/hooks/use-generations"
+import { useGeneration, useGenerations } from "@/hooks/use-generations"
 import { useJobs, useRetryJob } from "@/hooks/use-jobs"
 import { useModel } from "@/hooks/use-models"
 import {
@@ -47,6 +61,12 @@ import {
 } from "@/lib/canvas/batch-view"
 import { modelKeyOf } from "@/lib/model-key"
 
+import {
+  AddToContainerDialog,
+  OutputActionMenuItems,
+  outputActions,
+} from "@/components/board/card-actions"
+import { CompareView } from "@/components/board/compare-view"
 import { DetailsPanel } from "@/components/board/details-panel"
 
 import { useCanvasSurface } from "../canvas-context"
@@ -161,36 +181,168 @@ function PendingTile({ tile }: { tile: BatchTile }) {
   )
 }
 
+/**
+ * The details sheet, with the two things the canvas can answer for it.
+ *
+ * `DetailsPanel` takes both as optional callbacks and silently drops the
+ * affordances when they are missing — which is exactly what the canvas did
+ * until now, so "Branch from this run" and the clickable lineage were both
+ * rendered and then never rendered. They are wired here, once, for every
+ * surface in this file that opens the panel.
+ *
+ * ⛔ Read-only. Branch seeds a *new node's draft*; it submits nothing.
+ */
+export function RunDetailsPanel({
+  generationId,
+  node,
+  open,
+  onOpenChange,
+}: {
+  generationId: string
+  /** The node the branch is placed beside. */
+  node: CanvasNodeDto
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const surface = useCanvasSurface()
+  // Only fetched while the sheet is open; the panel fetches the same row and
+  // the two share one query.
+  const detail = useGeneration(open ? generationId : null)
+  const run = detail.data?.generation ?? null
+
+  return (
+    <DetailsPanel
+      generationId={generationId}
+      open={open}
+      onOpenChange={onOpenChange}
+      onBranch={surface && run ? () => surface.branch(node, run) : undefined}
+      onSelectGeneration={surface?.selectGeneration}
+    />
+  )
+}
+
+/**
+ * One output, and everything you can do with it.
+ *
+ * The board's card menu is the same list — `outputActions` — rendered onto the
+ * canvas tile, because "compare these two takes", "reveal it in Finder" and
+ * "get it off this board" did not stop being the things people want from a
+ * result when the board became a canvas. Right-click is the surface: a tile is
+ * 120px of picture and a row of icons on it would bury the picture.
+ *
+ * "Use as reference" is left out on purpose. On a canvas a reference is an
+ * edge, so the honest way to make this tile feed another node is to draw one.
+ *
+ * ⛔ Nothing here spends money. Branch seeds a new node's prompt and stops.
+ */
 function ResultTile({
   asset,
+  siblings,
+  generation,
+  containerId,
+  node,
   picked,
   onPick,
 }: {
   asset: AssetDto
+  /** The rest of this node's batch — the other side of a comparison. */
+  siblings: readonly AssetDto[]
+  /** The run behind this tile, when the node's page still holds it. */
+  generation: GenerationDto | null
+  containerId: string | null
+  node: CanvasNodeDto
   picked: boolean
   onPick: () => void
 }) {
+  const surface = useCanvasSurface()
+  const [addToOpen, setAddToOpen] = useState(false)
+  const [compareOpen, setCompareOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  const open = useOpenAsset()
+  const reveal = useRevealAsset()
+  const remove = useRemoveAssetFromContainer()
+  const failure = open.error ?? reveal.error ?? remove.error
+
+  const actions = outputActions({
+    asset,
+    onAddTo: () => setAddToOpen(true),
+    // ⛔ Seeds a new node's prompt beside this one. It submits nothing.
+    onBranch:
+      surface && generation ? () => surface.branch(node, generation) : undefined,
+    onCompare: () => setCompareOpen(true),
+    onOpen: () => open.mutate(asset.id),
+    onReveal: () => reveal.mutate(asset.id),
+    onDetails: () => setDetailsOpen(true),
+    onRemove: containerId
+      ? () => remove.mutate({ containerId, assetId: asset.id })
+      : undefined,
+    canCompare: siblings.length > 0,
+  }).filter((action) => action.id !== "reference")
+
   return (
-    <button
-      type="button"
-      onClick={onPick}
-      aria-pressed={picked}
-      aria-label={picked ? "The pick" : "Make this the pick"}
-      data-testid={`canvas-tile-${asset.id}`}
-      className={cn(
-        "nodrag relative h-full w-full overflow-hidden rounded-md bg-muted",
-        picked
-          ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
-          : "opacity-80 hover:opacity-100"
-      )}
-    >
-      <AssetTile asset={asset} className="h-full w-full" />
-      {picked ? (
-        <span className="absolute top-1 right-1 rounded-full bg-primary p-0.5 text-primary-foreground">
-          <HugeiconsIcon icon={Tick02Icon} className="size-3" />
-        </span>
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger
+          render={
+            <button
+              type="button"
+              onClick={onPick}
+              aria-pressed={picked}
+              aria-label={picked ? "The pick" : "Make this the pick"}
+              data-testid={`canvas-tile-${asset.id}`}
+              className={cn(
+                "nodrag relative h-full w-full overflow-hidden rounded-md bg-muted",
+                picked
+                  ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
+                  : "opacity-80 hover:opacity-100"
+              )}
+            />
+          }
+        >
+          <AssetTile asset={asset} className="h-full w-full" />
+          {picked ? (
+            <span className="absolute top-1 right-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+              <HugeiconsIcon icon={Tick02Icon} className="size-3" />
+            </span>
+          ) : null}
+        </ContextMenuTrigger>
+
+        <ContextMenuContent>
+          <OutputActionMenuItems actions={actions} />
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {failure ? (
+        <p role="alert" className="text-[11px] text-destructive">
+          {failure.message}
+        </p>
       ) : null}
-    </button>
+
+      <AddToContainerDialog
+        asset={asset}
+        open={addToOpen}
+        onOpenChange={setAddToOpen}
+      />
+
+      {compareOpen ? (
+        <CompareView
+          left={asset}
+          candidates={siblings}
+          open={compareOpen}
+          onOpenChange={setCompareOpen}
+        />
+      ) : null}
+
+      {asset.generationId ? (
+        <RunDetailsPanel
+          generationId={asset.generationId}
+          node={node}
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+        />
+      ) : null}
+    </>
   )
 }
 
@@ -267,14 +419,26 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
     )
   }
 
-  const hasOutputs = tiles.some((tile) => tile.asset !== null)
+  const outputs = tiles.flatMap((tile) => (tile.asset ? [tile.asset] : []))
+  const hasOutputs = outputs.length > 0
+  // The rows the tiles were built from, so a tile's "Branch from this" has the
+  // run in hand rather than opening a query of its own per tile.
+  const runs = new Map(
+    (generations.data?.items ?? []).map((run) => [run.id, run])
+  )
   // Null, or pointing at an asset that is no longer one of the tiles — a pick
   // whose row was deleted is nulled by the foreign key, and either way the
   // node does not quietly fall back to another tile.
   const pickIsResolved = tiles.some(
     (tile) => tile.asset !== null && tile.asset.id === node.pickAssetId
   )
-  const columns = Math.min(tiles.length, tiles.length > 2 ? 2 : 1)
+  /**
+   * As square a grid as the batch allows, capped at four across.
+   *
+   * A hard cap of two columns turned a batch of 16 — which `MAX_BATCH` allows
+   * — into an eight-row scroll inside a node the size of a postcard.
+   */
+  const columns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(tiles.length))))
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -287,6 +451,10 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
             <ResultTile
               key={tile.id}
               asset={tile.asset}
+              siblings={outputs.filter((one) => one.id !== tile.asset!.id)}
+              generation={runs.get(tile.generationId) ?? null}
+              containerId={containerId}
+              node={node}
               picked={node.pickAssetId === tile.asset.id}
               onPick={() => choose(tile.asset!.id)}
             />
@@ -299,7 +467,10 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
       </div>
 
       {hasOutputs && !pickIsResolved ? (
-        <p className="shrink-0 border-t px-2 py-1 text-[11px] text-muted-foreground">
+        <p
+          role="status"
+          className="shrink-0 border-t px-2 py-1 text-[11px] text-muted-foreground"
+        >
           No pick selected. Choose which result downstream nodes should use.
         </p>
       ) : null}
@@ -316,7 +487,13 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
  * the node has a generation to describe. ⛔ Read-only: the panel quotes what
  * already happened and submits nothing.
  */
-function DetailsAction({ generationId }: { generationId: string }) {
+export function DetailsAction({
+  generationId,
+  node,
+}: {
+  generationId: string
+  node: CanvasNodeDto
+}) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -331,8 +508,9 @@ function DetailsAction({ generationId }: { generationId: string }) {
       >
         <HugeiconsIcon icon={InformationCircleIcon} className="size-3.5" />
       </Button>
-      <DetailsPanel
+      <RunDetailsPanel
         generationId={generationId}
+        node={node}
         open={open}
         onOpenChange={setOpen}
       />
@@ -357,7 +535,7 @@ export function GenerateNode({ data, selected }: NodeProps<CanvasFlowNode>) {
       title={<GenerateNodeTitle node={node} />}
       actions={
         node.generationId ? (
-          <DetailsAction generationId={node.generationId} />
+          <DetailsAction generationId={node.generationId} node={node} />
         ) : null
       }
     >

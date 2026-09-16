@@ -19,6 +19,7 @@ import type { HugeiconsIconProps } from "@hugeicons/react"
 import {
   ArrowExpandIcon,
   FolderAddIcon,
+  Delete02Icon,
   Folder02Icon,
   GitBranchIcon,
   ImageAdd01Icon,
@@ -54,15 +55,21 @@ export interface OutputAction {
 
 export interface OutputActionsInput {
   asset: AssetDto
-  /** Adds the tile to the creation bar's reference tray. */
+  /** Adds the tile to a reference tray, where a surface has one. */
   onUseAsReference?: (asset: AssetDto) => void
   onAddTo: () => void
-  /** ⛔ Pre-fills the bar from this run. It does not submit. */
+  /** ⛔ Seeds a new composition from this run. It does not submit. */
   onBranch?: (generationId: string) => void
   onCompare: () => void
   onOpen: () => void
   onReveal: () => void
   onDetails: () => void
+  /**
+   * Unlinks the asset from the surface it is on. Omitted where there is no
+   * board to unlink it from — the action is then not offered at all, rather
+   * than offered disabled, because "remove from nothing" explains nothing.
+   */
+  onRemove?: () => void
   /** False when this board has nothing else to compare against. */
   canCompare: boolean
 }
@@ -81,7 +88,7 @@ export function outputActions(input: OutputActionsInput): OutputAction[] {
       icon: ImageAdd01Icon,
       run: () => input.onUseAsReference?.(asset),
       disabledReason: !input.onUseAsReference
-        ? "The creation bar is not open."
+        ? "There is nowhere on this surface to put a reference."
         : !isMedia
           ? "Only media can be used as a reference."
           : null,
@@ -100,7 +107,7 @@ export function outputActions(input: OutputActionsInput): OutputAction[] {
       disabledReason: !generationId
         ? IMPORTED
         : !input.onBranch
-          ? "The creation bar is not open."
+          ? "This run is still loading."
           : null,
     },
     {
@@ -133,6 +140,17 @@ export function outputActions(input: OutputActionsInput): OutputAction[] {
       run: input.onDetails,
       disabledReason: generationId ? null : IMPORTED,
     },
+    ...(input.onRemove
+      ? [
+          {
+            id: "remove",
+            label: "Remove from this board",
+            icon: Delete02Icon,
+            // ⛔ Unlinks; the file and every other board it is on survive.
+            run: input.onRemove,
+          },
+        ]
+      : []),
   ]
 }
 
@@ -209,7 +227,10 @@ export function AddToContainerDialog({
   const [added, setAdded] = useState<string | null>(null)
 
   const containers = useMemo<ContainerNodeDto[]>(
-    () => flattenContainers(tree.data ?? []).filter((node) => node.kind !== "project"),
+    () =>
+      flattenContainers(tree.data ?? []).filter(
+        (node) => node.kind !== "project"
+      ),
     [tree.data]
   )
 

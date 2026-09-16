@@ -31,6 +31,41 @@ describe("buildMenuTemplate", () => {
     }
   })
 
+  /**
+   * ⌘, is an application-menu accelerator, and a menu accelerator wins over
+   * whatever the renderer binds — so this item, not the renderer's hotkey, is
+   * what the chord does in a packaged build. It therefore has to be wired to
+   * the *toggle*, or ⌘, would be a one-way trip into Settings on the desktop
+   * while the same chord toggled in a browser tab.
+   */
+  it("offers Settings — the screen that used to have no menu path at all", () => {
+    const onToggleSettings = () => {}
+    const mac = buildMenuTemplate({ ...base, dev: false, onToggleSettings })
+    const appMenu = Array.isArray(mac[0]?.submenu) ? mac[0].submenu : []
+    const item = appMenu.find((entry) => entry.label === "Settings…")
+    expect(item?.accelerator).toBe("CmdOrCtrl+,")
+    expect(item?.click).toBe(onToggleSettings)
+
+    const win = buildMenuTemplate({
+      ...base,
+      platform: "win32",
+      dev: false,
+      onToggleSettings,
+    })
+    const file = Array.isArray(win[0]?.submenu) ? win[0].submenu : []
+    expect(file.some((entry) => entry.label === "Settings…")).toBe(true)
+  })
+
+  it("omits Settings rather than offering an item that does nothing", () => {
+    const template = buildMenuTemplate({ ...base, dev: false })
+    const labels = template.flatMap((item) =>
+      (Array.isArray(item.submenu) ? item.submenu : []).map(
+        (entry) => entry.label
+      )
+    )
+    expect(labels).not.toContain("Settings…")
+  })
+
   it("gives macOS its application menu and the others a File → Quit", () => {
     const mac = buildMenuTemplate({ ...base, dev: false })
     expect(mac[0]?.label).toBe("OpenDirect")

@@ -38,7 +38,9 @@ const STATE_VARIANTS: Record<
   submitting: "secondary",
   running: "secondary",
   downloading: "secondary",
-  succeeded: "outline",
+  // Not `outline`: that is what `queued` and `canceled` wear, and a finished
+  // run must not look like a run that never happened.
+  succeeded: "default",
   failed: "destructive",
   canceled: "outline",
 }

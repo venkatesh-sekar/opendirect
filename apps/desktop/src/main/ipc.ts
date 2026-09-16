@@ -73,8 +73,12 @@ export function registerIpcHandlers(): void {
    * ⛔ Listing endpoints only — see `VERIFY_ENDPOINTS` in `settings.ts`.
    * A generation call must never be made to check a key.
    */
-  handle("settings:keys:verify", async ({ provider }) => {
-    const key = getSettingsService().vault.getKeyWithEnvFallback(provider)
+  handle("settings:keys:verify", async ({ provider, key: draft }) => {
+    // A key typed into the field wins over the stored one, so a user can check
+    // a key before committing it. It is only read here — nothing saves it.
+    const key =
+      draft?.trim() ||
+      getSettingsService().vault.getKeyWithEnvFallback(provider)
     if (!key) {
       return { valid: false, message: "No API key is configured yet." }
     }

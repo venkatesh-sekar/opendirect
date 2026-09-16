@@ -21,6 +21,7 @@ import type {
   CanvasDto,
   CanvasNodeDto,
   CanvasNodeType,
+  GenerationDto,
 } from "@opendirect/contract"
 
 import type { CanvasHistory } from "@/hooks/use-canvas-history"
@@ -49,6 +50,19 @@ export interface CanvasSurface {
   ) => void
   /** Which tile of a batch downstream edges use. On the undo stack. */
   pick: (node: CanvasNodeDto, assetId: string) => void
+  /**
+   * "Branch from this run": a fresh generate node beside `origin`, with its
+   * prompt and model already filled in from `generation`.
+   *
+   * ⛔ It seeds a composition and stops. Nothing here submits a run — the new
+   * node's bar still has a Run button the user has to press.
+   */
+  branch: (origin: CanvasNodeDto, generation: GenerationDto) => void
+  /**
+   * Selects the node that stands for a run — how the details panel's lineage
+   * moves the canvas. A run with no node on this canvas selects nothing.
+   */
+  selectGeneration: (generationId: string) => void
 }
 
 const CanvasSurfaceContext = createContext<CanvasSurface | null>(null)

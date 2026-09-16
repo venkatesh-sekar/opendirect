@@ -13,6 +13,7 @@ import { RENDERER_CSP } from "@/lib/csp"
 import { Providers } from "@/lib/query"
 
 import { ThemeProvider } from "@/components/theme-provider"
+import { AppShell } from "@/components/shell/app-shell"
 
 // The dev server needs eval and a websocket for HMR, so the locked-down policy
 // is only emitted into production bundles — the ones Electron actually serves.
@@ -49,7 +50,15 @@ export default function RootLayout({
       <body>
         <Providers>
           <ThemeProvider>
-            <TooltipProvider>{children}</TooltipProvider>
+            <TooltipProvider>
+              {/*
+                The shell is mounted *above* the router, not inside a route.
+                That is the whole reason Settings is no longer a dead end: the
+                sidebar, the status strip and ⌘, belong to the window, so every
+                route keeps them and every route has a way out of itself.
+              */}
+              <AppShell>{children}</AppShell>
+            </TooltipProvider>
             {/*
               One `<Toaster/>` for the window. Job completion and failure are
               the only things that speak through it — see `useJobs`.

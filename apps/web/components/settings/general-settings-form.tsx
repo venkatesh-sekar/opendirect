@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTheme } from "next-themes"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -12,12 +13,21 @@ import {
 } from "@workspace/ui/components/card"
 import { Input } from "@workspace/ui/components/input"
 import { Label } from "@workspace/ui/components/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 
 import {
   useChooseProjectRoot,
   useSettings,
   useUpdateSettings,
 } from "@/lib/settings"
+
+import { FieldError } from "./field-error"
 
 /** Clamps a numeric field to the contract's range before it is sent. */
 function clamp(value: number, min: number, max: number): number {
@@ -106,6 +116,52 @@ function NumberSetting({
   )
 }
 
+const THEMES = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+] as const
+
+/**
+ * Appearance.
+ *
+ * This is the *only* theme control there is. It replaces a global listener
+ * that toggled dark mode on an unmodified `d` — a chord nothing advertised and
+ * which fired by accident on a canvas whose whole job is bare keystrokes.
+ *
+ * `next-themes` only knows the stored preference in the browser, and it learns
+ * it after the first render — so both the prerender and that first render fall
+ * back to "System" and agree with each other, and the real value arrives with
+ * the provider's own update.
+ */
+function AppearanceSetting() {
+  const { theme, setTheme } = useTheme()
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor="appearance">Appearance</Label>
+      <Select
+        value={theme ?? "system"}
+        onValueChange={(next) => setTheme(String(next))}
+      >
+        <SelectTrigger id="appearance" className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {THEMES.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        System follows your operating system&apos;s light or dark setting.
+      </p>
+    </div>
+  )
+}
+
 export function GeneralSettingsForm() {
   const settings = useSettings()
   const update = useUpdateSettings()
@@ -118,13 +174,17 @@ export function GeneralSettingsForm() {
       <CardHeader>
         <CardTitle>General</CardTitle>
         <CardDescription>
-          Where OpenDirect keeps your projects, and how hard it works the
+          Appearance, where OpenDirect keeps your projects, and how it paces the
           providers.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
+        <AppearanceSetting />
+
         <div className="flex flex-col gap-2">
-          <Label htmlFor="project-root">Project folder</Label>
+          <Label htmlFor="project-root">
+            Default location for new projects
+          </Label>
           <div className="flex flex-wrap items-center gap-2">
             <Input
               id="project-root"
@@ -174,12 +234,10 @@ export function GeneralSettingsForm() {
           onCommit={(pollIntervalMs) => update.mutate({ pollIntervalMs })}
         />
 
-        {settings.isError ? (
-          <p className="text-xs text-destructive">{settings.error.message}</p>
-        ) : null}
-        {update.isError ? (
-          <p className="text-xs text-destructive">{update.error.message}</p>
-        ) : null}
+        <FieldError>
+          {settings.isError ? settings.error.message : null}
+        </FieldError>
+        <FieldError>{update.isError ? update.error.message : null}</FieldError>
       </CardContent>
     </Card>
   )
