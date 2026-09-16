@@ -4,6 +4,7 @@ import "@workspace/ui/globals.css"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { RENDERER_CSP } from "@/lib/csp"
+import { Providers } from "@/lib/query"
 
 import { ThemeProvider } from "@/components/theme-provider"
 
@@ -40,7 +41,9 @@ export default function RootLayout({
         ) : null}
       </head>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <Providers>
+          <ThemeProvider>{children}</ThemeProvider>
+        </Providers>
       </body>
     </html>
   )

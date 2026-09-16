@@ -1,7 +1,8 @@
 import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@workspace/ui"],
+  // Both are workspace packages shipped as TypeScript source.
+  transpilePackages: ["@workspace/ui", "@opendirect/contract"],
   // Electron ships no Node server: the renderer is a plain static SPA bundle.
   output: "export",
   distDir: "out",

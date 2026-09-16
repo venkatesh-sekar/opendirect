@@ -18,5 +18,7 @@ export default defineConfig({
   external: ["electron", "better-sqlite3"],
   // `electron-serve` v3 is ESM-only; a CommonJS main process cannot `require`
   // it, so it is bundled into the output instead of left as a bare import.
-  noExternal: ["electron-serve"],
+  // `@opendirect/contract` is a workspace package published as TypeScript source,
+  // so it must be bundled rather than required at runtime.
+  noExternal: ["electron-serve", "@opendirect/contract"],
 })
