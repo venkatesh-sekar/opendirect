@@ -17,3 +17,22 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+      # Real provider keys live in a gitignored `.env.local`. This is the net
+      # under that: every *tracked* file is searched for the two key shapes this
+      # project uses, and a hit fails the build. `git grep` rather than a plain
+      # grep so node_modules, build output and `.env.local` itself are excluded
+      # by construction instead of by a list of --exclude flags.
+      - name: Assert no committed secrets
+        run: |
+          if git grep -nIE "r8_[A-Za-z0-9]{20,}|sk-or-v1-[A-Za-z0-9]{20,}" -- . ; then
+            echo "::error::A provider API key shape was found in a tracked file."
+            echo "Rotate the key first — it is in the git history — then remove it."
+            exit 1
+          fi
+          echo "No committed provider keys."
+
+      # The single line that keeps the test suite off the live, paid APIs.
+      # Deleting it would not fail a test; it would silently allow one.
+      - name: Assert tests never hit live provider hosts
+        run: grep -q 'onUnhandledRequest: "error"' vitest.setup.ts

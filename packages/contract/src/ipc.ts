@@ -406,6 +406,20 @@ export const ipcContract = {
     input: z.object({ runId: z.string().min(1) }),
     output: okSchema,
   },
+  /**
+   * Restarts into an update that has already been downloaded — the button the
+   * status bar shows once `updater:status` reports `ready`. A downloaded
+   * update installs on the next quit anyway; this only offers to bring that
+   * quit forward, because a restart in the middle of a running job is the
+   * user's decision, not ours.
+   *
+   * Returns `{ restarting: false }` when nothing is staged, so a stale button
+   * click cannot be mistaken for a restart that is about to happen.
+   */
+  "updater:install": {
+    input: z.void(),
+    output: z.object({ restarting: z.boolean() }),
+  },
 } as const
 
 export type IpcContract = typeof ipcContract

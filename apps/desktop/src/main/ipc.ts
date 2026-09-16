@@ -12,6 +12,7 @@ import { registerProjectHandlers } from "./handlers"
 import { createIpcRegistrar } from "./ipc-registry"
 import { getSettingsService } from "./settings-service"
 import { describeKeys, verifyProviderKey } from "./settings"
+import { quitAndInstall } from "./updater"
 
 const registrar = createIpcRegistrar(ipcMain)
 
@@ -95,6 +96,13 @@ export function registerIpcHandlers(): void {
     cancelAiRun(runId)
     return { ok: true as const }
   })
+
+  /**
+   * "Restart to update", from the status bar. A no-op that says so when no
+   * update is staged — the button is only ever drawn after a `ready` status,
+   * but the window may have been open across a failed download.
+   */
+  handle("updater:install", () => ({ restarting: quitAndInstall() }))
 }
 
 /** Tears every handler down — used on quit and by hot-reload in development. */

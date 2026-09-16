@@ -16,6 +16,7 @@
  * explicit Retry button.
  */
 import { useEffect } from "react"
+import { toast } from "sonner"
 import {
   useMutation,
   useQuery,
@@ -64,16 +65,44 @@ function invalidateForTerminalJob(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: queryKeys.assets.all })
 }
 
+/**
+ * The toast for a run that has stopped.
+ *
+ * Only terminal states say anything: a toast per transition would fire four
+ * times per run for news nobody asked for. A cancel is the user's own doing
+ * and is therefore silent too — they are looking at the button they pressed.
+ */
+export function announceTerminalJob(job: JobDto): void {
+  const model = job.generation.modelSlug
+  if (job.state === "succeeded") {
+    toast.success(`${model} finished`, {
+      description: "The output is on the board.",
+    })
+    return
+  }
+  if (job.state === "failed") {
+    toast.error(`${model} failed`, {
+      description: job.error ?? job.generation.error ?? undefined,
+    })
+  }
+}
+
 export function useJobs(): UseQueryResult<JobDto[]> {
   const client = useQueryClient()
 
   useEffect(() => {
     if (!isBridgeAvailable()) return
     return subscribe("jobs:update", (job) => {
+      const known = client.getQueryData<JobDto[]>(queryKeys.jobs.list)
+      const previous = known?.find((entry) => entry.id === job.id)
       client.setQueryData<JobDto[]>(queryKeys.jobs.list, (current) =>
         applyUpdate(current, job)
       )
-      if (!isJobActive(job)) invalidateForTerminalJob(client)
+      if (isJobActive(job)) return
+      invalidateForTerminalJob(client)
+      // Only on the *transition*: main re-pushes a row whenever it writes one,
+      // and a second push of the same finished job must not toast twice.
+      if (!previous || isJobActive(previous)) announceTerminalJob(job)
     })
   }, [client])
 

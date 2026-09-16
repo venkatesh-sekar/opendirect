@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useHotkeys } from "react-hotkeys-hook"
 import {
   DndContext,
   DragOverlay,
@@ -36,10 +38,10 @@ import { useSettings } from "@/lib/settings"
 import { AssetPreview } from "@/components/board/asset-preview"
 import { Board } from "@/components/board/board"
 import { CreationBar } from "@/components/create/creation-bar"
-import { JobList } from "@/components/jobs/job-list"
 
 import { ProjectLauncher } from "./project-launcher"
 import { ProjectSidebar, type BoardSelection } from "./sidebar"
+import { StatusBar } from "./status-bar"
 
 /**
  * A card has to travel a few pixels before it counts as a drag, otherwise
@@ -69,6 +71,7 @@ function ShellSkeleton() {
  * `useAssetDnd` owns the mutation, the cards and rows only declare themselves.
  */
 export function AppShell() {
+  const router = useRouter()
   const project = useCurrentProject()
   const tree = useContainerTree(project.data != null)
   const dnd = useAssetDnd()
@@ -76,6 +79,21 @@ export function AppShell() {
   const [switching, setSwitching] = useState(false)
   const [chosen, setChosen] = useState<BoardSelection | null>(null)
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null)
+
+  /**
+   * ⌘, opens Settings, the way it does in every other desktop app. It is
+   * registered on the shell rather than the sidebar's link because it has to
+   * work while the caret is in the prompt, which is where it usually is.
+   */
+  useHotkeys(
+    "mod+comma",
+    (event) => {
+      event.preventDefault()
+      router.push("/settings")
+    },
+    { enableOnFormTags: true, enableOnContentEditable: true },
+    [router]
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -252,9 +270,7 @@ export function AppShell() {
             The status strip: the only permanent sign that work is happening in
             the background, and the way into the job list.
           */}
-          <div className="flex items-center justify-end border-t px-2 py-1">
-            <JobList />
-          </div>
+          <StatusBar />
 
           {/*
             A `sticky bottom-0` sibling of the panel group, so the bar sits

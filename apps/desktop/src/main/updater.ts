@@ -13,9 +13,13 @@ import {
 
 let timer: NodeJS.Timeout | undefined
 let started = false
+/** The last status pushed, so `quitAndInstall` knows whether one is staged. */
+let latestStatus: ReturnType<typeof toUpdaterStatus> | undefined
 
 /** Whichever live window should show the status; on macOS windows come and go. */
 function sendStatus(event: UpdaterEvent): void {
+  const status = toUpdaterStatus(event)
+  latestStatus = status
   const target = pickStatusTarget(
     BrowserWindow.getAllWindows(),
     BrowserWindow.getFocusedWindow()
@@ -23,7 +27,7 @@ function sendStatus(event: UpdaterEvent): void {
   if (!target) return
   // Goes through the contract, not a raw `send`: the channel and the payload
   // shape are validated here exactly as the renderer validates them on arrival.
-  emitIpcEvent(target.webContents, "updater:status", toUpdaterStatus(event))
+  emitIpcEvent(target.webContents, "updater:status", status)
 }
 
 /**
@@ -81,7 +85,18 @@ export function stopAutoUpdater(): void {
   timer = undefined
 }
 
-/** Restarts into the downloaded update. Exposed over IPC in a later task. */
-export function quitAndInstall(): void {
+/**
+ * Restarts into the downloaded update, if one is actually staged.
+ *
+ * `latestStatus` is tracked rather than asked of electron-updater because
+ * `quitAndInstall()` with nothing downloaded either throws or quits without
+ * reinstalling, depending on platform — neither of which is what the status
+ * bar's button promised. The renderer therefore learns whether a restart is
+ * really about to happen.
+ */
+export function quitAndInstall(): boolean {
+  if (latestStatus?.state !== "ready") return false
+  stopAutoUpdater()
   autoUpdater.quitAndInstall()
+  return true
 }

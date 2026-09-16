@@ -415,6 +415,17 @@ step in the project that spends money, and nothing automated may perform it.
    leaves the estimate in place (it publishes no per-run cost).
 9. Quit the app mid-run once, restart, and confirm the run re-attaches and
    finishes rather than being submitted a second time.
+10. **Sanity-check one real `improve-prompt` run** (free — it spends your own
+    `claude`/`codex` subscription, not a provider credit). `run-cli.ts` pins
+    `claude` to `--permission-mode plan`, which is the only mode of the six
+    that cannot escalate, but plan mode also biases the model towards
+    *proposing* work rather than simply answering: an improved prompt can come
+    back wrapped in "here is what I would do" scaffolding instead of being the
+    prompt. Read the answer in the dialog before pressing Apply. If it reads as
+    a plan rather than a prompt, switch `claudeArgs()` to `--permission-mode
+    dontAsk` — it is also non-escalating with the deny list in place, and the
+    `--disallowedTools` list is what actually keeps Bash/Edit/Write out of
+    reach — then re-run this step and update the comment in `run-cli.ts`.
 
 ## CI
 

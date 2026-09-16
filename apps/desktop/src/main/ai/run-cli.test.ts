@@ -154,6 +154,30 @@ describe("sanitizeEnv", () => {
     }
   })
 
+  it("strips bare *_TOKEN / *_KEY names, not just the _API_ spellings", () => {
+    const env = sanitizeEnv("claude", {
+      ...dirty,
+      GITHUB_TOKEN: "ghp_nope",
+      HF_TOKEN: "hf_nope",
+      NPM_TOKEN: "npm_nope",
+      AWS_SECRET_ACCESS_KEY: "aws_nope",
+      SENTRY_AUTH_TOKEN: "sentry_nope",
+      GPG_PASSPHRASE: "nope",
+      GOOGLE_APPLICATION_CREDENTIALS: "/tmp/nope.json",
+    })
+
+    expect(env.GITHUB_TOKEN).toBeUndefined()
+    expect(env.HF_TOKEN).toBeUndefined()
+    expect(env.NPM_TOKEN).toBeUndefined()
+    expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined()
+    expect(env.SENTRY_AUTH_TOKEN).toBeUndefined()
+    expect(env.GPG_PASSPHRASE).toBeUndefined()
+    expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBeUndefined()
+    // The wider net must not cost the CLI the environment it runs in.
+    expect(env.PATH).toBe("/usr/bin")
+    expect(env.HOME).toBe("/home/dev")
+  })
+
   it("leaves each CLI its own credentials and takes away the other's", () => {
     const forClaude = sanitizeEnv("claude", dirty)
     expect(forClaude.ANTHROPIC_API_KEY).toBe("sk-ant")

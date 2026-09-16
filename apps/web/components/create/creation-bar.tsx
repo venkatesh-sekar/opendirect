@@ -17,6 +17,7 @@
  * job list on the status strip is where it is watched and cancelled.
  */
 import { useEffect, useRef, useState } from "react"
+import { useHotkeys } from "react-hotkeys-hook"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   ArrowRight01Icon,
@@ -113,6 +114,23 @@ export function CreationBar({ creation, containerName }: CreationBarProps) {
     ? Object.keys(split.advanced.properties).length
     : 0
   const blocked = blockedReason(creation)
+  const canSubmit = blocked === null && !creation.isSubmitting
+
+  /**
+   * ⌘Enter generates from wherever the caret is, which is nearly always the
+   * prompt. It goes through exactly the same guard as the button — a run the
+   * button refuses to start is a run the chord refuses to start — because this
+   * is the one shortcut in the app that spends money.
+   */
+  useHotkeys(
+    "mod+enter",
+    (event) => {
+      event.preventDefault()
+      if (canSubmit) creation.submit()
+    },
+    { enableOnFormTags: true, enableOnContentEditable: true },
+    [canSubmit, creation]
+  )
 
   return (
     <div
@@ -241,16 +259,12 @@ export function CreationBar({ creation, containerName }: CreationBarProps) {
                 <span className="inline-flex" data-testid="generate-wrapper" />
               }
             >
-              <Button
-                onClick={creation.submit}
-                disabled={blocked !== null || creation.isSubmitting}
-              >
+              <Button onClick={creation.submit} disabled={!canSubmit}>
                 {creation.isSubmitting ? "Queueing…" : "Generate"}
               </Button>
             </TooltipTrigger>
             <TooltipContent>
-              {blocked ??
-                "Queues the run. Nothing is sent to a provider until the job runner exists."}
+              {blocked ?? "Queues the run — ⌘Enter."}
             </TooltipContent>
           </Tooltip>
         </div>

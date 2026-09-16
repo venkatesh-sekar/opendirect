@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useHotkeys } from "react-hotkeys-hook"
 import { parseModelKey } from "@opendirect/contract"
 import type { ModelKind, ModelSummary } from "@opendirect/contract"
 import {
@@ -48,6 +49,12 @@ export interface ModelPickerProps {
   kinds?: ModelKind[]
   placeholder?: string
   disabled?: boolean
+  /**
+   * Registers ⌘K / ⌘R while this picker is mounted. On by default because
+   * there is one picker in the window; a second one would have to opt out, so
+   * that two of them cannot fight over the same chord.
+   */
+  hotkeys?: boolean
 }
 
 /** One row: name, provider badge, and the honest price hint. */
@@ -94,6 +101,7 @@ export function ModelPicker({
   kinds,
   placeholder = "Select a model",
   disabled,
+  hotkeys = true,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState<"all" | ModelKind>("all")
@@ -101,6 +109,43 @@ export function ModelPicker({
   const models = useModels(kinds)
   const recommended = useRecommendedModels()
   const refresh = useRefreshModels()
+
+  /**
+   * ⌘K opens the picker from anywhere, including the prompt field — the
+   * palette chord every desktop app has trained people to reach for. ⌘R
+   * re-fetches the catalog, which is a free listing call, never a generation.
+   *
+   * Both are declared through `react-hotkeys-hook` rather than a `keydown`
+   * listener so that the "is the user typing?" question has one answer in one
+   * place instead of one per component.
+   */
+  useHotkeys(
+    "mod+k",
+    (event) => {
+      event.preventDefault()
+      if (!disabled) setOpen(true)
+    },
+    {
+      enabled: hotkeys,
+      enableOnFormTags: true,
+      enableOnContentEditable: true,
+    },
+    [disabled]
+  )
+
+  useHotkeys(
+    "mod+r",
+    (event) => {
+      event.preventDefault()
+      if (!refresh.isPending) refresh.mutate(kinds)
+    },
+    {
+      enabled: hotkeys,
+      enableOnFormTags: true,
+      enableOnContentEditable: true,
+    },
+    [refresh.isPending, kinds]
+  )
 
   const all = useMemo(() => models.data?.models ?? [], [models.data])
   const failures = models.data?.failures ?? []

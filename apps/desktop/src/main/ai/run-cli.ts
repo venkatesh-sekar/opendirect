@@ -150,9 +150,17 @@ export interface AiRunOutput {
  * `CODEX_*`, and neither gets the other's. Everything non-secret (PATH, HOME,
  * locale, TMPDIR…) is passed through untouched, because a CLI with no PATH is
  * a CLI that does not start.
+ *
+ * The suffixes are deliberately the *bare* ones — `_TOKEN`, `_KEY`, `_SECRET`
+ * — not just the `_API_`-prefixed spellings, because plenty of real
+ * credentials are named without an `API` in the middle (`GITHUB_TOKEN`,
+ * `HF_TOKEN`, `NPM_TOKEN`, `AWS_SECRET_ACCESS_KEY`). Matching the narrower
+ * forms only would have handed those straight to a child process. The cost of
+ * the wider net is the odd innocent variable ending in `_KEY` being dropped;
+ * that is a variable a prompt-rewriting CLI has no use for anyway.
  */
 const SECRET_SHAPED =
-  /(_API_KEY|_API_TOKEN|_SECRET|_SECRET_KEY|_ACCESS_KEY|_PASSWORD)$/
+  /(_TOKEN|_KEY|_SECRET|_PASSWORD|_PASSPHRASE|_CREDENTIALS)$/
 
 /** Prefixes each tool is allowed to keep, because they are its own login. */
 const TOOL_OWN_ENV: Record<AiToolId, RegExp> = {
