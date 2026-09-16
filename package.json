@@ -5,6 +5,7 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "dev:desktop": "concurrently -k \"pnpm --filter web dev\" \"wait-on http://localhost:3000 && pnpm --filter @opendirect/desktop build:main && cross-env NODE_ENV=development pnpm --filter @opendirect/desktop start\"",
     "lint": "turbo lint",
     "format": "prettier --write .",
     "typecheck": "turbo typecheck && tsc --noEmit",
@@ -16,12 +17,15 @@
     "@vitest/coverage-v8": "^5.0.1",
     "@workspace/eslint-config": "*",
     "@workspace/typescript-config": "*",
+    "concurrently": "10.0.5",
+    "cross-env": "10.1.0",
     "msw": "^2.15.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "turbo": "^2.9.18",
     "typescript": "^5",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "wait-on": "9.1.0"
   },
   "packageManager": "pnpm@10.33.4",
   "engines": {

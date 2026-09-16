@@ -27,6 +27,13 @@ export const config = [
     },
   },
   {
-    ignores: ["dist/**", ".next/**", "**/.turbo/**", "**/coverage/**"],
+    ignores: [
+      "dist/**",
+      ".next/**",
+      // Next.js static-export output (`distDir: "out"` in apps/web).
+      "out/**",
+      "**/.turbo/**",
+      "**/coverage/**",
+    ],
   },
 ]

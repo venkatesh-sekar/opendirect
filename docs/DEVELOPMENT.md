@@ -16,6 +16,7 @@ pnpm install
 | Script            | What it does                                            |
 | ----------------- | ------------------------------------------------------- |
 | `pnpm dev`        | Runs every workspace `dev` task via Turborepo            |
+| `pnpm dev:desktop` | Next.js dev server + the Electron shell pointed at it   |
 | `pnpm build`      | Builds every workspace                                   |
 | `pnpm lint`       | ESLint (flat config) in each workspace                   |
 | `pnpm typecheck`  | `tsc --noEmit` per workspace, plus the root test harness |
