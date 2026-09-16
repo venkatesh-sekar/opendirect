@@ -43,3 +43,28 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# build
+release/
+
+# local data
+*.db
+*.db-journal
+.opendirect/
+
+# sandbox bind-mount stub (cannot be deleted from inside the sandbox)
+/opendirect/
+
+# sandbox bind-mounts at the repo root (not project files)
+/.bashrc
+/.bash_profile
+/.profile
+/.zshrc
+/.zprofile
+/.gitconfig
+/.gitmodules
+/.ripgreprc
+/.mcp.json
+/.idea
+/.vscode
+/.claude/

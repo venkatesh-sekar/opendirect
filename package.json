@@ -6,23 +6,25 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "format": "prettier --write .",
+    "typecheck": "turbo typecheck && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@vitest/coverage-v8": "^5.0.1",
     "@workspace/eslint-config": "*",
     "@workspace/typescript-config": "*",
+    "msw": "^2.15.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "turbo": "^2.9.18",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.1"
   },
   "packageManager": "pnpm@10.33.4",
   "engines": {
     "node": ">=20"
-  },
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ]
+  }
 }
