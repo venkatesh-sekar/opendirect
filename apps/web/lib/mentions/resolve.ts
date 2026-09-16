@@ -44,6 +44,12 @@ export type MentionOutcome =
       containerId: string
       slotField: string
       assetIds: string[]
+      /**
+       * A preview per attached asset, in `assetIds` order, so the tray can
+       * show the picture the run will send rather than only the handle. Null
+       * where the asset has no preview.
+       */
+      thumbnailUrls: (string | null)[]
       /** What replaced `@venkz` in the prompt. */
       substitution: string
     }
@@ -204,7 +210,8 @@ export function resolveMentions(input: ResolveMentionsInput): ResolvedMentions {
     const wanted = subject.kind === "scene" ? 1 : perSubject
     const take = Math.min(wanted, remaining, subject.images.length)
 
-    const assetIds = subject.images.slice(0, take).map((image) => image.assetId)
+    const taken = subject.images.slice(0, take)
+    const assetIds = taken.map((image) => image.assetId)
     const positions = assetIds.map((_id, index) => filled + index)
     tally[slot.field] = filled + take
 
@@ -224,6 +231,7 @@ export function resolveMentions(input: ResolveMentionsInput): ResolvedMentions {
       containerId: subject.containerId,
       slotField: slot.field,
       assetIds,
+      thumbnailUrls: taken.map((image) => image.thumbnailUrl),
       substitution: "",
     })
   }

@@ -351,6 +351,15 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   /* Connecting                                                          */
   /* ------------------------------------------------------------------ */
 
+  /** The model a node of this type runs when nobody has chosen one. */
+  const defaultModelKeyFor = useCallback(
+    (type: string): string | null =>
+      type === "video_gen"
+        ? (settings.data?.defaultVideoModel ?? null)
+        : (settings.data?.defaultImageModel ?? null),
+    [settings.data]
+  )
+
   /**
    * The slot a new edge into `target` should carry.
    *
@@ -361,7 +370,11 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   const slotFor = useCallback(
     async (source: CanvasNodeDto, target: CanvasNodeDto) => {
       if (source.type === "text") return null
-      const key = modelKeyOfNode(target)
+      // A node nobody has opened the bar on yet has no model of its own, and
+      // the default is what it would run with — so the common case (create a
+      // node, drag an edge into it) resolves without a detour through the
+      // edge label.
+      const key = modelKeyOfNode(target) ?? defaultModelKeyFor(target.type)
       if (!key) return null
       let descriptor: ModelDescriptor | null = null
       try {
@@ -378,7 +391,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
         kind: contributedKind(source),
       })
     },
-    [client]
+    [client, defaultModelKeyFor]
   )
 
   const connect = useCallback(
@@ -861,9 +874,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       : null
 
   const defaultModelKey = selectedGenerateNode
-    ? selectedGenerateNode.type === "video_gen"
-      ? (settings.data?.defaultVideoModel ?? null)
-      : (settings.data?.defaultImageModel ?? null)
+    ? defaultModelKeyFor(selectedGenerateNode.type)
     : null
 
   return (

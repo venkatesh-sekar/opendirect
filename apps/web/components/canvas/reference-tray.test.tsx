@@ -80,12 +80,18 @@ describe("ReferenceTray mentions", () => {
         containerId: "c-venkz",
         slotField: "reference_images",
         assetIds: ["a-venkz"],
+        thumbnailUrls: ["asset://media/thumbnails/a-venkz.webp"],
         substitution: "Venkz (the person in the reference image)",
       },
     ])
 
     const thumb = screen.getByTestId("mention-thumb")
     expect(thumb.dataset.handle).toBe("venkz")
+    // The picture the run will send, not just the word for it.
+    expect(thumb.querySelector("img")).toHaveAttribute(
+      "src",
+      "asset://media/thumbnails/a-venkz.webp"
+    )
     expect(thumb.dataset.slot).toBe("reference_images")
     // The substitution is readable verbatim, so the exact sentence the model
     // will be given is never a guess.

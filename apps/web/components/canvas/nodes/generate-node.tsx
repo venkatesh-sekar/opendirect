@@ -600,13 +600,15 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
 
       {showStrip ? (
         <div className="nowheel flex shrink-0 items-stretch gap-1 overflow-x-auto border-t p-1">
-          {strip.map((tile, at) =>
+          {strip.map((tile) =>
             tile.asset ? (
               <ThumbTile
                 key={tile.id}
                 asset={tile.asset}
                 picked={tile.id === hero?.id}
-                position={at + 1}
+                // Numbered against the whole batch, so "Result 3 of 5" and the
+                // "3 of 5" over the hero are talking about the same tile.
+                position={tiles.indexOf(tile) + 1}
                 total={total}
                 onPick={() => choose(tile.asset!.id)}
               />

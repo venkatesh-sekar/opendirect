@@ -45,6 +45,8 @@ interface AssetSeed {
   label?: string | null
   pinned?: boolean
   createdAt?: number
+  /** Omitted on purpose by the test that checks the fallback to the file. */
+  thumbnailRelPath?: string | null
 }
 
 function asset(containerId: string | null, seed: AssetSeed) {
@@ -56,6 +58,10 @@ function asset(containerId: string | null, seed: AssetSeed) {
       kind: seed.kind ?? "image",
       relPath: `assets/2026/09/${seed.id}.png`,
       label: seed.label ?? null,
+      thumbnailRelPath:
+        seed.thumbnailRelPath === undefined
+          ? `thumbnails/${seed.id}.webp`
+          : seed.thumbnailRelPath,
       pinned: seed.pinned ?? false,
       createdAt: seed.createdAt ?? NOW,
     })
@@ -132,8 +138,16 @@ describe("listMentionSubjects", () => {
         name: "Venkz",
         description: "a tall man in a grey suit",
         images: [
-          { assetId: "a2", label: "Character Sheet" },
-          { assetId: "a1", label: null },
+          {
+            assetId: "a2",
+            label: "Character Sheet",
+            thumbnailUrl: "asset://media/thumbnails/a2.webp",
+          },
+          {
+            assetId: "a1",
+            label: null,
+            thumbnailUrl: "asset://media/thumbnails/a1.webp",
+          },
         ],
       },
     ])
@@ -163,7 +177,23 @@ describe("listMentionSubjects", () => {
     asset(venkz.id, { id: "v1", kind: "video" })
     asset(venkz.id, { id: "i1" })
     expect(listMentionSubjects(handle.db, PROJECT_ID)[0]!.images).toEqual([
-      { assetId: "i1", label: null },
+      {
+        assetId: "i1",
+        label: null,
+        thumbnailUrl: "asset://media/thumbnails/i1.webp",
+      },
+    ])
+  })
+
+  it("falls back to the image itself when it has no generated preview", () => {
+    const venkz = container("character", "Venkz")
+    asset(venkz.id, { id: "i1", thumbnailRelPath: null })
+    expect(listMentionSubjects(handle.db, PROJECT_ID)[0]!.images).toEqual([
+      {
+        assetId: "i1",
+        label: null,
+        thumbnailUrl: "asset://media/assets/2026/09/i1.png",
+      },
     ])
   })
 

@@ -52,7 +52,9 @@ const VENKZ: MentionSubjectDto = {
   handle: "venkz",
   name: "Venkz",
   description: "a tired bellhop",
-  images: [{ assetId: "a-venkz", label: "Character Sheet" }],
+  images: [
+    { assetId: "a-venkz", label: "Character Sheet", thumbnailUrl: null },
+  ],
 }
 
 function node(over: Partial<CanvasNodeDto> & { id: string }): CanvasNodeDto {

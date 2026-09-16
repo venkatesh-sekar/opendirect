@@ -25,3 +25,6 @@ pnpm-lock.yaml
 /.vscode/
 /opendirect/
 /.claude/
+
+# drizzle-kit generates these; prettier would rewrite them on every format
+apps/desktop/drizzle/

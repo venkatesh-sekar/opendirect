@@ -16,6 +16,7 @@ import { and, asc, eq, inArray, isNotNull } from "drizzle-orm"
 
 import type { ProjectDatabase } from "../db/client"
 import { assets, containerAssets, containers } from "../db/schema"
+import { mediaUrl } from "../media"
 
 /** Everything the ranking reads. `AssetDto` and a raw row both satisfy it. */
 export interface RankableAsset {
@@ -23,6 +24,25 @@ export interface RankableAsset {
   label: string | null
   pinned: boolean
   createdAt: number
+}
+
+/** A ranked row plus the two paths a preview can come from. */
+interface MentionImageRow extends RankableAsset {
+  // Both nullable: a join widens the columns, and a preview is optional by
+  // design — `thumbnails/` is documented as safe to delete.
+  relPath: string | null
+  thumbnailRelPath: string | null
+}
+
+/**
+ * The picture the picker shows beside a handle.
+ *
+ * The generated preview where there is one, the image itself where there is
+ * not — the same fallback `AssetTile` and the reference tray already use, so a
+ * mention looks like every other thumbnail in the app.
+ */
+function previewUrl(row: MentionImageRow): string | null {
+  return mediaUrl(row.thumbnailRelPath) ?? mediaUrl(row.relPath)
 }
 
 /**
@@ -91,6 +111,8 @@ export function listMentionSubjects(
       label: assets.label,
       pinned: assets.pinned,
       createdAt: assets.createdAt,
+      relPath: assets.relPath,
+      thumbnailRelPath: assets.thumbnailRelPath,
     })
     .from(containerAssets)
     .innerJoin(assets, eq(assets.id, containerAssets.assetId))
@@ -105,7 +127,7 @@ export function listMentionSubjects(
     )
     .all()
 
-  const byContainer = new Map<string, RankableAsset[]>()
+  const byContainer = new Map<string, MentionImageRow[]>()
   for (const row of rows) {
     const list = byContainer.get(row.containerId)
     if (list) list.push(row)
@@ -119,7 +141,11 @@ export function listMentionSubjects(
     name: subject.name,
     description: subject.description,
     images: rankReferenceImages(byContainer.get(subject.containerId) ?? []).map(
-      (row) => ({ assetId: row.id, label: row.label })
+      (row) => ({
+        assetId: row.id,
+        label: row.label,
+        thumbnailUrl: previewUrl(row),
+      })
     ),
   }))
 }

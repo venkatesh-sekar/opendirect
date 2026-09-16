@@ -161,7 +161,9 @@ const VENKZ: MentionSubjectDto = {
   handle: "venkz",
   name: "Venkz",
   description: "a tired bellhop in a green coat",
-  images: [{ assetId: "a-venkz", label: "Character Sheet" }],
+  images: [
+    { assetId: "a-venkz", label: "Character Sheet", thumbnailUrl: null },
+  ],
 }
 
 let quote: CostQuote = estimated

@@ -40,11 +40,6 @@ import { useCreateContainerFromAsset } from "@/hooks/use-containers"
 
 export type SaveAsKind = "character" | "scene"
 
-const KIND_LABEL: Record<SaveAsKind, string> = {
-  character: "character",
-  scene: "scene",
-}
-
 /**
  * The name to propose: the asset's own, without the extension and without the
  * separators a filename uses in place of spaces.
@@ -91,10 +86,10 @@ export function SaveAsContainerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Save as {KIND_LABEL[kind]}</DialogTitle>
+          <DialogTitle>Save as {kind}</DialogTitle>
           <DialogDescription>
-            Makes a new {KIND_LABEL[kind]} with this image as its reference. The
-            image stays everywhere it already is.
+            Makes a new {kind} with this image as its reference. The image stays
+            everywhere it already is.
           </DialogDescription>
         </DialogHeader>
 

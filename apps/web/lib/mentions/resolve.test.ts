@@ -76,7 +76,7 @@ function subject(
     kind: "character",
     name: "Venkz",
     description: null,
-    images: [{ assetId: "a1", label: "Character Sheet" }],
+    images: [{ assetId: "a1", label: "Character Sheet", thumbnailUrl: null }],
     ...over,
   }
 }
@@ -87,7 +87,7 @@ const LOBBY = subject({
   kind: "scene",
   name: "The Hotel Lobby",
   description: "a marble lobby at night",
-  images: [{ assetId: "a9", label: null }],
+  images: [{ assetId: "a9", label: null, thumbnailUrl: null }],
 })
 
 describe("deriveReferenceSlots fixtures", () => {
@@ -134,6 +134,8 @@ describe("resolveMentions — attaching an image", () => {
         containerId: "c-venkz",
         slotField: "reference_images",
         assetIds: ["a1"],
+        // The preview the tray shows, in the same order as `assetIds`.
+        thumbnailUrls: [null],
         substitution: "Venkz (the person in the reference image)",
       },
     ])
@@ -204,9 +206,9 @@ describe("resolveMentions — attaching an image", () => {
     const threeViews = subject({
       handle: "venkz",
       images: [
-        { assetId: "a1", label: "Character Sheet" },
-        { assetId: "a2", label: null },
-        { assetId: "a3", label: null },
+        { assetId: "a1", label: "Character Sheet", thumbnailUrl: null },
+        { assetId: "a2", label: null, thumbnailUrl: null },
+        { assetId: "a3", label: null, thumbnailUrl: null },
       ],
     })
     const result = resolveMentions({
@@ -224,9 +226,9 @@ describe("resolveMentions — attaching an image", () => {
     const many = subject({
       handle: "venkz",
       images: [
-        { assetId: "a1", label: null },
-        { assetId: "a2", label: null },
-        { assetId: "a3", label: null },
+        { assetId: "a1", label: null, thumbnailUrl: null },
+        { assetId: "a2", label: null, thumbnailUrl: null },
+        { assetId: "a3", label: null, thumbnailUrl: null },
       ],
     })
     const result = resolveMentions({

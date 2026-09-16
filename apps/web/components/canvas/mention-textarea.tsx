@@ -13,8 +13,8 @@
  * - the textarea, unchanged in every way that matters to the bar around it;
  * - an overlay that paints the same text with each mention in a `<mark>`, so a
  *   chip costs no editor;
- * - a `cmdk` list in a portal, anchored to the caret, so opening the picker
- *   can never change the bar's own size. The bar is anchored to a node and its
+ * - a listbox in a portal, anchored to the caret, so opening the picker can
+ *   never change the bar's own size. The bar is anchored to a node and its
  *   width is its position: a list that pushed it would move Run under a
  *   pointer already travelling towards it.
  *
@@ -32,12 +32,6 @@ import {
   type ReactNode,
 } from "react"
 import { createPortal } from "react-dom"
-import {
-  Command,
-  CommandEmpty,
-  CommandItem,
-  CommandList,
-} from "@workspace/ui/components/command"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -90,6 +84,18 @@ function matchesFor(
     .map((one) => one.subject)
 }
 
+/** The best preview the subject has, or null when it has none. */
+function subjectPreview(subject: MentionSubject): string | null {
+  return (
+    subject.images.find((image) => image.thumbnailUrl)?.thumbnailUrl ?? null
+  )
+}
+
+/** A stable id per row, so the textarea can point `aria-activedescendant` at it. */
+function optionId(listId: string, handle: string): string {
+  return `${listId}-${handle}`
+}
+
 /** The text, with every mention wrapped so it reads as a chip. */
 function painted(value: string) {
   const tokens = findMentions(value)
@@ -136,6 +142,15 @@ export function MentionTextarea({
    * in state would be a render whose only job is to undo itself.
    */
   const pendingCaret = useRef<number | null>(null)
+  /**
+   * True while an IME is mid-word.
+   *
+   * A Japanese or Chinese keyboard sends every candidate through `change` and
+   * ends the word with `Enter`. Opening the picker on those keystrokes would
+   * offer a list for half-typed kana, and taking that `Enter` would swallow
+   * the commit — so both are left alone until the composition ends.
+   */
+  const composing = useRef(false)
 
   const matches = query ? matchesFor(subjects, query.query) : []
   const open = query !== null && matches.length > 0
@@ -221,6 +236,11 @@ export function MentionTextarea({
         role="combobox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-activedescendant={
+          open && matches[active]
+            ? optionId(listId, matches[active].handle)
+            : undefined
+        }
         aria-autocomplete="list"
         // The text itself lives in the overlay above; the textarea keeps the
         // caret, the selection and every key. Its own glyphs would be a second
@@ -232,9 +252,21 @@ export function MentionTextarea({
         onChange={(event) => {
           const next = event.target.value
           onChange(next)
+          if (composing.current) return
           sync(next, event.target.selectionStart ?? next.length, dismissed)
         }}
         onSelect={(event) => {
+          if (composing.current) return
+          const node = event.currentTarget
+          sync(node.value, node.selectionStart ?? node.value.length, dismissed)
+        }}
+        onCompositionStart={() => {
+          composing.current = true
+          setQuery(null)
+          setAnchor(null)
+        }}
+        onCompositionEnd={(event) => {
+          composing.current = false
           const node = event.currentTarget
           sync(node.value, node.selectionStart ?? node.value.length, dismissed)
         }}
@@ -249,6 +281,8 @@ export function MentionTextarea({
           setAnchor(null)
         }}
         onKeyDown={(event) => {
+          // The IME owns every key until it has committed a word.
+          if (composing.current || event.nativeEvent.isComposing) return
           if (!open) return
           if (event.key === "ArrowDown") {
             event.preventDefault()
@@ -297,31 +331,62 @@ export function MentionTextarea({
               // it away before the click has chosen anything.
               onMouseDown={(event) => event.preventDefault()}
             >
-              <Command shouldFilter={false} value={matches[active]?.handle}>
-                <CommandList id={listId}>
-                  <CommandEmpty>No character or scene.</CommandEmpty>
-                  {matches.map((subject) => (
-                    <CommandItem
+              {/*
+                A plain listbox rather than `cmdk`: the filtering, the
+                highlight and every key are already this component's, so the
+                library would only be supplying ids it also owns — and
+                `aria-activedescendant` needs an id we can name.
+              */}
+              <ul id={listId} role="listbox" className="p-1">
+                {matches.map((subject, index) => {
+                  const preview = subjectPreview(subject)
+                  return (
+                    <li
                       key={subject.handle}
-                      value={subject.handle}
+                      id={optionId(listId, subject.handle)}
+                      role="option"
+                      aria-selected={index === active}
                       data-testid="mention-option"
                       data-handle={subject.handle}
-                      onSelect={() => choose(subject.handle)}
+                      onMouseEnter={() => setActive(index)}
+                      onClick={() => choose(subject.handle)}
+                      className={cn(
+                        "flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm select-none",
+                        index === active && "bg-muted text-foreground"
+                      )}
                     >
                       <span
                         aria-hidden
                         className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded bg-muted text-[0.6rem] text-muted-foreground"
                       >
-                        {subject.kind === "scene" ? "◻" : "☺"}
+                        {/*
+                          The face, where the subject has one: a list of
+                          handles is a list of words, and the picture is how
+                          you recognise which Venkz this is. The glyph is the
+                          fallback, not the design.
+                        */}
+                        {preview ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={preview}
+                            alt=""
+                            data-testid="mention-option-thumb"
+                            className="size-full object-cover"
+                          />
+                        ) : subject.kind === "scene" ? (
+                          "◻"
+                        ) : (
+                          "☺"
+                        )}
                       </span>
                       <span className="truncate">{subject.name}</span>
                       <span className="truncate text-xs text-muted-foreground">
                         @{subject.handle}
                       </span>
-                    </CommandItem>
-                  ))}
-                </CommandList>
-              </Command>
+                    </li>
+                  )
+                })}
+              </ul>
             </div>,
             document.body
           )

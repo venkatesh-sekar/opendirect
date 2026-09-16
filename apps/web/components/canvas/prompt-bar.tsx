@@ -834,18 +834,15 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       </div>
 
       {/*
-        The messages, *below* the controls.
+        The messages, *below* the controls — first what the prompt's mentions
+        will be (the downgrades, and the handles nobody claims), then the
+        notice, the failure and the block.
 
         The toolbar anchors this bar by its top edge, so anything rendered
         above the row moves every control down the instant it appears — a
         notice arriving while the pointer is travelling to Run. Below the row
         the bar grows downward into empty canvas and nothing the user is
         aiming at moves. `role` is unchanged: the same text, still announced.
-      */}
-      {/*
-        What the prompt's mentions will be — the downgrades and the handles
-        nobody claims. In the reserved area below the controls, so a note
-        arriving while the user types never moves Run.
       */}
       <MentionNotes mentions={mentions.outcomes} />
 

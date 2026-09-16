@@ -11,7 +11,13 @@ import "@testing-library/jest-dom/vitest"
  * anything; the picker cannot spend money.
  */
 import { useState } from "react"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it } from "vitest"
 
@@ -26,7 +32,13 @@ const SUBJECTS: MentionSubject[] = [
     handle: "venkz",
     name: "Venkz",
     description: "a tired bellhop",
-    images: [{ assetId: "a-venkz", label: "Character Sheet" }],
+    images: [
+      {
+        assetId: "a-venkz",
+        label: "Character Sheet",
+        thumbnailUrl: "asset://media/thumbnails/a-venkz.webp",
+      },
+    ],
   },
   {
     containerId: "c-lobby",
@@ -130,6 +142,56 @@ describe("MentionTextarea", () => {
     await user.type(prompt, "venkz@ex")
 
     expect(screen.queryByTestId("mention-picker")).toBeNull()
+  })
+
+  it("shows the subject's picture beside its handle, and a glyph without one", async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    const prompt = screen.getByLabelText("Prompt")
+    await user.click(prompt)
+    await user.type(prompt, "@")
+    await screen.findByTestId("mention-picker")
+
+    // Venkz has a reference image; the Hotel Lobby has none yet.
+    const thumbs = screen.getAllByTestId("mention-option-thumb")
+    expect(thumbs).toHaveLength(1)
+    expect(thumbs[0]).toHaveAttribute(
+      "src",
+      "asset://media/thumbnails/a-venkz.webp"
+    )
+  })
+
+  it("points `aria-activedescendant` at the highlighted row", async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    const prompt = screen.getByLabelText("Prompt")
+    await user.click(prompt)
+    await user.type(prompt, "@")
+    await screen.findByTestId("mention-picker")
+
+    const first = screen.getAllByTestId("mention-option")[0]!
+    expect(prompt).toHaveAttribute("aria-activedescendant", first.id)
+  })
+
+  it("⛔ leaves an IME alone: no list mid-composition, and Enter still commits", async () => {
+    const user = userEvent.setup()
+    render(<Harness />)
+
+    const prompt = screen.getByLabelText("Prompt")
+    await user.click(prompt)
+    await user.type(prompt, "@")
+    await screen.findByTestId("mention-picker")
+
+    // A Japanese keyboard starts a word: the picker gets out of the way.
+    fireEvent.compositionStart(prompt)
+    fireEvent.change(prompt, { target: { value: "@ゔ" } })
+    expect(screen.queryByTestId("mention-picker")).toBeNull()
+
+    // And the Enter that commits the candidate is the IME's, not ours.
+    fireEvent.keyDown(prompt, { key: "Enter", isComposing: true })
+    expect(prompt).toHaveValue("@ゔ")
   })
 
   it("paints every mention in the text as a chip", () => {

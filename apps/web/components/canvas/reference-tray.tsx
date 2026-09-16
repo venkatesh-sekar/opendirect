@@ -369,22 +369,42 @@ export function ReferenceTray({
           say it came from the words rather than from a wire, and there is no ✕
           — it is removed by deleting `@venkz` from the prompt.
         */}
-        {mentions.filter(isMentionImage).map((outcome) => (
-          <li key={`mention-${outcome.handle}`} className="relative">
-            <span
-              data-testid="mention-thumb"
-              data-handle={outcome.handle}
-              data-slot={outcome.slotField}
-              title={`@${outcome.handle} → ${slotLabel(outcome.slotField, slots)} — ${outcome.substitution}`}
-              className="ring-dashed flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted text-center text-[0.6rem] leading-tight text-muted-foreground ring-1 ring-primary/60"
-            >
-              <span className="line-clamp-3 px-0.5">@{outcome.handle}</span>
-            </span>
-            <span className="mt-0.5 block max-w-10 truncate text-center text-[0.6rem] text-muted-foreground">
-              {slotLabel(outcome.slotField, slots)}
-            </span>
-          </li>
-        ))}
+        {mentions.filter(isMentionImage).map((outcome) => {
+          const preview =
+            outcome.thumbnailUrls.find((url) => url !== null) ?? null
+          return (
+            <li key={`mention-${outcome.handle}`} className="relative">
+              <span
+                data-testid="mention-thumb"
+                data-handle={outcome.handle}
+                data-slot={outcome.slotField}
+                title={`@${outcome.handle} → ${slotLabel(outcome.slotField, slots)} — ${outcome.substitution}`}
+                className="ring-dashed relative flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted text-center text-[0.6rem] leading-tight text-muted-foreground ring-1 ring-primary/60"
+              >
+                {/* The picture the run will actually send, with the handle over
+                  it so the tray still says where it came from. */}
+                {preview ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={preview}
+                      alt={`@${outcome.handle}`}
+                      className="size-full object-cover"
+                    />
+                    <span className="absolute inset-x-0 bottom-0 truncate bg-background/80 px-0.5 text-[0.55rem] text-foreground">
+                      @{outcome.handle}
+                    </span>
+                  </>
+                ) : (
+                  <span className="line-clamp-3 px-0.5">@{outcome.handle}</span>
+                )}
+              </span>
+              <span className="mt-0.5 block max-w-10 truncate text-center text-[0.6rem] text-muted-foreground">
+                {slotLabel(outcome.slotField, slots)}
+              </span>
+            </li>
+          )
+        })}
 
         {slots.map((slot) => {
           const chosen = thumbs.filter(

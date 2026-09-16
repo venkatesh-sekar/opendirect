@@ -209,7 +209,15 @@ export const mentionSubjectSchema = z.object({
   description: z.string().nullable(),
   /** Reference images, best first — see `rankReferenceImages`. */
   images: z.array(
-    z.object({ assetId: z.string(), label: z.string().nullable() })
+    z.object({
+      assetId: z.string(),
+      label: z.string().nullable(),
+      /**
+       * The `asset://` preview, so the picker and the tray can show the face
+       * rather than only the handle. Null when there is no preview to show.
+       */
+      thumbnailUrl: z.string().nullable(),
+    })
   ),
 })
 export type MentionSubjectDto = z.output<typeof mentionSubjectSchema>
