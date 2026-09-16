@@ -47,6 +47,67 @@ happening in CI.
 > Read-only provider endpoints (`GET /v1/models`, etc.) are free but still
 > belong behind a mock in tests.
 
+## Data layer
+
+Each project is a folder the user owns, with its own SQLite file inside it:
+
+```
+Infinite Hotel/
+  project.json        id, name, createdAt — the source of truth for identity
+  opendirect.db       SQLite (WAL), migrated every time the project is opened
+  assets/<yyyy>/<mm>/ imported media, bucketed by month
+  generations/<id>/   model outputs, one folder per generation
+  thumbnails/         derived previews, safe to delete
+  tmp/                in-flight downloads, cleared on open
+```
+
+`apps/desktop/src/main/project.ts` owns that layout (`createProject`,
+`openProject`, `assetRelPath`, `resolveAssetPath`, `createRecentProjects`) and
+is Electron-free, so it is tested in plain Node against temp directories.
+`project-service.ts` is the wiring: the `projectRoot` setting, the recent-projects
+list in `electron-store`, and `restoreLastProject()`, which the main process
+calls on `whenReady` — **that is the startup migration runner**, because the
+database lives in the project, not in `userData`.
+
+The schema is Drizzle (`src/main/db/schema.ts`): `projects`, `containers`,
+`assets`, `container_assets`, `generations`, `generation_inputs`, `jobs`.
+`client.ts` opens the file with `journal_mode = WAL`, `synchronous = NORMAL` and
+`foreign_keys = ON` (off by default in SQLite — without it the cascades are
+decoration). Deleting a project cascades through every table; deleting a
+generation only *detaches* its output assets and its branch children
+(`on delete set null`), so pruning a run never destroys media or lineage.
+
+Migrations are generated, never hand-written:
+
+```bash
+pnpm --filter @opendirect/desktop db:generate     # after editing schema.ts
+```
+
+That writes `apps/desktop/drizzle/NNNN_*.sql` plus `drizzle/meta/*`, all of
+which are committed. `tsup` copies `drizzle/` to `dist/drizzle` so it ships
+inside `app.asar`, and `resolveMigrationsFolder(__dirname)` finds it from either
+the bundle or the source tree. `migrate()` runs on every project open and is a
+no-op once the migrations are recorded in `__drizzle_migrations`.
+
+### Native modules
+
+`better-sqlite3` is a native module. It is built with **Node-API**
+(`node-addon-api`) and ships ABI-stable prebuilds, so the same binary loads in
+Node (tests) and in Electron — no rebuild step is needed today. The safety net
+is still wired up, because that stops being true the moment a non-Node-API
+native dependency is added:
+
+- `npmRebuild: true` in `electron-builder.yml` rebuilds native dependencies
+  against the target Electron ABI while packaging.
+- `pnpm --filter @opendirect/desktop rebuild:native` (electron-builder's
+  `install-app-deps`, which drives `@electron/rebuild`) does the same for the
+  local dev run after `pnpm install` or an Electron version bump.
+- `asarUnpack: "**/*.node"` keeps the compiled binary outside the asar, where
+  `dlopen` can reach it.
+
+Tests never use the Electron build: they open `:memory:` or a temp file with
+Node's copy of better-sqlite3.
+
 ## Model catalog cache
 
 `apps/desktop/src/main/catalog.ts` merges every **configured** provider's model

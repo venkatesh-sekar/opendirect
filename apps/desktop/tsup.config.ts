@@ -1,3 +1,6 @@
+import { cpSync } from "node:fs"
+import { join } from "node:path"
+
 import { defineConfig } from "tsup"
 
 // Main and preload share one config: tsup runs multiple configs in parallel, so
@@ -22,4 +25,12 @@ export default defineConfig({
   // `@opendirect/contract` is a workspace package published as TypeScript source,
   // so it must be bundled rather than required at runtime.
   noExternal: ["electron-serve", "electron-store", "@opendirect/contract"],
+  // The generated migration SQL is data, not code: tsup cannot bundle it, and
+  // `resolveMigrationsFolder()` looks for it one level above the main bundle.
+  // Copying it into `dist` puts it inside app.asar with everything else.
+  onSuccess: async () => {
+    cpSync(join(__dirname, "drizzle"), join(__dirname, "dist", "drizzle"), {
+      recursive: true,
+    })
+  },
 })

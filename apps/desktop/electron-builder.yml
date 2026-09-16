@@ -15,6 +15,12 @@ extraResources:
     to: web
 asarUnpack:
   - "**/*.node"
+# better-sqlite3 is a native module and must be compiled against Electron's ABI,
+# not Node's. This is the default, but it is spelled out because the app cannot
+# start without it: electron-builder runs the rebuild for the target Electron
+# version while packaging, and `pnpm --filter @opendirect/desktop rebuild:native`
+# (electron-builder install-app-deps) does the same for a local dev run.
+npmRebuild: true
 publish:
   provider: github
   owner: REPLACE_WITH_GITHUB_OWNER

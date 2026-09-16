@@ -24,6 +24,12 @@ import {
 export interface SettingsService {
   vault: KeyVault
   settings: SettingsApi
+  /**
+   * The raw `electron-store` adapter. Shared so other services (the recent
+   * projects list, for one) persist into the same file rather than opening a
+   * second `Store` over it.
+   */
+  store: SettingsStore
 }
 
 let service: SettingsService | undefined
@@ -43,6 +49,7 @@ export function getSettingsService(): SettingsService {
   }
 
   service = {
+    store: adapter,
     vault: createKeyVault({
       store: adapter,
       isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),

@@ -12,10 +12,12 @@
   "scripts": {
     "build": "pnpm build:main",
     "build:main": "tsup",
+    "db:generate": "drizzle-kit generate",
     "dist": "electron-builder --publish never",
     "dist:dir": "electron-builder --dir --publish never",
     "dev": "cross-env NODE_ENV=development electron dist/main/index.js",
     "lint": "eslint",
+    "rebuild:native": "electron-builder install-app-deps",
     "start": "electron dist/main/index.js",
     "typecheck": "tsc --noEmit"
   },
@@ -34,6 +36,7 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
     "@workspace/eslint-config": "*",
     "concurrently": "10.0.5",
     "cross-env": "10.1.0",

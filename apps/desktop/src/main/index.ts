@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 
 import { disposeIpcHandlers, registerIpcHandlers } from "./ipc"
+import { closeCurrentProject, restoreLastProject } from "./project-service"
 import { loadDevEnv } from "./settings-service"
 import { initAutoUpdater, stopAutoUpdater } from "./updater"
 import { createMainWindow, prepareProductionRenderer } from "./window"
@@ -19,6 +20,10 @@ prepareProductionRenderer()
 registerIpcHandlers()
 
 void app.whenReady().then(async () => {
+  // Re-opens the most recent project, which is what runs the SQLite migrations
+  // for it. Before the window, so the first renderer query sees a current schema.
+  await restoreLastProject()
+
   await createMainWindow()
   // App-scoped, not window-scoped: it must survive the macOS
   // close-all-windows-then-reactivate cycle.
@@ -32,6 +37,8 @@ void app.whenReady().then(async () => {
 app.on("before-quit", () => {
   stopAutoUpdater()
   disposeIpcHandlers()
+  // Checkpoints the WAL so the project folder is consistent if it is synced.
+  closeCurrentProject()
 })
 
 app.on("window-all-closed", () => {
