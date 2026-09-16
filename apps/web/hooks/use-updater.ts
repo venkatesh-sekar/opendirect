@@ -26,7 +26,24 @@ export function useUpdater(): UpdaterController {
 
   useEffect(() => {
     if (!isBridgeAvailable()) return
-    return subscribe("updater:status", setStatus)
+    // Subscribe first, then ask. The other order has a window in which a push
+    // lands between the read and the subscription and is lost — which for the
+    // `ready` status means a downloaded update with no way to install it.
+    const unsubscribe = subscribe("updater:status", setStatus)
+    let live = true
+    void invoke("updater:status:get")
+      .then((current) => {
+        // Anything the subscription has already delivered is newer than what
+        // main knew when this call was made.
+        if (live && current) setStatus((known) => known ?? current)
+      })
+      .catch(() => {
+        // An unpackaged build has no updater at all; silence is the answer.
+      })
+    return () => {
+      live = false
+      unsubscribe()
+    }
   }, [])
 
   const install = useCallback(async () => {

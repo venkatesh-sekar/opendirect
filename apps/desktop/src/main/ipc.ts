@@ -10,9 +10,11 @@ import { registerModelHandlers } from "./catalog"
 import { getModelCatalog, invalidateModelCatalog } from "./catalog-service"
 import { registerProjectHandlers } from "./handlers"
 import { createIpcRegistrar } from "./ipc-registry"
+import { rendererRefreshAccelerator } from "./menu"
+import { isDevelopment } from "./resolve"
 import { getSettingsService } from "./settings-service"
 import { describeKeys, verifyProviderKey } from "./settings"
-import { quitAndInstall } from "./updater"
+import { getLatestUpdaterStatus, quitAndInstall } from "./updater"
 
 const registrar = createIpcRegistrar(ipcMain)
 
@@ -24,10 +26,17 @@ export const handle = registrar.handle
  * created; later tasks add their channels here (and to the contract first).
  */
 export function registerIpcHandlers(): void {
-  handle("app:info", () => ({
-    version: app.getVersion(),
-    platform: process.platform,
-  }))
+  handle("app:info", () => {
+    const dev = isDevelopment()
+    return {
+      version: app.getVersion(),
+      platform: process.platform,
+      dev,
+      // One source of truth for the chord: `menu.ts` decides it, because
+      // `menu.ts` is what does or does not hand ⌘R to Chromium.
+      catalogRefreshAccelerator: rendererRefreshAccelerator(dev),
+    }
+  })
 
   handle("settings:get", () => getSettingsService().settings.get())
   handle("settings:set", (patch) => getSettingsService().settings.set(patch))
@@ -103,6 +112,13 @@ export function registerIpcHandlers(): void {
    * but the window may have been open across a failed download.
    */
   handle("updater:install", () => ({ restarting: quitAndInstall() }))
+
+  /**
+   * The current update status for a window that missed the push — the updater
+   * is app-scoped and checks on a six-hour timer, so a window opened between
+   * two checks has heard nothing at all.
+   */
+  handle("updater:status:get", () => getLatestUpdaterStatus())
 }
 
 /** Tears every handler down — used on quit and by hot-reload in development. */

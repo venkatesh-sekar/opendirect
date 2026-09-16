@@ -54,6 +54,21 @@ const CSP_META = /<meta\s+http-equiv="Content-Security-Policy"[^>]*>/i
 const HEAD_OPEN = /<head(?:\s[^>]*)?>/i
 
 /**
+ * Is the CSP meta tag already the first thing inside `<head>`?
+ *
+ * The question `hoistCspMeta` cannot answer on its own: it returns the input
+ * unchanged both when there was nothing to do and when there was nothing it
+ * could do. The build step needs to tell those apart, because the second one
+ * ships a policy that governs nothing.
+ */
+export function cspMetaIsFirst(html: string): boolean {
+  const head = HEAD_OPEN.exec(html)
+  const meta = CSP_META.exec(html)
+  if (!head || !meta) return false
+  return meta.index === head.index + head[0].length
+}
+
+/**
  * Moves the CSP meta tag to the first position inside `<head>`.
  *
  * Returns the input unchanged when there is no head or no CSP tag, and is

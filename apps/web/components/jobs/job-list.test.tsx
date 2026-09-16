@@ -63,6 +63,7 @@ function job(overrides: Partial<JobDto> = {}): JobDto {
     createdAt: 1_000,
     lastPolledAt: null,
     nextPollAt: null,
+    awaitingResume: false,
     progress: null,
     generation: generation(),
     ...overrides,

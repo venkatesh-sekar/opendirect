@@ -14,7 +14,7 @@
  *
  * Usage (reads `REPLICATE_API_TOKEN` from the repo-root `.env.local`):
  *
- *   pnpm --filter @opendirect/desktop exec tsx scripts/verify-providers.ts
+ *   pnpm --filter @opendirect/desktop verify:providers
  */
 import { existsSync } from "node:fs"
 

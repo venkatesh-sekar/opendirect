@@ -16,8 +16,31 @@
  * decides which application opens the file.
  */
 import type { ProjectDatabase } from "./db/client"
+import { CONTENT_TYPES, extensionOf } from "./media"
 import { realAssetPath, type ProjectRef } from "./project"
 import { getAsset } from "./repo/assets"
+
+/**
+ * Extensions "Open" will hand to the operating system.
+ *
+ * Containment is not enough on its own. `shell.openPath` asks the OS to *run
+ * the handler* for a file, and a project folder is not a trusted store: its
+ * contents arrive by import and by provider download, so a `.desktop`, a
+ * `.command`, a `.sh` or a `.exe` sitting in `generations/` would be one click
+ * from executing. The answer is the same one the rest of the app uses — a file
+ * OpenDirect recognises as media is a file it will open, and nothing else is —
+ * so the list is derived from the MIME table rather than written twice.
+ *
+ * `svg` is deliberately removed: it is markup a browser will execute, and it
+ * is the one entry in that table that is a document pretending to be a picture.
+ */
+const OPENABLE_EXTENSIONS = new Set(
+  Object.keys(CONTENT_TYPES).filter((ext) => ext !== "svg")
+)
+
+export function isOpenableExtension(path: string): boolean {
+  return OPENABLE_EXTENSIONS.has(extensionOf(path))
+}
 
 export interface OpenTargetContext {
   db: ProjectDatabase
@@ -36,15 +59,26 @@ function isMissing(error: unknown): boolean {
 /**
  * The real absolute path of an asset's file, or a message the renderer can
  * show as-is.
+ *
+ * `forOpening` adds the extension check: "Reveal in folder" only selects a file
+ * in the OS file browser and is safe for anything, but "Open" launches a
+ * handler and is restricted to the media types the app itself understands.
  */
 export async function resolveOpenPath(
   ctx: OpenTargetContext,
-  assetId: string
+  assetId: string,
+  options: { forOpening?: boolean } = {}
 ): Promise<string> {
   const asset = getAsset(ctx.db, assetId)
   if (!asset) throw new Error(`Asset ${assetId} was not found`)
   if (!asset.relPath) {
     throw new Error("That asset has no file to open.")
+  }
+
+  if (options.forOpening && !isOpenableExtension(asset.relPath)) {
+    throw new Error(
+      "OpenDirect only opens the image, video and audio files it recognises. Use “Reveal in folder” and open this one yourself."
+    )
   }
 
   try {

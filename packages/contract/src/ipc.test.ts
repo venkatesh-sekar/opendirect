@@ -18,8 +18,12 @@ describe("ipcContract", () => {
     const parsed = ipcContract["app:info"].output.parse({
       version: "1.0.0",
       platform: "linux",
+      dev: false,
+      catalogRefreshAccelerator: "mod+r",
     })
     expect(parsed.platform).toBe("linux")
+    // The chord main hands the renderer; see `apps/desktop/src/main/menu.ts`.
+    expect(parsed.catalogRefreshAccelerator).toBe("mod+r")
   })
 
   it("rejects malformed app:info output", () => {
@@ -49,7 +53,6 @@ describe("project channels", () => {
       "project:create",
       "project:open",
       "project:choose",
-      "project:close",
       "containers:tree",
       "containers:create",
       "containers:rename",

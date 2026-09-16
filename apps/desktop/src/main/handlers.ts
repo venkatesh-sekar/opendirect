@@ -26,7 +26,6 @@ import {
   createProjectInRoot,
   getCurrentProject,
   getRecentProjects,
-  closeCurrentProject,
   openProjectAt,
 } from "./project-service"
 import {
@@ -123,11 +122,6 @@ export function registerProjectHandlers(
     return { path: result.filePaths[0] ?? null }
   })
 
-  handle("project:close", () => {
-    closeCurrentProject()
-    return { ok: true as const }
-  })
-
   handle("containers:tree", () => {
     const { db, project } = requireProject()
     return listTree(db, project.id)
@@ -215,7 +209,9 @@ export function registerProjectHandlers(
   handle("shell:openAsset", async ({ assetId }) => {
     const { db, project } = requireProject()
     const failure = await shell.openPath(
-      await resolveOpenPath({ db, project }, assetId)
+      // `forOpening`: this hands the file to the OS's handler, so it is limited
+      // to the media types the app recognises. Reveal, below, is not.
+      await resolveOpenPath({ db, project }, assetId, { forOpening: true })
     )
     // `openPath` reports "no application could open this" as a string rather
     // than by rejecting, and silence would look like success.
@@ -294,5 +290,14 @@ export function registerProjectHandlers(
   handle("jobs:retry", ({ id }) => {
     requireProject()
     return getJobRunner().retry(id)
+  })
+
+  /**
+   * ⛔ Paid: submits a run that the restart deliberately left queued. Only ever
+   * from an explicit Resume click — see `recover()` in `jobs/runner.ts`.
+   */
+  handle("jobs:resume", ({ id }) => {
+    requireProject()
+    return getJobRunner().resume(id)
   })
 }

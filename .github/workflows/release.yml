@@ -28,7 +28,7 @@ jobs:
       - uses: pnpm/action-setup@v4
         with: { version: 10 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
+        with: { node-version: 22.18, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       # Builds the Next.js static export that electron-builder copies into
       # the app's resources, then the Electron main/preload bundles.

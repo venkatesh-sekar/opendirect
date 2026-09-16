@@ -134,6 +134,22 @@ export function useCancelJob(): UseMutationResult<JobDto, Error, string> {
   })
 }
 
+/**
+ * ⛔ Starts a run the app found queued at startup and refused to start by
+ * itself — a paid call, from an explicit Resume click only.
+ */
+export function useResumeJob(): UseMutationResult<JobDto, Error, string> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => invoke("jobs:resume", { id }),
+    onSuccess: (job) => {
+      client.setQueryData<JobDto[]>(queryKeys.jobs.list, (current) =>
+        applyUpdate(current, job)
+      )
+    },
+  })
+}
+
 /** ⛔ Re-submits the run — a paid call, from an explicit click only. */
 export function useRetryJob(): UseMutationResult<JobDto, Error, string> {
   const client = useQueryClient()

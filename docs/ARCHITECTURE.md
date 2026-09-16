@@ -179,16 +179,24 @@ creation bar → generations:submit → queued row in SQLite → p-queue
   provider response and cost are recorded **before** the download, so a failed
   download can be retried for free.
 - Every transition is written to SQLite before it is pushed as `jobs:update`.
+- **A restart never submits.** `recover()` re-attaches to provider jobs (polling
+  is free) and fails the ones interrupted mid-submit, but a run still sitting in
+  `queued` is left queued and flagged `awaitingResume` — the job list shows it
+  with a **Resume** button. Launching the app is not consent to spend money.
+- **One instance.** `app.requestSingleInstanceLock()`; a second launch focuses
+  the existing window and quits. Two copies would run two job runners over one
+  `jobs` table, which is another way to pay twice.
 
 ## Security boundaries
 
 | Boundary                | How it is held                                                                        |
 | ----------------------- | -------------------------------------------------------------------------------------- |
-| Renderer → OS           | `contextIsolation`, no `nodeIntegration`, one preload bridge, every channel in the contract |
+| Renderer → OS           | `contextIsolation`, `sandbox: true`, no `nodeIntegration`, one preload bridge, every channel in the contract. The preload requires nothing but `electron` — `zod` is bundled into it, because a sandboxed preload cannot `require` a package |
 | Renderer → local files  | `asset://` only: the path must name `assets/`/`generations/`/`thumbnails/`, survive `resolveAssetPath()`, and still be inside the project after `realpath` — which is what stops a planted symlink |
-| Renderer → network      | A CSP with `default-src 'self'`; `asset:` appears only in `img-src`/`media-src`, so it can never become a script or connect source |
+| Renderer → network      | A CSP with `default-src 'self'` in **both** builds — production's, and a development one that differs only by `'unsafe-eval'` and the HMR socket; `asset:` appears only in `img-src`/`media-src`, so it can never become a script or connect source |
 | API keys                | `safeStorage` (OS keychain) in main; `settings:keys:summary` returns `{ present, last4 }` and the key itself never crosses IPC |
-| Child processes         | `shell: false`, argv of flags only, prompt on stdin, a deadline and an abort signal, and a **scrubbed environment**: anything name-shaped like a credential (`*_TOKEN`, `*_KEY`, `*_SECRET`, …) is stripped, each CLI keeps only its own login, and `claude` runs with an explicit allow/deny tool list |
+| Child processes         | `shell: false`, argv of flags only, prompt on stdin, a deadline and an abort signal, and an **allowlisted environment**: a variable has to be named in `ENV_ALLOWLIST` (PATH, HOME, locale, XDG, the Windows equivalents) to survive, plus each CLI's own login and never the other's. A denylist of credential-shaped names was the earlier design and was wrong — it has to anticipate every spelling, and `GH_PAT` is not one of them. `claude` also runs with an explicit deny list covering Bash/Edit/Write and the search and indirection tools |
+| Opening a file          | "Open" hands a file to the OS's handler, so it is limited to the media extensions the app recognises (and never `.svg`) — a project folder is filled by imports and provider downloads, not by us. "Reveal in folder" executes nothing and is unrestricted |
 | Committed secrets       | CI greps every tracked file for Replicate (`r8_…`) and OpenRouter (`sk-or-v1-…`) key shapes and fails the build on a hit |
 
 ## The AI helpers

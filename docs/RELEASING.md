@@ -6,10 +6,17 @@ OpenDirect ships as a signed Electron desktop app. Versions come from
 [electron-updater](https://www.electron.build/auto-update) polling a GitHub
 Release.
 
-> **Blocker before the first public release:** `apps/desktop/electron-builder.yml`
-> still has `publish.owner: REPLACE_WITH_GITHUB_OWNER`. Replace it with the real
-> GitHub org/user (and `homepage` in `apps/desktop/package.json`) — electron-builder
-> bakes it into `app-update.yml`, so an unpublished app can never find its feed.
+## Where the release is published
+
+`publish.owner` / `publish.repo` in `apps/desktop/electron-builder.yml` name the
+GitHub repository the installers go to **and** the feed electron-updater polls —
+electron-builder bakes them into `app-update.yml` at package time, so a wrong
+value ships an app that can never find its own updates, silently.
+
+They are currently `venkatesh-sekar/opendirect`. To move the project somewhere
+else, change both there and keep `homepage` in `apps/desktop/package.json` in
+step with them; `packaging.test.ts` asserts the two agree and that neither is a
+placeholder, so a half-done rename fails CI rather than a release.
 
 ## 1. Record a changeset on every user-facing PR
 

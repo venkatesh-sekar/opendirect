@@ -32,7 +32,12 @@ function fakeIpcMain() {
   }
 }
 
-const appInfo = { version: "1.2.3", platform: "linux" }
+const appInfo = {
+  version: "1.2.3",
+  platform: "linux",
+  dev: false,
+  catalogRefreshAccelerator: "mod+r",
+}
 
 describe("createIpcRegistrar", () => {
   it("registers a contract channel and returns a success envelope", async () => {

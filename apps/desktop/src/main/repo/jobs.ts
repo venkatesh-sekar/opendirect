@@ -31,7 +31,8 @@ export function isActiveState(state: string): boolean {
 export function toJobDto(
   job: Job,
   generation: Generation,
-  progress: number | null = null
+  progress: number | null = null,
+  awaitingResume = false
 ): JobDto {
   return {
     id: job.id,
@@ -43,6 +44,9 @@ export function toJobDto(
     lastPolledAt: job.lastPolledAt,
     nextPollAt: job.nextPollAt,
     progress,
+    // Not a column: the runner knows which queued rows it declined to start
+    // after a restart, and only it can say. See `recover()`.
+    awaitingResume,
     generation: toGenerationDto(generation),
   }
 }

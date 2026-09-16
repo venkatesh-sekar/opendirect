@@ -41,6 +41,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import type { CreationController } from "@/hooks/use-creation"
+import { isModalOpen } from "@/lib/modal"
 import { CommonFieldControl } from "@/lib/schema-form/widgets"
 
 import { HelperMenu } from "@/components/ai/helper-menu"
@@ -121,10 +122,17 @@ export function CreationBar({ creation, containerName }: CreationBarProps) {
    * prompt. It goes through exactly the same guard as the button — a run the
    * button refuses to start is a run the chord refuses to start — because this
    * is the one shortcut in the app that spends money.
+   *
+   * And it stands down whenever a modal is open. The reference picker, the
+   * advanced parameters sheet, the AI result dialog and the job list all put
+   * something else under the user's hands; a chord that reached past them and
+   * paid for a run would be the worst kind of surprise. The check is made *at
+   * keypress*, not at render, so it cannot be one state update out of date.
    */
   useHotkeys(
     "mod+enter",
     (event) => {
+      if (isModalOpen()) return
       event.preventDefault()
       if (canSubmit) creation.submit()
     },

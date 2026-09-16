@@ -27,7 +27,7 @@ asarUnpack:
 npmRebuild: true
 publish:
   provider: github
-  owner: REPLACE_WITH_GITHUB_OWNER
+  owner: venkatesh-sekar
   repo: opendirect
 mac:
   category: public.app-category.graphics-design

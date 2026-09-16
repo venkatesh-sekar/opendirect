@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { assets } from "./db/schema"
 import { createProject, openProject, type OpenProject } from "./project"
-import { resolveOpenPath } from "./shell-open"
+import { isOpenableExtension, resolveOpenPath } from "./shell-open"
 
 let root: string
 let opened: OpenProject
@@ -121,6 +121,44 @@ describe("resolveOpenPath", () => {
 
   it("refuses an asset that does not exist", async () => {
     await expect(resolveOpenPath(ctx(), "nope")).rejects.toThrow(/not found/i)
+  })
+
+  /**
+   * ⛔ Containment says the file is inside the project. It does not say the
+   * file is safe to hand to the operating system's handler — a project folder
+   * is filled by imports and provider downloads, not by us.
+   */
+  it("refuses to open anything that is not media the app recognises", async () => {
+    for (const relPath of [
+      "assets/payload.sh",
+      "assets/payload.exe",
+      "assets/payload.desktop",
+      "assets/payload.command",
+      "assets/payload",
+      // Markup a browser will execute, dressed as a picture.
+      "assets/payload.svg",
+    ]) {
+      const id = insertAsset(relPath)
+      await expect(
+        resolveOpenPath(ctx(), id, { forOpening: true })
+      ).rejects.toThrow(/recognis|reveal/i)
+    }
+  })
+
+  it("still reveals anything, because revealing executes nothing", async () => {
+    const id = insertAsset("assets/payload.sh")
+    // No `forOpening`: this is the path "Reveal in folder" takes, and it only
+    // ever selects the file in the OS file browser.
+    await expect(resolveOpenPath(ctx(), id)).rejects.toThrow(/no longer/i)
+  })
+
+  it("opens the media types the board itself displays", () => {
+    for (const name of ["a.png", "b.JPG", "c.mp4", "d.mov", "e.wav"]) {
+      expect(isOpenableExtension(name)).toBe(true)
+    }
+    for (const name of ["a.sh", "b.exe", "c.svg", "d"]) {
+      expect(isOpenableExtension(name)).toBe(false)
+    }
   })
 })
 

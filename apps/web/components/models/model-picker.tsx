@@ -26,6 +26,7 @@ import {
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
 
+import { useCatalogRefreshAccelerator } from "@/hooks/use-app-info"
 import {
   useModels,
   useRecommendedModels,
@@ -112,13 +113,18 @@ export function ModelPicker({
 
   /**
    * ⌘K opens the picker from anywhere, including the prompt field — the
-   * palette chord every desktop app has trained people to reach for. ⌘R
+   * palette chord every desktop app has trained people to reach for.
+   *
+   * The refresh chord is **asked for**, not assumed: in development Chromium's
+   * menu still owns ⌘R for Reload, so main hands back ⌘⇧R there and ⌘R in
+   * production, where the app menu no longer binds reload. Either way it
    * re-fetches the catalog, which is a free listing call, never a generation.
    *
    * Both are declared through `react-hotkeys-hook` rather than a `keydown`
    * listener so that the "is the user typing?" question has one answer in one
    * place instead of one per component.
    */
+  const refreshAccelerator = useCatalogRefreshAccelerator()
   useHotkeys(
     "mod+k",
     (event) => {
@@ -134,7 +140,7 @@ export function ModelPicker({
   )
 
   useHotkeys(
-    "mod+r",
+    refreshAccelerator,
     (event) => {
       event.preventDefault()
       if (!refresh.isPending) refresh.mutate(kinds)
@@ -144,7 +150,7 @@ export function ModelPicker({
       enableOnFormTags: true,
       enableOnContentEditable: true,
     },
-    [refresh.isPending, kinds]
+    [refresh.isPending, kinds, refreshAccelerator]
   )
 
   const all = useMemo(() => models.data?.models ?? [], [models.data])

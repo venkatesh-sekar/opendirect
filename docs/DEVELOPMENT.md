@@ -2,7 +2,9 @@
 
 ## Prerequisites
 
-- Node.js >= 20 (CI uses 22)
+- Node.js >= 22.18 — `apps/web/scripts/hoist-csp.ts` is run by plain `node`
+  and relies on its built-in type stripping, which landed in 22.18. CI pins
+  22.18 for the same reason.
 - pnpm 10 (`corepack enable`)
 
 ## Setup
@@ -251,6 +253,17 @@ front of `<head>` in every exported page. Note that `frame-ancestors` is ignored
 in the meta form — framing is prevented by the shell never loading the renderer
 in a frame, and `frame-src 'none'` stops the renderer framing anything else.
 
+### Verified headlessly
+
+The main process now boots under `xvfb-run` (create a project, no window
+interaction) and a probe window loads the real preload with `sandbox: true` and
+finds `window.opendirect` with `invoke`, `on` and `pathForFile` on it. That is
+what makes `sandbox: true` safe to ship: a sandboxed preload may only `require`
+`electron`, which is why `zod` is bundled into the preload by `tsup`. If a
+future dependency reintroduces a bare `require` there, the bridge will be
+missing at startup and the window will look alive but do nothing — check the
+preload bundle's `require(...)` calls before blaming the renderer.
+
 > **TODO (first GUI run):** no display is available in the current environment,
 > so this has only been verified by reading electron-serve's source and checking
 > the tag order in the built `apps/web/out/*.html`. On the first real GUI run, open DevTools
@@ -387,6 +400,11 @@ keystroke.
   polling it; a run interrupted mid-submit with no provider job id is marked
   failed with a message telling the user to check the provider's dashboard
   before retrying, because re-submitting could pay for the same run twice.
+  ⛔ **Recovery never submits.** A run still sitting in `queued` is left queued
+  and flagged `awaitingResume`; the job list shows it with **Resume** and
+  **Discard**, and `jobs:resume` is the only thing that starts it. Starting the
+  app is not the same as agreeing to pay for the run you were reconsidering
+  when it crashed. The flag is in memory and re-derived on every start.
 
 The job list is a Sheet on the status strip (`components/jobs/`): model, state,
 elapsed time, progress, estimated-vs-actual cost, the provider's error inline,
@@ -430,7 +448,9 @@ step in the project that spends money, and nothing automated may perform it.
 ## CI
 
 `.github/workflows/ci.yml` runs `typecheck`, `lint`, `test` and `build` on
-pushes to `main` and on every pull request.
+pushes to `main` and on every pull request, then greps every tracked file for
+committed provider keys and asserts the msw harness still fails on an unmocked
+request.
 `.github/workflows/release.yml` runs on `v*` tags and publishes signed
 installers plus auto-update metadata to a GitHub Release.
 

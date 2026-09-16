@@ -150,7 +150,19 @@ export interface JobRunner {
   cancel(jobId: string): Promise<JobDto>
   /** ⛔ Re-submits a finished-unhappily run. Paid; user-initiated only. */
   retry(jobId: string): Promise<JobDto>
-  /** Rebuilds the queue from SQLite after a restart. */
+  /**
+   * ⛔ Starts a queued run that `recover()` deliberately left alone. Paid;
+   * user-initiated only.
+   */
+  resume(jobId: string): Promise<JobDto>
+  /**
+   * Rebuilds the queue from SQLite after a restart.
+   *
+   * ⛔ It re-attaches to provider jobs (polling is free) and it fails the ones
+   * interrupted mid-submit, but it **never submits**. A run still sitting in
+   * `queued` is left queued and flagged `awaitingResume`, because launching the
+   * app is not the same thing as agreeing to spend money.
+   */
   recover(): Promise<JobDto[]>
   /** Resolves when nothing is queued or running. */
   idle(): Promise<void>
@@ -181,6 +193,14 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
   const cancelled = new Set<string>()
   /** Last reported progress per job; not persisted — see `jobSchema`. */
   const progress = new Map<string, number | null>()
+  /**
+   * Queued jobs `recover()` found at startup and declined to start.
+   *
+   * In memory on purpose: it is a fact about *this* session ("we did not start
+   * these"), and the next start re-derives it from the same rows. A job leaves
+   * the set the moment something explicitly schedules it.
+   */
+  const awaitingResume = new Set<string>()
   let disposed = false
 
   function publish(jobId: string): JobDto {
@@ -188,7 +208,12 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     const generation = getGeneration(db, job.generationId)
     if (!generation)
       throw new Error(`Generation ${job.generationId} was not found`)
-    const dto = toJobDto(job, generation, progress.get(jobId) ?? null)
+    const dto = toJobDto(
+      job,
+      generation,
+      progress.get(jobId) ?? null,
+      awaitingResume.has(jobId)
+    )
     try {
       deps.onUpdate?.(dto)
     } catch (error) {
@@ -587,10 +612,13 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       return listJobs(db, { limit }).map((job) => ({
         ...job,
         progress: progress.get(job.id) ?? null,
+        awaitingResume: awaitingResume.has(job.id),
       }))
     },
 
     async cancel(jobId) {
+      // A run the user cancels is no longer one they might resume.
+      awaitingResume.delete(jobId)
       // Synchronous, before any await: a job may be between two awaits right
       // now, and this is what it checks.
       cancelled.add(jobId)
@@ -657,7 +685,27 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       updateJob(db, jobId, { state: "queued", attempts: 0, error: null })
       cancelled.delete(jobId)
       progress.delete(jobId)
+      // Retry is itself the explicit consent Resume was waiting for.
+      awaitingResume.delete(jobId)
 
+      const dto = publish(jobId)
+      schedule(jobId)
+      return dto
+    },
+
+    async resume(jobId) {
+      const job = requireJob(db, jobId)
+      if (!awaitingResume.has(jobId)) {
+        // Either it is already going, or it finished, or it was never one of
+        // the runs recovery held back. Resuming any of those would be a second
+        // paid submission dressed up as a restart.
+        throw new Error("That run is not waiting to be resumed.")
+      }
+      if (job.state !== "queued") {
+        throw new Error("That run is no longer queued.")
+      }
+
+      awaitingResume.delete(jobId)
       const dto = publish(jobId)
       schedule(jobId)
       return dto
@@ -678,9 +726,12 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
         }
 
         if (job.state === "queued" && generation.status === "queued") {
-          // Never submitted, so nothing has been spent: start it properly.
+          // ⛔ Never submitted, so nothing has been spent — and nothing will be
+          // spent here either. Starting it would turn "I opened the app" into
+          // "I paid for the run I was in the middle of reconsidering when it
+          // crashed". It stays queued, flagged, and waits for Resume.
+          awaitingResume.add(job.id)
           recovered.push(publish(job.id))
-          schedule(job.id)
           continue
         }
 

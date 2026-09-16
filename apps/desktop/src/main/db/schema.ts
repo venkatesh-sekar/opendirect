@@ -154,7 +154,12 @@ export const generations = sqliteTable(
     requestJson: text("request_json"),
     /** The raw provider response. */
     responseJson: text("response_json"),
-    /** queued | submitted | running | succeeded | failed | canceled */
+    /**
+     * `queued | submitted | running | succeeded | failed | canceled` —
+     * `generationStatusSchema` in `@opendirect/contract` is the definition.
+     * Deliberately coarser than a job's `state`: a generation does not have a
+     * "downloading" phase, its job does.
+     */
     status: text("status").notNull(),
     error: text("error"),
     providerJobId: text("provider_job_id"),
@@ -219,7 +224,12 @@ export const jobs = sqliteTable(
     generationId: text("generation_id")
       .notNull()
       .references(() => generations.id, { onDelete: "cascade" }),
-    /** pending | running | downloading | done | failed | canceled */
+    /**
+     * `queued | submitting | running | downloading | succeeded | failed |
+     * canceled` — the enum is `jobStateSchema` in `@opendirect/contract`, and
+     * that is the one that counts. Kept as plain text so a new state does not
+     * need a migration; `toJobDto` is what narrows it.
+     */
     state: text("state").notNull(),
     attempts: integer("attempts").notNull().default(0),
     lastPolledAt: integer("last_polled_at"),

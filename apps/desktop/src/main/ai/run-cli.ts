@@ -137,35 +137,77 @@ export interface AiRunOutput {
 }
 
 /**
- * Environment variables a child CLI must never see.
+ * The environment a child CLI is given — an allowlist, not a denylist.
  *
- * In development `loadDevEnv()` puts `REPLICATE_API_TOKEN` and
- * `OPENROUTER_API_KEY` into `process.env`, and an inherited environment would
- * hand both to a process that is only being asked to rewrite a sentence. The
- * rule is therefore a denylist by *shape* — anything that looks like a
- * credential goes — with one exception per tool: the CLI's own authentication,
- * which the user may well be relying on to run it at all.
+ * This started as "strip anything credential-shaped", which is the wrong shape
+ * of rule: it has to anticipate every way a secret can be named, and the day it
+ * misses one (`GH_PAT`, `DOCKER_AUTH`, `pgpassword`) the secret is handed to a
+ * child process. So the rule is inverted. A prompt-rewriting CLI needs a shell
+ * environment and its own login, and nothing else exists as far as it is
+ * concerned — a variable has to be *named here* to survive.
  *
- * `claude` keeps `ANTHROPIC_*` / `CLAUDE_*`, `codex` keeps `OPENAI_*` /
- * `CODEX_*`, and neither gets the other's. Everything non-secret (PATH, HOME,
- * locale, TMPDIR…) is passed through untouched, because a CLI with no PATH is
- * a CLI that does not start.
+ * The list is what a process needs to start and to behave: where to find
+ * binaries, who it is, where to write temporary files, and how to format text.
+ * Matching is case-insensitive because Windows spells `PATH` as `Path`.
  *
- * The suffixes are deliberately the *bare* ones — `_TOKEN`, `_KEY`, `_SECRET`
- * — not just the `_API_`-prefixed spellings, because plenty of real
- * credentials are named without an `API` in the middle (`GITHUB_TOKEN`,
- * `HF_TOKEN`, `NPM_TOKEN`, `AWS_SECRET_ACCESS_KEY`). Matching the narrower
- * forms only would have handed those straight to a child process. The cost of
- * the wider net is the odd innocent variable ending in `_KEY` being dropped;
- * that is a variable a prompt-rewriting CLI has no use for anyway.
+ * On top of that each tool keeps its own credentials — `ANTHROPIC_*` /
+ * `CLAUDE_*` for claude, `OPENAI_*` / `CODEX_*` for codex — because the user is
+ * very likely relying on them to run the CLI at all. Neither ever gets the
+ * other's, and no provider key (`REPLICATE_API_TOKEN`, `OPENROUTER_API_KEY`,
+ * which `loadDevEnv()` puts in `process.env` in development) reaches either.
  */
-const SECRET_SHAPED =
-  /(_TOKEN|_KEY|_SECRET|_PASSWORD|_PASSPHRASE|_CREDENTIALS)$/
+const ENV_ALLOWLIST = new Set(
+  [
+    // POSIX: where to find things, who we are, where to put temp files.
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "PWD",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "TERM",
+    "TERMINFO",
+    "COLORTERM",
+    "TZ",
+    "LANG",
+    "LANGUAGE",
+    // Windows: the equivalents, without which a spawned process will not run.
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMW6432",
+    "USERPROFILE",
+    "USERNAME",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "SYSTEMDRIVE",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "OS",
+  ].map((name) => name.toUpperCase())
+)
+
+/** Families that are allowed wholesale: locale, and the XDG base directories. */
+const ENV_ALLOWED_PREFIXES = [/^LC_/i, /^XDG_/i]
 
 /** Prefixes each tool is allowed to keep, because they are its own login. */
 const TOOL_OWN_ENV: Record<AiToolId, RegExp> = {
-  claude: /^(ANTHROPIC_|CLAUDE_)/,
-  codex: /^(OPENAI_|CODEX_)/,
+  claude: /^(ANTHROPIC_|CLAUDE_)/i,
+  codex: /^(OPENAI_|CODEX_)/i,
+}
+
+function isGenerallyAllowed(name: string): boolean {
+  if (ENV_ALLOWLIST.has(name.toUpperCase())) return true
+  return ENV_ALLOWED_PREFIXES.some((pattern) => pattern.test(name))
 }
 
 export function sanitizeEnv(
@@ -173,20 +215,16 @@ export function sanitizeEnv(
   source: NodeJS.ProcessEnv = process.env
 ): NodeJS.ProcessEnv {
   const own = TOOL_OWN_ENV[tool]
-  const other = Object.entries(TOOL_OWN_ENV)
+  const others = Object.entries(TOOL_OWN_ENV)
     .filter(([id]) => id !== tool)
     .map(([, pattern]) => pattern)
 
   const env: NodeJS.ProcessEnv = {}
   for (const [name, value] of Object.entries(source)) {
     if (value === undefined) continue
-    if (other.some((pattern) => pattern.test(name))) continue
-    if (own.test(name)) {
-      env[name] = value
-      continue
-    }
-    if (SECRET_SHAPED.test(name)) continue
-    env[name] = value
+    // The other tool's login is refused even if it somehow matched below.
+    if (others.some((pattern) => pattern.test(name))) continue
+    if (own.test(name) || isGenerallyAllowed(name)) env[name] = value
   }
   return env
 }
@@ -209,6 +247,15 @@ const CLAUDE_DENIED_TOOLS = [
   "WebSearch",
   "KillShell",
   "Read",
+  // Searching the user's disk is not reading one file they pointed at, and a
+  // helper that can enumerate a home directory is a helper that can describe
+  // one back to whoever reads the answer.
+  "Glob",
+  "Grep",
+  // Both are indirection: a slash command or a skill is somebody else's
+  // instructions, and the tools they reach for are not on this list.
+  "SlashCommand",
+  "Skill",
 ]
 
 export interface ToolPolicy {
@@ -222,6 +269,12 @@ export interface ToolPolicy {
  * escalate (the others are `acceptEdits`, `auto`, `bypassPermissions`,
  * `manual`, `dontAsk`), and the allow/deny lists pin the toolset on top of it.
  * All three flags verified against Claude Code 2.1.273 (`claude --help`).
+ *
+ * A helper that needs no tools at all gets **no `--allowedTools` flag**, not an
+ * empty one: `--allowedTools` is declared variadic (`<tools...>`), so passing
+ * `""` either registers a tool named "" or swallows the flag that follows it.
+ * The deny list is what does the work in that case, and it is exhaustive by
+ * name rather than by omission.
  */
 export function claudeArgs(policy: ToolPolicy): string[] {
   const args = ["-p", "--output-format", "json", "--permission-mode", "plan"]

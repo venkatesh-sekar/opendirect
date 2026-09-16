@@ -25,11 +25,18 @@ export default defineConfig({
   // `electron-store` v11 and `p-queue` v9 are likewise ESM-only.
   // `@opendirect/contract` is a workspace package published as TypeScript source,
   // so it must be bundled rather than required at runtime.
+  //
+  // `zod` is bundled for a different reason: it is the contract's dependency and
+  // the preload validates channel names with it, but the preload runs with
+  // `sandbox: true`, where `require` resolves only `electron` and a handful of
+  // builtins. Left external, `require("zod")` would throw before the bridge was
+  // ever exposed and the window would come up with no IPC at all.
   noExternal: [
     "electron-serve",
     "electron-store",
     "p-queue",
     "@opendirect/contract",
+    "zod",
   ],
   // The generated migration SQL is data, not code: tsup cannot bundle it, and
   // `resolveMigrationsFolder()` looks for it one level above the main bundle.

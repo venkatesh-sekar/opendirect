@@ -49,6 +49,38 @@ export const PRODUCTION_CSP = [
   "frame-ancestors 'none'",
 ].join("; ")
 
+/**
+ * The development policy, applied as a header to the Next.js dev server.
+ *
+ * Development used to have no CSP at all, which meant the one build nobody
+ * tests the policy against was also the one with no policy. This is the same
+ * shape as production with exactly two holes cut in it, both of them Next's:
+ *
+ * - `'unsafe-eval'`, because the dev compiler and the error overlay evaluate
+ *   code at runtime. Turbopack cannot hot-reload without it.
+ * - `ws:` / `http://localhost:*` in `connect-src`, for the HMR socket and the
+ *   dev server's own fetches. `'self'` is not reliably taken to cover a
+ *   `ws:` URL, so it is named.
+ *
+ * Nothing else is loosened: no remote script origins, no framing, no `<base>`.
+ * If a change breaks under this and passes under production's policy, the
+ * difference is one of those two holes and is worth knowing about.
+ */
+export const DEVELOPMENT_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: asset:",
+  "font-src 'self' data:",
+  "media-src 'self' data: blob: asset:",
+  "connect-src 'self' ws://localhost:* http://localhost:*",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-src 'none'",
+  "frame-ancestors 'none'",
+].join("; ")
+
 function parse(url: string): URL | undefined {
   try {
     return new URL(url)

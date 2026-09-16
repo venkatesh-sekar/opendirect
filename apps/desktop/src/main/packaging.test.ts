@@ -32,6 +32,25 @@ describe("electron-builder.yml", () => {
     expect(config).toContain('- "**/node_modules/@img/**"')
   })
 
+  it("names a real GitHub owner, because it is baked into app-update.yml", () => {
+    // electron-builder writes `publish` into `app-update.yml` at package time.
+    // A placeholder there ships an app that can never find its update feed —
+    // and nothing else in the build fails, so this is the only thing that
+    // catches it before a release is already in users' hands.
+    expect(config).not.toContain("REPLACE_WITH")
+    expect(config).toMatch(/^\s*owner: [A-Za-z0-9][A-Za-z0-9-]*$/m)
+  })
+
+  it("keeps the desktop manifest's homepage pointing at the same repository", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(__dirname, "..", "..", "package.json"), "utf8")
+    ) as { homepage?: string }
+    const owner = /^\s*owner: (\S+)$/m.exec(config)?.[1]
+    const repo = /^\s*repo: (\S+)$/m.exec(config)?.[1]
+    expect(owner).toBeTruthy()
+    expect(manifest.homepage).toBe(`https://github.com/${owner}/${repo}`)
+  })
+
   it("rebuilds native modules against Electron's ABI", () => {
     // better-sqlite3 ships Node-API prebuilds, so this is a safety net rather
     // than a requirement today — but a native dependency that is *not*

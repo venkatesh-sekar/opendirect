@@ -87,7 +87,20 @@ describe("argument building", () => {
         claudeArgs({ allowedTools: [] }).indexOf("--disallowedTools") + 1
       ] ?? ""
 
-    for (const tool of ["Bash", "Edit", "Write", "NotebookEdit", "Read"]) {
+    for (const tool of [
+      "Bash",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "Read",
+      // Searching the disk is not reading the one file the user pointed at.
+      "Glob",
+      "Grep",
+      // Indirection: somebody else's instructions, reaching for tools that
+      // are not on this list.
+      "SlashCommand",
+      "Skill",
+    ]) {
       expect(denied.split(",")).toContain(tool)
     }
     expect(claudeArgs({ allowedTools: [] })).not.toContain("--allowedTools")
@@ -102,6 +115,9 @@ describe("argument building", () => {
     expect(denied.split(",")).not.toContain("Read")
     expect(denied.split(",")).toContain("Bash")
     expect(denied.split(",")).toContain("Write")
+    // Reading a named file does not imply hunting for others.
+    expect(denied.split(",")).toContain("Glob")
+    expect(denied.split(",")).toContain("Grep")
   })
 
   it("runs codex non-interactively, reading the prompt from stdin", () => {
@@ -154,7 +170,7 @@ describe("sanitizeEnv", () => {
     }
   })
 
-  it("strips bare *_TOKEN / *_KEY names, not just the _API_ spellings", () => {
+  it("drops every credential shape, however it is spelled", () => {
     const env = sanitizeEnv("claude", {
       ...dirty,
       GITHUB_TOKEN: "ghp_nope",
@@ -164,18 +180,64 @@ describe("sanitizeEnv", () => {
       SENTRY_AUTH_TOKEN: "sentry_nope",
       GPG_PASSPHRASE: "nope",
       GOOGLE_APPLICATION_CREDENTIALS: "/tmp/nope.json",
+      // The whole reason this is an allowlist: none of these ends in a suffix
+      // any denylist would have thought to write down.
+      GH_PAT: "nope",
+      DOCKER_AUTH: "nope",
+      PGPASSWORD: "nope",
+      NETLIFY_AUTH: "nope",
     })
 
-    expect(env.GITHUB_TOKEN).toBeUndefined()
-    expect(env.HF_TOKEN).toBeUndefined()
-    expect(env.NPM_TOKEN).toBeUndefined()
-    expect(env.AWS_SECRET_ACCESS_KEY).toBeUndefined()
-    expect(env.SENTRY_AUTH_TOKEN).toBeUndefined()
-    expect(env.GPG_PASSPHRASE).toBeUndefined()
-    expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBeUndefined()
-    // The wider net must not cost the CLI the environment it runs in.
+    for (const name of [
+      "GITHUB_TOKEN",
+      "HF_TOKEN",
+      "NPM_TOKEN",
+      "AWS_SECRET_ACCESS_KEY",
+      "SENTRY_AUTH_TOKEN",
+      "GPG_PASSPHRASE",
+      "GOOGLE_APPLICATION_CREDENTIALS",
+      "GH_PAT",
+      "DOCKER_AUTH",
+      "PGPASSWORD",
+      "NETLIFY_AUTH",
+    ]) {
+      expect(env[name]).toBeUndefined()
+    }
+  })
+
+  it("keeps the shell environment a CLI needs, including on Windows", () => {
+    const env = sanitizeEnv("codex", {
+      PATH: "/usr/bin",
+      HOME: "/home/dev",
+      TMPDIR: "/tmp",
+      TERM: "xterm-256color",
+      LC_ALL: "en_GB.UTF-8",
+      XDG_CONFIG_HOME: "/home/dev/.config",
+      Path: "C:\\Windows",
+      SystemRoot: "C:\\Windows",
+      APPDATA: "C:\\Users\\dev\\AppData\\Roaming",
+    })
+
     expect(env.PATH).toBe("/usr/bin")
-    expect(env.HOME).toBe("/home/dev")
+    expect(env.TMPDIR).toBe("/tmp")
+    expect(env.TERM).toBe("xterm-256color")
+    expect(env.LC_ALL).toBe("en_GB.UTF-8")
+    expect(env.XDG_CONFIG_HOME).toBe("/home/dev/.config")
+    // Windows spells these in mixed case; a case-sensitive list would have
+    // handed the child a process with no PATH at all.
+    expect(env.Path).toBe("C:\\Windows")
+    expect(env.SystemRoot).toBe("C:\\Windows")
+    expect(env.APPDATA).toBe("C:\\Users\\dev\\AppData\\Roaming")
+  })
+
+  it("passes nothing it was not asked to pass", () => {
+    const env = sanitizeEnv("claude", {
+      PATH: "/usr/bin",
+      SOME_INTERNAL_THING: "why would a CLI need this",
+      AWS_PROFILE: "production",
+    })
+
+    expect(Object.keys(env)).toEqual(["PATH"])
   })
 
   it("leaves each CLI its own credentials and takes away the other's", () => {

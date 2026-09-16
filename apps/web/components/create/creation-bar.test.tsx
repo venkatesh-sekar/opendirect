@@ -388,10 +388,10 @@ describe("branching", () => {
     )
 
     const prompt = await screen.findByLabelText("Prompt")
-    await waitFor(() =>
-      expect(prompt).toHaveValue("a bellhop opens the lift")
-    )
-    expect(screen.getByText(/Branching from an earlier run/)).toBeInTheDocument()
+    await waitFor(() => expect(prompt).toHaveValue("a bellhop opens the lift"))
+    expect(
+      screen.getByText(/Branching from an earlier run/)
+    ).toBeInTheDocument()
     // ⛔ The whole point: a branch is a filled-in bar, not a run.
     expect(
       invoke.mock.calls.some(([channel]) => channel === "generations:submit")
@@ -439,6 +439,48 @@ describe("branching", () => {
         ],
       })
     })
+  })
+
+  /**
+   * `mod` is Meta on Apple hardware and Control everywhere else, and jsdom
+   * reports neither a Mac platform nor a Mac user agent — so under test the
+   * chord really is Ctrl+Enter. Sending Meta here would pass by doing nothing.
+   */
+  it("generates on ⌘Enter from inside the prompt", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const prompt = await screen.findByLabelText("Prompt")
+    await user.click(prompt)
+    await user.type(prompt, "a bellhop opens the lift")
+    await user.keyboard("{Control>}{Enter}{/Control}")
+
+    await waitFor(() => {
+      expect(
+        invoke.mock.calls.some(([channel]) => channel === "generations:submit")
+      ).toBe(true)
+    })
+  })
+
+  it("⛔ refuses to generate on ⌘Enter while a dialog is open", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const prompt = await screen.findByLabelText("Prompt")
+    await user.click(prompt)
+    await user.type(prompt, "a bellhop opens the lift")
+
+    // The Advanced sheet is a modal: Enter belongs to whatever is inside it,
+    // and a chord that reached past it would pay for a run the user is not
+    // looking at.
+    await user.click(await screen.findByRole("button", { name: /Advanced/ }))
+    await screen.findByRole("dialog")
+
+    await user.keyboard("{Control>}{Enter}{/Control}")
+
+    expect(
+      invoke.mock.calls.some(([channel]) => channel === "generations:submit")
+    ).toBe(false)
   })
 
   it("shows a failure the shell reports rather than doing nothing", async () => {

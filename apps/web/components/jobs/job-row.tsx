@@ -86,10 +86,18 @@ export interface JobRowProps {
   now: number
   onCancel: (job: JobDto) => void
   onRetry: (job: JobDto) => void
+  onResume: (job: JobDto) => void
   busy?: boolean
 }
 
-export function JobRow({ job, now, onCancel, onRetry, busy }: JobRowProps) {
+export function JobRow({
+  job,
+  now,
+  onCancel,
+  onRetry,
+  onResume,
+  busy,
+}: JobRowProps) {
   const active = ACTIVE.has(job.state)
   const { generation } = job
 
@@ -138,6 +146,14 @@ export function JobRow({ job, now, onCancel, onRetry, busy }: JobRowProps) {
         <p className="text-xs text-destructive">{generation.error}</p>
       ) : null}
 
+      {job.awaitingResume ? (
+        <p className="text-xs text-muted-foreground">
+          This run was still queued when OpenDirect last quit. Nothing has been
+          sent to the provider and nothing has been charged — it starts when you
+          say so.
+        </p>
+      ) : null}
+
       <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span className="flex items-center gap-2">
           <span>{formatElapsed(elapsedFor(job, now))}</span>
@@ -146,7 +162,21 @@ export function JobRow({ job, now, onCancel, onRetry, busy }: JobRowProps) {
           {job.attempts > 1 ? <span>· attempt {job.attempts}</span> : null}
         </span>
 
-        {active ? (
+        {job.awaitingResume ? (
+          <span className="flex items-center gap-1">
+            <Button size="sm" disabled={busy} onClick={() => onResume(job)}>
+              Resume
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => onCancel(job)}
+            >
+              Discard
+            </Button>
+          </span>
+        ) : active ? (
           <Button
             size="sm"
             variant="ghost"

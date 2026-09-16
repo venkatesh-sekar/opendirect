@@ -86,6 +86,19 @@ export function stopAutoUpdater(): void {
 }
 
 /**
+ * The last status pushed, for a window that was not there to hear it.
+ *
+ * Returning null is the honest answer for an unpackaged build and for the
+ * moments before the first check completes; the status bar shows nothing for
+ * both, which is what it should.
+ */
+export function getLatestUpdaterStatus(): ReturnType<
+  typeof toUpdaterStatus
+> | null {
+  return latestStatus ?? null
+}
+
+/**
  * Restarts into the downloaded update, if one is actually staged.
  *
  * `latestStatus` is tracked rather than asked of electron-updater because

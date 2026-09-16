@@ -20,7 +20,7 @@ All four must pass with no working-tree changes left behind.
 ## 2. Re-verify the model slugs
 
 ```bash
-pnpm --filter @opendirect/desktop exec tsx scripts/verify-providers.ts
+pnpm --filter @opendirect/desktop verify:providers
 ```
 
 Read-only: it resolves every key in `providers/defaults.ts` against the

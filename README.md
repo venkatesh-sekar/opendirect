@@ -62,12 +62,17 @@ Verifying a key calls a **listing** endpoint, never a generation.
 
 ### Keyboard
 
-| Chord    | What it does              |
-| -------- | ------------------------- |
-| `⌘K`     | Model picker              |
-| `⌘Enter` | Generate                  |
-| `⌘,`     | Settings                  |
-| `⌘R`     | Refresh the model catalog |
+| Chord              | What it does                                    |
+| ------------------ | ----------------------------------------------- |
+| `⌘K`               | Model picker                                    |
+| `⌘Enter`           | Generate (stands down while a dialog is open)   |
+| `⌘,`               | Settings                                        |
+| `⌘R` / `⌘⇧R` (dev) | Refresh the model catalog                       |
+
+On Windows and Linux read `⌘` as `Ctrl`. Catalog refresh is `⌘R` in the packaged
+app, whose menu does not bind Reload, and `⌘⇧R` in development, where Chromium
+still owns `⌘R` — the renderer asks main which one it got, so the two can never
+disagree.
 
 ## Scripts
 

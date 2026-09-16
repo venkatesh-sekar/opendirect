@@ -131,10 +131,33 @@ export const jobSchema = z.object({
    * after a restart.
    */
   progress: z.number().nullable(),
+  /**
+   * True for a `queued` run that the app found in the database at startup and
+   * deliberately did **not** start.
+   *
+   * ⛔ Recovery never submits. A queued row is a run the user paid nothing for
+   * yet, and re-launching the app is not consent to spend money — so it is left
+   * queued, flagged here, and the job list offers an explicit **Resume**. Not
+   * persisted: it is re-derived by `recover()` on every start.
+   */
+  awaitingResume: z.boolean().default(false),
   /** The run itself: model, container, cost, error — everything the row shows. */
   generation: generationSchema,
 })
 export type JobDto = z.output<typeof jobSchema>
+
+/**
+ * Status pushed by the auto-updater (`apps/desktop/src/main/updater.ts`).
+ * `updater-policy.ts` derives its `UpdaterStatus` type from this schema, so
+ * there is exactly one definition of the shape.
+ */
+export const updaterStatusSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("available"), version: z.string() }),
+  z.object({ state: z.literal("not-available") }),
+  z.object({ state: z.literal("downloading"), percent: z.number() }),
+  z.object({ state: z.literal("ready"), version: z.string() }),
+  z.object({ state: z.literal("error"), message: z.string() }),
+])
 
 /**
  * The single source of truth for every main↔renderer message.
@@ -147,9 +170,25 @@ export type JobDto = z.output<typeof jobSchema>
  * contract entry.
  */
 export const ipcContract = {
+  /**
+   * What the window needs to know about the app it is running inside: the
+   * version for the status bar, the platform, and the chord the model catalog's
+   * refresh should bind to.
+   *
+   * The accelerator comes from main because main is what gave it away or kept
+   * it: Chromium's default menu owns `⌘R` for Reload in development, so catalog
+   * refresh takes `⌘⇧R` there and `⌘R` in production, where the menu no longer
+   * binds reload at all (`apps/desktop/src/main/menu.ts`).
+   */
   "app:info": {
     input: z.void(),
-    output: z.object({ version: z.string(), platform: z.string() }),
+    output: z.object({
+      version: z.string(),
+      platform: z.string(),
+      dev: z.boolean(),
+      /** A `react-hotkeys-hook` chord, e.g. `"mod+r"` or `"mod+shift+r"`. */
+      catalogRefreshAccelerator: z.string(),
+    }),
   },
 
   "settings:get": { input: z.void(), output: settingsSchema },
@@ -228,7 +267,6 @@ export const ipcContract = {
     input: z.void(),
     output: z.object({ path: z.string().nullable() }),
   },
-  "project:close": { input: z.void(), output: okSchema },
 
   "containers:tree": { input: z.void(), output: z.array(containerNodeSchema) },
   "containers:create": {
@@ -384,6 +422,12 @@ export const ipcContract = {
    * ever from an explicit click on Retry in the job list.
    */
   "jobs:retry": { input: z.object({ id: z.string() }), output: jobSchema },
+  /**
+   * ⛔ Starts a run that recovery left queued — the **Resume** button. This is
+   * the paid call the restart deliberately did not make, so it exists only to
+   * be reached by a click.
+   */
+  "jobs:resume": { input: z.object({ id: z.string() }), output: jobSchema },
 
   /**
    * Which locally installed AI CLIs the app found. Detected once at startup
@@ -420,6 +464,20 @@ export const ipcContract = {
     input: z.void(),
     output: z.object({ restarting: z.boolean() }),
   },
+  /**
+   * The last status the updater produced, or null if it has not spoken yet
+   * (an unpackaged build never does).
+   *
+   * `updater:status` is a push, and the updater checks once at startup and then
+   * every six hours — so a window created *after* that check would otherwise
+   * never learn about a downloaded update, and "Restart to update" would be
+   * unreachable until the next check came round. The renderer reads this on
+   * mount and subscribes for what comes later.
+   */
+  "updater:status:get": {
+    input: z.void(),
+    output: updaterStatusSchema.nullable(),
+  },
 } as const
 
 export type IpcContract = typeof ipcContract
@@ -447,19 +505,6 @@ export function isIpcChannel(value: unknown): value is IpcChannel {
     Object.prototype.hasOwnProperty.call(ipcContract, value)
   )
 }
-
-/**
- * Status pushed by the auto-updater (`apps/desktop/src/main/updater.ts`).
- * `updater-policy.ts` derives its `UpdaterStatus` type from this schema, so
- * there is exactly one definition of the shape.
- */
-export const updaterStatusSchema = z.discriminatedUnion("state", [
-  z.object({ state: z.literal("available"), version: z.string() }),
-  z.object({ state: z.literal("not-available") }),
-  z.object({ state: z.literal("downloading"), percent: z.number() }),
-  z.object({ state: z.literal("ready"), version: z.string() }),
-  z.object({ state: z.literal("error"), message: z.string() }),
-])
 
 /** Main→renderer pushes. Same rule as `ipcContract`: no channel without an entry. */
 export const ipcEvents = {

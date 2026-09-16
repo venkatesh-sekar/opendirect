@@ -26,13 +26,21 @@ describe("invoke", () => {
     installBridge({
       invoke: vi.fn(async () => ({
         ok: true,
-        data: { version: "1.2.3", platform: "linux", extra: "dropped" },
+        data: {
+          version: "1.2.3",
+          platform: "linux",
+          dev: false,
+          catalogRefreshAccelerator: "mod+r",
+          extra: "dropped",
+        },
       })),
     })
 
     await expect(invoke("app:info")).resolves.toEqual({
       version: "1.2.3",
       platform: "linux",
+      dev: false,
+      catalogRefreshAccelerator: "mod+r",
     })
   })
 

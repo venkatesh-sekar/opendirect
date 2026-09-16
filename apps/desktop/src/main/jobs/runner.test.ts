@@ -498,7 +498,7 @@ describe("crash recovery", () => {
     expect(row.error).toMatch(/restart|quit|interrupted/i)
   })
 
-  it("re-submits a job that never left the queue", async () => {
+  it("never submits a job that was still queued — it waits to be resumed", async () => {
     const provider = fakeProvider({
       states: [{ status: "succeeded", outputUrls: ["https://x/out.mp4"] }],
     })
@@ -506,13 +506,67 @@ describe("crash recovery", () => {
     createJob(opened.handle.db, { generationId: generation.id })
 
     const recovered = build(provider)
-    await recovered.recover()
+    const jobs = await recovered.recover()
     await recovered.idle()
 
+    // ⛔ The whole point: restarting the app must not spend money.
+    expect(provider.submissions).toHaveLength(0)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "queued"
+    )
+    expect(jobs).toHaveLength(1)
+    expect(jobs[0]!.awaitingResume).toBe(true)
+    expect(jobs[0]!.state).toBe("queued")
+    // And the list the renderer reads says the same thing.
+    expect(recovered.list().at(0)?.awaitingResume).toBe(true)
+  })
+
+  it("submits a held job only when it is explicitly resumed", async () => {
+    const provider = fakeProvider({
+      states: [{ status: "succeeded", outputUrls: ["https://x/out.mp4"] }],
+    })
+    const generation = queued()
+    const job = createJob(opened.handle.db, { generationId: generation.id })
+
+    const recovered = build(provider)
+    await recovered.recover()
+    await recovered.idle()
+    expect(provider.submissions).toHaveLength(0)
+
+    const resumed = await recovered.resume(job.id)
+    await recovered.idle()
+
+    expect(resumed.awaitingResume).toBe(false)
     expect(provider.submissions).toHaveLength(1)
     expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
       "succeeded"
     )
+  })
+
+  it("refuses to resume a run it is not holding, so nothing pays twice", async () => {
+    const provider = fakeProvider()
+    const underTest = build(provider)
+    const generation = queued()
+    const job = underTest.enqueue(generation.id)
+    await underTest.idle()
+
+    // This one was started by the user in this session — resuming it would be
+    // a second submission of a run that is already going or already paid for.
+    await expect(underTest.resume(job.id)).rejects.toThrow(/not waiting/i)
+  })
+
+  it("stops holding a job once it is cancelled", async () => {
+    const provider = fakeProvider()
+    const generation = queued()
+    const job = createJob(opened.handle.db, { generationId: generation.id })
+
+    const recovered = build(provider)
+    await recovered.recover()
+    await recovered.cancel(job.id)
+    await recovered.idle()
+
+    expect(provider.submissions).toHaveLength(0)
+    await expect(recovered.resume(job.id)).rejects.toThrow(/not waiting/i)
   })
 })
 

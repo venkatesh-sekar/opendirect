@@ -28,6 +28,7 @@ import {
   isJobActive,
   useCancelJob,
   useJobs,
+  useResumeJob,
   useRetryJob,
 } from "@/hooks/use-jobs"
 
@@ -48,9 +49,11 @@ export function JobList() {
   const jobs = useJobs()
   const cancel = useCancelJob()
   const retry = useRetryJob()
+  const resume = useResumeJob()
 
   const items: JobDto[] = jobs.data ?? []
   const active = items.filter(isJobActive)
+  const held = items.filter((job) => job.awaitingResume)
   const now = useTicker(active.length > 0)
 
   return (
@@ -75,6 +78,9 @@ export function JobList() {
             {active.length === 0
               ? "Nothing is running."
               : `${active.length} run${active.length === 1 ? "" : "s"} in progress.`}
+            {held.length > 0
+              ? ` ${held.length} waiting for you to resume ${held.length === 1 ? "it" : "them"}.`
+              : ""}
           </SheetDescription>
         </SheetHeader>
 
@@ -89,9 +95,10 @@ export function JobList() {
                 key={job.id}
                 job={job}
                 now={now}
-                busy={cancel.isPending || retry.isPending}
+                busy={cancel.isPending || retry.isPending || resume.isPending}
                 onCancel={(target) => cancel.mutate(target.id)}
                 onRetry={(target) => retry.mutate(target.id)}
+                onResume={(target) => resume.mutate(target.id)}
               />
             ))}
           </ul>

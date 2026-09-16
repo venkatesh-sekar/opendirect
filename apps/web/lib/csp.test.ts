@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { hoistCspMeta, RENDERER_CSP } from "./csp"
+import { cspMetaIsFirst, hoistCspMeta, RENDERER_CSP } from "./csp"
 
 const META =
   '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'"/>'
@@ -41,6 +41,23 @@ describe("hoistCspMeta", () => {
 
   it("leaves a document without a head alone", () => {
     expect(hoistCspMeta(`<body>${META}</body>`)).toBe(`<body>${META}</body>`)
+  })
+
+  /**
+   * The distinction the build step turns into an exit code: `hoistCspMeta`
+   * returns the input unchanged both when there is nothing to do and when
+   * there is nothing it can do, and only one of those is a passing build.
+   */
+  it("tells an already-hoisted tag apart from one it could not move", () => {
+    expect(cspMetaIsFirst(`<html><head>${META}${SCRIPT}</head></html>`)).toBe(
+      true
+    )
+    expect(cspMetaIsFirst(`<html><head>${SCRIPT}${META}</head></html>`)).toBe(
+      false
+    )
+    // No tag at all, and no head at all, are both "not first".
+    expect(cspMetaIsFirst(`<html><head>${SCRIPT}</head></html>`)).toBe(false)
+    expect(cspMetaIsFirst(`<body>${META}</body>`)).toBe(false)
   })
 
   it("ignores the escaped copy inside the RSC flight payload", () => {

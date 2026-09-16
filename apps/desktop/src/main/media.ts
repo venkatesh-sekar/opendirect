@@ -37,7 +37,7 @@ export const MEDIA_SCHEME = "asset"
 export const MEDIA_HOST = "media"
 export const MEDIA_ORIGIN = `${MEDIA_SCHEME}://${MEDIA_HOST}`
 
-const CONTENT_TYPES: Record<string, string> = {
+export const CONTENT_TYPES: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",

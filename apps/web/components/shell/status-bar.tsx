@@ -21,6 +21,7 @@ import {
 } from "@workspace/ui/components/tooltip"
 
 import { useAiTools } from "@/hooks/use-ai"
+import { useAppInfo } from "@/hooks/use-app-info"
 import { useUpdater, type UpdaterStatus } from "@/hooks/use-updater"
 
 import { JobList } from "@/components/jobs/job-list"
@@ -61,6 +62,7 @@ export function aiToolsLabel(
 export function StatusBar() {
   const updater = useUpdater()
   const aiTools = useAiTools()
+  const info = useAppInfo()
   const [restarting, setRestarting] = useState(false)
 
   const update = updaterLabel(updater.status)
@@ -73,6 +75,12 @@ export function StatusBar() {
       data-testid="status-bar"
       className="flex items-center gap-3 border-t px-2 py-1 text-xs text-muted-foreground"
     >
+      {info.data ? (
+        <span className="font-mono" data-testid="app-version">
+          v{info.data.version}
+        </span>
+      ) : null}
+
       {ai ? (
         <Tooltip>
           <TooltipTrigger
