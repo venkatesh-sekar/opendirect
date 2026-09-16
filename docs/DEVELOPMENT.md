@@ -53,15 +53,20 @@ happening in CI.
 list into one catalog and caches it at
 `<userData>/model-catalog.json` as `{ version, models, descriptors, fetchedAt }`.
 A `list()` serves that file for 24 hours and re-fetches once it is older; the
-picker's "Refresh catalog" item forces a re-fetch. Full `ModelDescriptor`s
+picker's "Refresh catalog" item forces a re-fetch. Freshness is tracked *per
+modality* (`kindFetchedAt`), so a kind-scoped refresh neither blanks nor
+re-stamps the other modality, and the file is written atomically
+(`.tmp` + rename). Full `ModelDescriptor`s
 (which carry the whole input JSON Schema) are fetched one key at a time and
 cached under `descriptors`, never eagerly.
 
 Both adapters are registered at startup (`providers/bootstrap.ts`) and are
 handed a *getter* for their key, so a key added in Settings takes effect on the
 next refresh without re-registering anything. A provider that fails a refresh
-is logged and skipped; if every provider fails, the previous cache is kept
-rather than replaced with an empty catalog.
+is logged, skipped, and reported back in the listing's `failures` so the picker
+can name it ("Replicate: …"); if every provider fails, the previous cache is
+kept rather than replaced with an empty catalog. Setting or clearing an API key
+invalidates the catalog in main and the `["models"]` queries in the renderer.
 
 > ⛔ The catalog only ever calls the providers' free listing endpoints.
 

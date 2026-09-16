@@ -1,7 +1,7 @@
 import { app, dialog, ipcMain } from "electron"
 
 import { registerModelHandlers } from "./catalog"
-import { getModelCatalog } from "./catalog-service"
+import { getModelCatalog, invalidateModelCatalog } from "./catalog-service"
 import { createIpcRegistrar } from "./ipc-registry"
 import { getSettingsService } from "./settings-service"
 import { describeKeys, verifyProviderKey } from "./settings"
@@ -40,11 +40,15 @@ export function registerIpcHandlers(): void {
 
   handle("settings:keys:set", ({ provider, key }) => {
     getSettingsService().vault.setKey(provider, key)
+    // The catalog is keyed off which providers are configured, so a key change
+    // invalidates it: the next `models:list` rebuilds and re-fetches.
+    invalidateModelCatalog()
     return { ok: true as const }
   })
 
   handle("settings:keys:clear", ({ provider }) => {
     getSettingsService().vault.clearKey(provider)
+    invalidateModelCatalog()
     return { ok: true as const }
   })
 

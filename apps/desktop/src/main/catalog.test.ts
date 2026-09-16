@@ -155,7 +155,7 @@ describe("createModelCatalog", () => {
         models: [summary("openrouter", "bytedance/seedance-2.5")],
       })
 
-      const models = await build([
+      const { models, failures } = await build([
         replicate.provider,
         openrouter.provider,
       ]).refresh()
@@ -164,6 +164,7 @@ describe("createModelCatalog", () => {
         "openrouter:bytedance/seedance-2.5",
         "replicate:bytedance/seedance-2.5",
       ])
+      expect(failures).toEqual([])
     })
 
     it("skips a provider whose key is missing without calling it", async () => {
@@ -175,7 +176,7 @@ describe("createModelCatalog", () => {
         models: [summary("openrouter", "c/d")],
       })
 
-      const models = await build([
+      const { models } = await build([
         replicate.provider,
         openrouter.provider,
       ]).refresh()
@@ -200,8 +201,14 @@ describe("createModelCatalog", () => {
         onError,
       })
 
-      await expect(catalog.refresh()).resolves.toHaveLength(1)
+      const { models, failures } = await catalog.refresh()
+
+      expect(models).toHaveLength(1)
       expect(onError).toHaveBeenCalledWith("openrouter", expect.any(Error))
+      // The failure is carried out to the UI, not just logged.
+      expect(failures).toEqual([
+        { provider: "openrouter", message: "OpenRouter is down" },
+      ])
     })
 
     it("never throws when every provider fails", async () => {
@@ -210,7 +217,48 @@ describe("createModelCatalog", () => {
         stubProvider("openrouter", { listError: new Error("boom") }).provider,
       ])
 
-      await expect(catalog.refresh()).resolves.toEqual([])
+      const { models, failures } = await catalog.refresh()
+
+      expect(models).toEqual([])
+      expect(failures.map((f) => f.provider)).toEqual([
+        "replicate",
+        "openrouter",
+      ])
+    })
+
+    it("clears a provider's failure once it works again", async () => {
+      const store = memoryStore()
+      await build(
+        [stubProvider("replicate", { listError: new Error("401") }).provider],
+        store.store
+      ).refresh()
+
+      const fixed = build(
+        [
+          stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+            .provider,
+        ],
+        store.store
+      )
+
+      await expect(fixed.refresh()).resolves.toMatchObject({ failures: [] })
+    })
+
+    it("reports the cached failures alongside a cached list", async () => {
+      const store = memoryStore()
+      const catalog = build(
+        [
+          stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+            .provider,
+          stubProvider("openrouter", { listError: new Error("401") }).provider,
+        ],
+        store.store
+      )
+      await catalog.refresh()
+
+      await expect(catalog.list()).resolves.toMatchObject({
+        failures: [{ provider: "openrouter", message: "401" }],
+      })
     })
 
     it("keeps the previous catalog when every provider fails", async () => {
@@ -227,9 +275,75 @@ describe("createModelCatalog", () => {
       )
       await failing.refresh()
 
-      expect((await failing.list()).map((m) => m.key)).toEqual([
+      expect((await failing.list()).models.map((m) => m.key)).toEqual([
         "replicate:a/b",
       ])
+    })
+
+    it("keeps the other modality when a refresh is kind-scoped", async () => {
+      const store = memoryStore()
+      const both = stubProvider("replicate", {
+        models: [
+          summary("replicate", "a/video", "video"),
+          summary("replicate", "a/image", "image"),
+        ],
+      })
+      const catalog = build([both.provider], store.store)
+      await catalog.refresh()
+
+      // Re-listing images must not blank the cached video models…
+      await catalog.refresh(["image"])
+
+      expect((await catalog.list()).models.map((m) => m.key)).toEqual([
+        "replicate:a/image",
+        "replicate:a/video",
+      ])
+    })
+
+    it("does not mark an unrefreshed modality as freshly fetched", async () => {
+      const store = memoryStore()
+      const first = stubProvider("replicate", {
+        models: [
+          summary("replicate", "a/video", "video"),
+          summary("replicate", "a/image", "image"),
+        ],
+      })
+      const catalog = build([first.provider], store.store)
+      await catalog.refresh(["image"])
+
+      // …and must not make them look verified either.
+      expect(catalog.isStale(["image"])).toBe(false)
+      expect(catalog.isStale(["video"])).toBe(true)
+      expect(catalog.isStale()).toBe(true)
+    })
+
+    it("keeps a failed provider's last-known models of the refreshed kind", async () => {
+      const store = memoryStore()
+      await build(
+        [
+          stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+            .provider,
+          stubProvider("openrouter", { models: [summary("openrouter", "c/d")] })
+            .provider,
+        ],
+        store.store
+      ).refresh()
+
+      const partial = build(
+        [
+          stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+            .provider,
+          stubProvider("openrouter", { listError: new Error("401") }).provider,
+        ],
+        store.store
+      )
+      const { models, failures } = await partial.refresh()
+
+      expect(models.map((m) => m.key)).toEqual([
+        "openrouter:c/d",
+        "replicate:a/b",
+      ])
+      expect(failures).toHaveLength(1)
     })
 
     it("empties the catalog when no provider is configured at all", async () => {
@@ -237,8 +351,14 @@ describe("createModelCatalog", () => {
         stubProvider("replicate", { configured: false }).provider,
       ])
 
-      await expect(catalog.refresh()).resolves.toEqual([])
-      await expect(catalog.list()).resolves.toEqual([])
+      await expect(catalog.refresh()).resolves.toEqual({
+        models: [],
+        failures: [],
+      })
+      await expect(catalog.list()).resolves.toEqual({
+        models: [],
+        failures: [],
+      })
     })
   })
 
@@ -274,7 +394,9 @@ describe("createModelCatalog", () => {
       const reopened = build([second.provider], store.store)
 
       clock = NOW + CATALOG_TTL_MS - 1
-      await expect(reopened.list()).resolves.toHaveLength(1)
+      await expect(reopened.list()).resolves.toMatchObject({
+        models: [expect.objectContaining({ key: "replicate:a/b" })],
+      })
       expect(second.calls.list).toBe(0)
       expect(reopened.isStale()).toBe(false)
     })
@@ -296,9 +418,9 @@ describe("createModelCatalog", () => {
 
       clock = NOW + CATALOG_TTL_MS
       expect(reopened.isStale()).toBe(true)
-      await expect(reopened.list()).resolves.toEqual([
-        expect.objectContaining({ key: "replicate:c/d" }),
-      ])
+      await expect(reopened.list()).resolves.toMatchObject({
+        models: [expect.objectContaining({ key: "replicate:c/d" })],
+      })
       expect(second.calls.list).toBe(1)
     })
 
@@ -324,9 +446,9 @@ describe("createModelCatalog", () => {
       const catalog = build([provider.provider])
       await catalog.refresh()
 
-      await expect(catalog.list({ kinds: ["image"] })).resolves.toEqual([
-        expect.objectContaining({ key: "replicate:a/image" }),
-      ])
+      await expect(catalog.list({ kinds: ["image"] })).resolves.toMatchObject({
+        models: [expect.objectContaining({ key: "replicate:a/image" })],
+      })
       expect(provider.calls.list).toBe(1)
     })
 
@@ -336,8 +458,41 @@ describe("createModelCatalog", () => {
       })
       const catalog = build([provider.provider], memoryStore("not json").store)
 
-      await expect(catalog.list()).resolves.toHaveLength(1)
+      await expect(catalog.list()).resolves.toMatchObject({
+        models: [expect.objectContaining({ key: "replicate:a/b" })],
+      })
       expect(provider.calls.list).toBe(1)
+    })
+
+    it("marks every modality overdue when invalidated", async () => {
+      const store = memoryStore()
+      const first = stubProvider("replicate", {
+        models: [summary("replicate", "a/b")],
+      })
+      const catalog = build([first.provider], store.store)
+      await catalog.refresh()
+      expect(catalog.isStale()).toBe(false)
+
+      catalog.invalidate()
+
+      expect(catalog.isStale()).toBe(true)
+      // The invalidation survives a restart — it is written, not just held.
+      expect(build([first.provider], store.store).isStale()).toBe(true)
+      await catalog.list()
+      expect(first.calls.list).toBe(2)
+    })
+
+    it("drops a stale failure when the catalog is invalidated", async () => {
+      const store = memoryStore()
+      const catalog = build(
+        [stubProvider("replicate", { listError: new Error("401") }).provider],
+        store.store
+      )
+      await catalog.refresh()
+
+      catalog.invalidate()
+
+      expect(JSON.parse(store.contents!)).toMatchObject({ failures: [] })
     })
 
     it("treats an empty cache as stale", () => {
@@ -475,7 +630,10 @@ describe("registerModelHandlers", () => {
       main.invoke("models:list", { kinds: ["image"] })
     ).resolves.toEqual({
       ok: true,
-      data: [expect.objectContaining({ key: "replicate:a/image" })],
+      data: {
+        models: [expect.objectContaining({ key: "replicate:a/image" })],
+        failures: [],
+      },
     })
   })
 
@@ -489,6 +647,35 @@ describe("registerModelHandlers", () => {
     await main.invoke("models:list", { refresh: true })
 
     expect(provider.calls.list).toBe(2)
+  })
+
+  it("reports provider failures through models:list", async () => {
+    const main = fakeIpcMain()
+    const catalog = createModelCatalog({
+      providers: () => [
+        stubProvider("replicate", { models: [summary("replicate", "a/b")] })
+          .provider,
+        stubProvider("openrouter", {
+          listError: new Error("OpenRouter rejected the API key (HTTP 401)."),
+        }).provider,
+      ],
+      store: memoryStore().store,
+      now: () => NOW,
+    })
+    registerModelHandlers(createIpcRegistrar(main.ipc).handle, () => catalog)
+
+    const result = (await main.invoke("models:list", {})) as {
+      ok: true
+      data: {
+        models: unknown[]
+        failures: Array<{ provider: string; message: string }>
+      }
+    }
+
+    expect(result.data.models).toHaveLength(1)
+    expect(result.data.failures).toEqual([
+      { provider: "openrouter", message: expect.stringContaining("401") },
+    ])
   })
 
   it("returns one descriptor through models:get", async () => {

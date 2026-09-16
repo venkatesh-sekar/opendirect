@@ -5,7 +5,7 @@
  * `catalog.ts` stays importable (and testable) in plain Node — the same split
  * as `settings.ts` / `settings-service.ts`.
  */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 
 import { app } from "electron"
@@ -34,8 +34,13 @@ function fileStore(path: string): CatalogStore {
       }
     },
     write(json) {
+      // Write-then-rename: a crash mid-write must not leave a half-written
+      // cache behind, because the next launch would parse it as "no cache"
+      // and re-fetch every provider.
       mkdirSync(dirname(path), { recursive: true })
-      writeFileSync(path, json, "utf8")
+      const temporary = `${path}.tmp`
+      writeFileSync(temporary, json, "utf8")
+      renameSync(temporary, path)
     },
   }
 }
@@ -61,6 +66,22 @@ export function getModelCatalog(): ModelCatalog {
     },
   })
   return catalog
+}
+
+/**
+ * Invalidates the catalog after a key change: the freshness stamps are cleared
+ * on disk, and the instance is dropped so the adapters are rebuilt against the
+ * new key. The next `models:list` therefore re-fetches.
+ */
+export function invalidateModelCatalog(): void {
+  try {
+    getModelCatalog().invalidate()
+  } catch (error) {
+    // Nothing to invalidate yet (no `userData` path, no vault) — the catalog
+    // will be built fresh anyway.
+    log.warn("Could not invalidate the model catalog", error)
+  }
+  catalog = undefined
 }
 
 /** Test/hot-reload seam: drops the cached catalog so the next call rebuilds it. */

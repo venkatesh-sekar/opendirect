@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react"
 import { parseModelKey } from "@opendirect/contract"
 import type { ModelKind, ModelSummary } from "@opendirect/contract"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -71,13 +76,13 @@ function ModelRow({
 /**
  * The model picker: a `Command` palette in a `Popover`.
  *
- * Groups run **Recommended → Video → Image → All**. Recommended is the curated
+ * Groups run **Recommended → Video → Image → Other**. Recommended is the curated
  * shortlist from the main process, annotated with whether the catalog still
  * lists each key — an unavailable recommendation is shown greyed out rather
  * than dropped, because a slug the providers retired is exactly what a user
  * hunting for it needs to see. The Video and Image groups omit whatever the
- * Recommended group already shows, so no model appears twice; **All** catches
- * any other modality the catalog turns up.
+ * Recommended group already shows, so no model appears twice; **Other** catches
+ * any further modality the catalog turns up.
  *
  * Every row carries a price hint, and a model with no published rate says
  * "price unknown" — never `$0.00`. Refreshing the catalog is an explicit
@@ -97,7 +102,8 @@ export function ModelPicker({
   const recommended = useRecommendedModels()
   const refresh = useRefreshModels()
 
-  const all = useMemo(() => models.data ?? [], [models.data])
+  const all = useMemo(() => models.data?.models ?? [], [models.data])
+  const failures = models.data?.failures ?? []
   const byKey = useMemo(
     () => new Map(all.map((model) => [model.key, model])),
     [all]
@@ -146,6 +152,9 @@ export function ModelPicker({
         render={
           <Button
             variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            aria-haspopup="listbox"
             disabled={disabled}
             className="justify-between"
           >
@@ -159,12 +168,17 @@ export function ModelPicker({
         <Command>
           <CommandInput placeholder="Search models…" />
 
-          <div className="flex items-center gap-1 px-2 py-1.5">
+          <div
+            role="group"
+            aria-label="Filter models by modality"
+            className="flex items-center gap-1 px-2 py-1.5"
+          >
             {KIND_FILTERS.map((option) => (
               <Button
                 key={option.value}
                 type="button"
                 size="sm"
+                aria-pressed={filter === option.value}
                 variant={filter === option.value ? "secondary" : "ghost"}
                 onClick={() => setFilter(option.value)}
               >
@@ -172,6 +186,21 @@ export function ModelPicker({
               </Button>
             ))}
           </div>
+
+          {failures.length > 0 ? (
+            <Alert variant="destructive" className="mx-2 mb-1">
+              <AlertTitle>Some providers could not be listed</AlertTitle>
+              <AlertDescription>
+                <ul>
+                  {failures.map((failure) => (
+                    <li key={failure.provider}>
+                      {PROVIDER_LABELS[failure.provider]}: {failure.message}
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
 
           <CommandList>
             <CommandEmpty>
@@ -191,6 +220,7 @@ export function ModelPicker({
                       key={`recommended:${model.key}`}
                       value={`recommended ${model.label} ${model.key}`}
                       disabled={!model.available}
+                      aria-selected={value === model.key}
                       data-checked={value === model.key}
                       onSelect={() => pick(model.key)}
                     >
@@ -216,7 +246,7 @@ export function ModelPicker({
             {[
               { heading: "Video", models: video },
               { heading: "Image", models: image },
-              { heading: "All", models: other },
+              { heading: "Other", models: other },
             ].map(({ heading, models: rows }) =>
               rows.length > 0 ? (
                 <CommandGroup key={heading} heading={heading}>
@@ -224,6 +254,7 @@ export function ModelPicker({
                     <CommandItem
                       key={model.key}
                       value={`${model.name} ${model.key}`}
+                      aria-selected={value === model.key}
                       data-checked={value === model.key}
                       onSelect={() => pick(model.key)}
                     >

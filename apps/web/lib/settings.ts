@@ -61,7 +61,12 @@ export function useSaveKey(): UseMutationResult<
   return useMutation({
     mutationFn: (input: { provider: ProviderId; key: string }) =>
       invoke("settings:keys:set", input),
-    onSuccess: () => client.invalidateQueries({ queryKey: keysQueryKey }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keysQueryKey })
+      // The catalog is a function of which providers hold a key, so a key
+      // change makes every cached model list obsolete.
+      void client.invalidateQueries({ queryKey: ["models"] })
+    },
   })
 }
 
@@ -74,7 +79,10 @@ export function useClearKey(): UseMutationResult<
   return useMutation({
     mutationFn: (provider: ProviderId) =>
       invoke("settings:keys:clear", { provider }),
-    onSuccess: () => client.invalidateQueries({ queryKey: keysQueryKey }),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keysQueryKey })
+      void client.invalidateQueries({ queryKey: ["models"] })
+    },
   })
 }
 

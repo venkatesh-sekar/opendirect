@@ -153,6 +153,25 @@ export const recommendedModelSchema = z.object({
 })
 export type RecommendedModel = z.output<typeof recommendedModelSchema>
 
+/** One provider's refresh failure, surfaced in the picker rather than silent. */
+export const providerFailureSchema = z.object({
+  provider: providerIdSchema,
+  /** The provider's own words, e.g. "Replicate rejected the API key…". */
+  message: z.string(),
+})
+export type ProviderFailure = z.output<typeof providerFailureSchema>
+
+/**
+ * What a catalog listing hands back: the models it *does* have, plus every
+ * provider that could not be reached. A failure is never swallowed — a key
+ * that stopped working must show up in the UI, not as a shorter list.
+ */
+export const catalogListingSchema = z.object({
+  models: z.array(modelSummarySchema),
+  failures: z.array(providerFailureSchema),
+})
+export type CatalogListing = z.output<typeof catalogListingSchema>
+
 export const modelDescriptorSchema = z.object({
   /** Globally unique: `"replicate:bytedance/seedance-2.5"`. */
   key: z.string(),

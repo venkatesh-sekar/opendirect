@@ -1,9 +1,9 @@
 import { z } from "zod"
 
 import {
+  catalogListingSchema,
   modelDescriptorSchema,
   modelKindSchema,
-  modelSummarySchema,
   recommendedModelSchema,
 } from "./model"
 import { providerIdSchema } from "./provider"
@@ -112,7 +112,7 @@ export const ipcContract = {
       kinds: z.array(modelKindSchema).optional(),
       refresh: z.boolean().optional(),
     }),
-    output: z.array(modelSummarySchema),
+    output: catalogListingSchema,
   },
   /** One full descriptor — schema included — fetched and cached on demand. */
   "models:get": {

@@ -8,9 +8,9 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query"
 import type {
+  CatalogListing,
   ModelDescriptor,
   ModelKind,
-  ModelSummary,
   RecommendedModel,
 } from "@opendirect/contract"
 
@@ -35,7 +35,7 @@ export function modelQueryKey(key: string) {
  * separate, explicit action (`useRefreshModels`) rather than something a
  * re-render can trigger — listing a provider is a dozen HTTP round-trips.
  */
-export function useModels(kinds?: ModelKind[]): UseQueryResult<ModelSummary[]> {
+export function useModels(kinds?: ModelKind[]): UseQueryResult<CatalogListing> {
   return useQuery({
     queryKey: modelsQueryKey(kinds),
     queryFn: () => invoke("models:list", { kinds }),
@@ -46,7 +46,7 @@ export function useModels(kinds?: ModelKind[]): UseQueryResult<ModelSummary[]> {
 
 /** Re-fetches every configured provider, then repopulates every models query. */
 export function useRefreshModels(): UseMutationResult<
-  ModelSummary[],
+  CatalogListing,
   Error,
   ModelKind[] | undefined
 > {
