@@ -16,9 +16,10 @@ export default defineConfig({
   target: "node22",
   sourcemap: true,
   clean: true,
-  // `electron` is provided by the runtime and `better-sqlite3` is a native
-  // module electron-builder rebuilds per platform, so both stay external.
-  external: ["electron", "better-sqlite3"],
+  // `electron` is provided by the runtime; `better-sqlite3` and `sharp` are
+  // native modules with their own platform binaries (and, for sharp, sibling
+  // `@img/*` packages resolved at runtime), so all three stay external.
+  external: ["electron", "better-sqlite3", "sharp"],
   // `electron-serve` v3 is ESM-only; a CommonJS main process cannot `require`
   // it, so it is bundled into the output instead of left as a bare import.
   // `electron-store` v11 is likewise ESM-only.

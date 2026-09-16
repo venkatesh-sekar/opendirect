@@ -2,6 +2,7 @@ import { app, dialog, ipcMain } from "electron"
 
 import { registerModelHandlers } from "./catalog"
 import { getModelCatalog, invalidateModelCatalog } from "./catalog-service"
+import { registerProjectHandlers } from "./handlers"
 import { createIpcRegistrar } from "./ipc-registry"
 import { getSettingsService } from "./settings-service"
 import { describeKeys, verifyProviderKey } from "./settings"
@@ -69,6 +70,10 @@ export function registerIpcHandlers(): void {
    * `catalog.ts`.
    */
   registerModelHandlers(handle, getModelCatalog)
+
+  // Project folder, containers, assets and generations — all scoped to the
+  // currently open project (`project-service.ts`).
+  registerProjectHandlers(handle)
 }
 
 /** Tears every handler down — used on quit and by hot-reload in development. */

@@ -6,6 +6,19 @@ import {
   modelKindSchema,
   recommendedModelSchema,
 } from "./model"
+import {
+  assetPageSchema,
+  assetSchema,
+  containerKindSchema,
+  containerNodeSchema,
+  containerSchema,
+  generationPageSchema,
+  generationSchema,
+  importResultSchema,
+  lineageSchema,
+  projectRefSchema,
+  recentProjectSchema,
+} from "./project"
 import { providerIdSchema } from "./provider"
 
 /**
@@ -126,6 +139,122 @@ export const ipcContract = {
       video: z.array(recommendedModelSchema),
       image: z.array(recommendedModelSchema),
     }),
+  },
+
+  /**
+   * The open project and the folder it lives in. Exactly one project is open
+   * at a time, so none of these take a project id — main knows which one it is.
+   */
+  "project:current": {
+    input: z.void(),
+    output: z.object({ project: projectRefSchema.nullable() }),
+  },
+  "project:recent": { input: z.void(), output: z.array(recentProjectSchema) },
+  "project:create": {
+    input: z.object({ name: z.string().min(1) }),
+    output: projectRefSchema,
+  },
+  "project:open": {
+    input: z.object({ path: z.string().min(1) }),
+    output: projectRefSchema,
+  },
+  /** Native folder picker for "Open project…"; null when cancelled. */
+  "project:choose": {
+    input: z.void(),
+    output: z.object({ path: z.string().nullable() }),
+  },
+  "project:close": { input: z.void(), output: okSchema },
+
+  "containers:tree": { input: z.void(), output: z.array(containerNodeSchema) },
+  "containers:create": {
+    input: z.object({
+      parentId: z.string().nullable().optional(),
+      kind: containerKindSchema,
+      name: z.string().min(1),
+    }),
+    output: containerSchema,
+  },
+  "containers:rename": {
+    input: z.object({ id: z.string(), name: z.string().min(1) }),
+    output: containerSchema,
+  },
+  "containers:reparent": {
+    input: z.object({ id: z.string(), parentId: z.string().nullable() }),
+    output: containerSchema,
+  },
+  /** Removes the sub-tree and its asset *links*; the assets themselves stay. */
+  "containers:delete": {
+    input: z.object({ id: z.string() }),
+    output: okSchema,
+  },
+
+  "assets:list": {
+    input: z.object({
+      containerId: z.string(),
+      limit: z.number().int().min(1).max(500).optional(),
+      offset: z.number().int().min(0).optional(),
+    }),
+    output: assetPageSchema,
+  },
+  /** Native file picker for "Import…"; an empty list when cancelled. */
+  "assets:choose": {
+    input: z.void(),
+    output: z.object({ paths: z.array(z.string()) }),
+  },
+  /**
+   * Copies files into the project folder, deduplicating by content hash. The
+   * paths come from `assets:choose` or from a renderer drop event.
+   */
+  "assets:import": {
+    input: z.object({
+      paths: z.array(z.string().min(1)).min(1),
+      containerId: z.string().nullable().optional(),
+      label: z.string().nullable().optional(),
+    }),
+    output: importResultSchema,
+  },
+  "assets:get": {
+    input: z.object({ id: z.string() }),
+    output: assetSchema,
+  },
+  "assets:addToContainer": {
+    input: z.object({ containerId: z.string(), assetId: z.string() }),
+    output: okSchema,
+  },
+  "assets:removeFromContainer": {
+    input: z.object({ containerId: z.string(), assetId: z.string() }),
+    output: okSchema,
+  },
+
+  /**
+   * Generation *records*. Submitting one is the job runner's job (Task 16) and
+   * is deliberately not reachable from here.
+   */
+  "generations:list": {
+    input: z.object({
+      containerId: z.string(),
+      limit: z.number().int().min(1).max(500).optional(),
+      offset: z.number().int().min(0).optional(),
+    }),
+    output: generationPageSchema,
+  },
+  "generations:get": {
+    input: z.object({ id: z.string() }),
+    output: z.object({
+      generation: generationSchema,
+      inputs: z.array(
+        z.object({
+          slotField: z.string(),
+          position: z.number(),
+          asset: assetSchema,
+        })
+      ),
+    }),
+  },
+  /** Ancestors + descendants, for the branch view. */
+  "generations:lineage": {
+    input: z.object({ id: z.string() }),
+    output: lineageSchema,
   },
 } as const
 

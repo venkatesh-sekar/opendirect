@@ -20,7 +20,7 @@
 import { randomUUID } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
-import { isAbsolute, join, relative, resolve } from "node:path"
+import { isAbsolute, join, relative, resolve, sep } from "node:path"
 
 import { z } from "zod"
 
@@ -276,7 +276,9 @@ export function resolveAssetPath(
   const root = resolve(project.path)
   const target = resolve(root, relPath)
   const rel = relative(root, target)
-  if (!rel || rel === ".." || rel.startsWith(`..`) || isAbsolute(rel)) {
+  // `startsWith("..")` alone would also reject a legitimate `..hidden` name;
+  // only the traversal segment itself and anything under it escapes the root.
+  if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
     throw new Error(`Refusing a path outside the project: ${relPath}`)
   }
   return target

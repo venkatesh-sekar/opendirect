@@ -108,6 +108,72 @@ native dependency is added:
 Tests never use the Electron build: they open `:memory:` or a temp file with
 Node's copy of better-sqlite3.
 
+### Repositories
+
+`apps/desktop/src/main/repo/{containers,assets,generations}.ts` are the only
+code that writes those tables. They take the Drizzle handle (and, where files
+are involved, the project's path) as arguments and import nothing from
+`electron`, so they are tested against a real temp project folder and an
+in-memory or on-disk database.
+
+- **containers** — create / rename / reparent / delete plus `listTree()`. A
+  reparent refuses to move a container inside its own descendant; a delete
+  takes the sub-tree and the `container_assets` links but never an asset.
+- **assets** — `importFiles()` copies the user's files into
+  `assets/<yyyy>/<mm>/`, hashes them with sha256 and **deduplicates by hash
+  within the project**, so re-importing the same picture into a second
+  container links the existing asset instead of storing the bytes twice. A
+  per-file failure is reported in `failures`, never thrown.
+  `addToContainer` / `removeFromContainer` are link operations only.
+- **generations** — `createGeneration`, `updateStatus` (write-once `startedAt`
+  and `completedAt`), `attachOutputs` (records a finished run's files as assets
+  and files them on the board) and `lineage()`, which walks ancestors and
+  descendants in JavaScript with a cycle guard rather than a recursive CTE.
+  ⛔ Nothing in this module can submit anything to a provider.
+
+`apps/desktop/src/main/handlers.ts` is the IPC wiring for all three, plus the
+`project:*` channels; it resolves the open project from `project-service.ts` and
+fails with "No project is open" when there is none.
+
+### Thumbnails
+
+**Images** get a real preview: `sharp` writes `thumbnails/<assetId>.webp` at
+512px on the longest edge, and the same pass fills `assets.width` / `height`.
+
+**Video does not.** The alternative was `ffmpeg-static` + `fluent-ffmpeg` for a
+first-frame grab, which adds a ~70 MB per-platform binary and its own licensing
+story to every installer in order to reproduce something Chromium already does:
+a `<video preload="metadata">` paints its own first frame. Video assets
+therefore record `thumbnailRelPath: null` and the renderer uses the element's
+poster (the plan's documented fallback). Revisit this if a scrubbable filmstrip
+is ever wanted, because that does need real decoding.
+
+`sharp` is a native module like `better-sqlite3`: it is `external` in
+`tsup.config.ts` and its package plus the sibling `@img/*` libvips packages are
+in `asarUnpack`, because it resolves those binaries by path at runtime.
+
+### Displaying local media in the renderer
+
+The renderer cannot read the disk and the CSP allows only `'self'`, so local
+files are served over a custom `asset://` protocol instead of `file://`:
+
+```
+asset://media/assets/2026/09/<id>.png
+```
+
+`media.ts` (pure) builds and parses those URLs and resolves them through
+`resolveAssetPath()`, which refuses anything escaping the project folder;
+`media-service.ts` registers the scheme (before `app.whenReady()`, privileged,
+`standard` + `secure` + `stream`, and **not** `bypassCSP`) and streams the bytes
+with `net.fetch` over a `file://` URL. `img-src` and `media-src` name `asset:`
+in both copies of the policy — and nothing else does, so the scheme can never
+become a script or connect source. An unknown, escaping or missing path is a
+plain 404.
+
+Assets therefore reach the renderer as `url` / `thumbnailUrl`; an absolute
+filesystem path never crosses the IPC boundary (only `project.path`, which the
+user chose and the title bar shows).
+
 ## Model catalog cache
 
 `apps/desktop/src/main/catalog.ts` merges every **configured** provider's model
@@ -148,6 +214,16 @@ pnpm --filter @opendirect/desktop exec electron-builder --dir --linux
 
 See `docs/RELEASING.md` for changesets, tagging, the GitHub Actions release
 workflow, auto-update and the code-signing / notarization secrets.
+
+## Renderer data hooks
+
+`apps/web/hooks/{use-containers,use-assets,use-generations}.ts` wrap `invoke`
+in TanStack Query. Every key comes from `apps/web/hooks/query-keys.ts`, and the
+keys are hierarchical so a mutation can invalidate the narrowest thing that
+changed: an import invalidates `["assets", containerId]`, deleting a container
+invalidates `["containers"]`, `["assets"]` and `["generations"]`, and opening a
+different project `resetQueries()` — everything cached belonged to the project
+that was open when it was fetched.
 
 ## Renderer Content-Security-Policy
 

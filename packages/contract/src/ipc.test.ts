@@ -41,6 +41,106 @@ describe("ipcContract", () => {
   })
 })
 
+describe("project channels", () => {
+  it("declares every project, container, asset and generation channel", () => {
+    for (const channel of [
+      "project:current",
+      "project:recent",
+      "project:create",
+      "project:open",
+      "project:choose",
+      "project:close",
+      "containers:tree",
+      "containers:create",
+      "containers:rename",
+      "containers:reparent",
+      "containers:delete",
+      "assets:list",
+      "assets:choose",
+      "assets:import",
+      "assets:get",
+      "assets:addToContainer",
+      "assets:removeFromContainer",
+      "generations:list",
+      "generations:get",
+      "generations:lineage",
+    ]) {
+      expect(isIpcChannel(channel)).toBe(true)
+    }
+  })
+
+  it("rejects a container kind the schema does not know", () => {
+    const { input } = ipcContract["containers:create"]
+    expect(input.safeParse({ kind: "scene", name: "Lobby" }).success).toBe(true)
+    expect(input.safeParse({ kind: "moodboard", name: "Lobby" }).success).toBe(
+      false
+    )
+    expect(input.safeParse({ kind: "scene", name: "" }).success).toBe(false)
+  })
+
+  it("requires at least one path to import", () => {
+    const { input } = ipcContract["assets:import"]
+    expect(input.safeParse({ paths: [] }).success).toBe(false)
+    expect(input.safeParse({ paths: ["/tmp/a.png"] }).success).toBe(true)
+  })
+
+  it("hands the renderer asset:// URLs, never a filesystem path", () => {
+    const parsed = ipcContract["assets:list"].output.parse({
+      items: [
+        {
+          id: "a1",
+          projectId: "p1",
+          kind: "image",
+          relPath: "assets/2026/09/a1.png",
+          text: null,
+          mimeType: "image/png",
+          width: 64,
+          height: 64,
+          durationMs: null,
+          bytes: 100,
+          sha256: "abc",
+          thumbnailRelPath: "thumbnails/a1.webp",
+          label: null,
+          pinned: false,
+          generationId: null,
+          createdAt: 1,
+          url: "asset://media/assets/2026/09/a1.png",
+          thumbnailUrl: "asset://media/thumbnails/a1.webp",
+        },
+      ],
+      total: 1,
+      nextOffset: null,
+    })
+    expect(parsed.items[0]?.url).toMatch(/^asset:\/\//)
+  })
+
+  it("parses a container tree recursively", () => {
+    const node = {
+      id: "c1",
+      projectId: "p1",
+      parentId: null,
+      kind: "folder" as const,
+      name: "Scenes",
+      position: 0,
+      createdAt: 1,
+      children: [
+        {
+          id: "c2",
+          projectId: "p1",
+          parentId: "c1",
+          kind: "scene" as const,
+          name: "Lobby",
+          position: 0,
+          createdAt: 2,
+          children: [],
+        },
+      ],
+    }
+    const parsed = ipcContract["containers:tree"].output.parse([node])
+    expect(parsed[0]?.children[0]?.name).toBe("Lobby")
+  })
+})
+
 describe("isIpcChannel", () => {
   it("accepts declared channels", () => {
     expect(isIpcChannel("app:info")).toBe(true)

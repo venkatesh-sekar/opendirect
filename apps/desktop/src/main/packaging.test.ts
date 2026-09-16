@@ -16,8 +16,20 @@ describe("electron-builder.yml", () => {
     expect(config).toContain(`to: ${PACKAGED_RENDERER_DIR}`)
   })
 
+  it("ships the bundled main process and its manifest", () => {
+    // `main` is `dist/main/index.js`; leaving `dist/**` out of `files` packages
+    // an app whose entry point does not exist.
+    expect(config).toContain("- dist/**")
+    expect(config).toContain("- package.json")
+  })
+
   it("unpacks native modules from the asar so better-sqlite3 can dlopen", () => {
     expect(config).toContain('- "**/*.node"')
+  })
+
+  it("unpacks sharp, which resolves its libvips binary by path", () => {
+    expect(config).toContain('- "**/node_modules/sharp/**"')
+    expect(config).toContain('- "**/node_modules/@img/**"')
   })
 
   it("rebuilds native modules against Electron's ABI", () => {

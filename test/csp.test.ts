@@ -16,6 +16,17 @@ describe("Content-Security-Policy", () => {
     expect(RENDERER_CSP).toBe(PRODUCTION_CSP)
   })
 
+  it("lets the renderer display project media over asset:, and nothing more", () => {
+    // The board shows local files through the `asset://` protocol
+    // (`apps/desktop/src/main/media-service.ts`), which is registered with
+    // `bypassCSP: false` — so it only works because the policy names it here.
+    expect(RENDERER_CSP).toContain("img-src 'self' data: blob: asset:")
+    expect(RENDERER_CSP).toContain("media-src 'self' data: blob: asset:")
+    // …but a media scheme must never become a code or network source.
+    expect(RENDERER_CSP).toContain("script-src 'self' 'unsafe-inline'")
+    expect(RENDERER_CSP).toContain("connect-src 'self'")
+  })
+
   it("relies on frame-src, not frame-ancestors, to stop the renderer framing", () => {
     // `frame-ancestors` is a no-op in the meta form the renderer actually gets.
     expect(RENDERER_CSP).toContain("frame-src 'none'")

@@ -22,6 +22,14 @@
  * everything that *does* go through the network stack; `test/csp.test.ts` keeps
  * the two byte-identical.
  *
+ *
+ * `asset:` appears in `img-src` and `media-src` only: that is the custom
+ * protocol main serves project files over (`apps/desktop/src/main/media.ts`),
+ * and the renderer must be able to paint them. It is deliberately **not** a
+ * script, style or connect source — the scheme can only ever return a file from
+ * inside the open project, but there is no reason for the renderer to execute
+ * or fetch one.
+ *
  * `'unsafe-inline'` is required for scripts and styles because a Next.js static
  * export inlines its hydration bootstrap and critical CSS. Everything else is
  * locked to the app bundle: no remote code, no framing, no `<base>` hijacking.
@@ -30,9 +38,9 @@ export const RENDERER_CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: asset:",
   "font-src 'self' data:",
-  "media-src 'self' data: blob:",
+  "media-src 'self' data: blob: asset:",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",

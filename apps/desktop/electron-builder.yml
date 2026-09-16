@@ -15,6 +15,10 @@ extraResources:
     to: web
 asarUnpack:
   - "**/*.node"
+  # sharp loads its libvips binary from sibling `@img/*` packages by path, which
+  # only works outside the asar.
+  - "**/node_modules/sharp/**"
+  - "**/node_modules/@img/**"
 # better-sqlite3 is a native module and must be compiled against Electron's ABI,
 # not Node's. This is the default, but it is spelled out because the app cannot
 # start without it: electron-builder runs the rebuild for the target Electron
