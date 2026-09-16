@@ -1,0 +1,1 @@
+ALTER TABLE `canvas_nodes` ADD `model_key` text;

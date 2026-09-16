@@ -209,6 +209,7 @@ function node(over: Partial<CanvasNodeDto> & { id: string }): CanvasNodeDto {
     generationId: null,
     batchId: null,
     pickAssetId: null,
+    modelKey: null,
     text: null,
     color: null,
     createdAt: 1,
@@ -324,6 +325,8 @@ beforeEach(() => {
         }
       case "canvas:node:update":
         return { ...TARGET, ...(payload as { patch: object }).patch }
+      case "canvas:edge:update":
+        return { ...edge({ id: "e-media" }), ...(payload as object) }
       default:
         throw new Error(`Unexpected channel ${String(channel)}`)
     }
@@ -395,6 +398,56 @@ describe("PromptBar", () => {
         patch: { batchId: "batch-1", generationId: "g1" },
       })
     )
+  })
+
+  /**
+   * The draft is this window's memory. The *row* is what `modelKeyOfNode`
+   * reads when a new edge needs a slot and when the edge label lists the
+   * slots to choose from, so the choice has to reach it.
+   *
+   * ⛔ Recording the model queues nothing.
+   */
+  it("writes the model it is set to onto the node", async () => {
+    renderBar()
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:node:update", {
+        id: "target",
+        patch: { modelKey: MODEL_KEY },
+      })
+    )
+    expect(submissions()).toHaveLength(0)
+  })
+
+  /**
+   * The user's scenario: a headshot wired into a node that had no model yet,
+   * so the edge was written with no slot and the run was blocked on an error
+   * whose only remedy was to re-label the wire by hand.
+   */
+  it("gives an edge drawn before the model a slot once there is one", async () => {
+    const unresolved: CanvasDto = {
+      ...WIRED,
+      edges: WIRED.edges.map((one) =>
+        one.id === "e-media" ? { ...one, slotField: null } : one
+      ),
+    }
+    renderBar(unresolved)
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:edge:update", {
+        id: "e-media",
+        slotField: "reference_images",
+      })
+    )
+    // The text edge keeps its absence of a slot: it prepends to the prompt.
+    expect(
+      invoke.mock.calls.filter(
+        ([channel, payload]) =>
+          channel === "canvas:edge:update" &&
+          (payload as { id: string }).id === "e-text"
+      )
+    ).toHaveLength(0)
+    expect(submissions()).toHaveLength(0)
   })
 
   it("⛔ submits nothing a second time while the first is in flight", async () => {
@@ -577,9 +630,13 @@ describe("PromptBar", () => {
     await waitFor(() =>
       expect(screen.getByTestId("settings-chip")).toBeVisible()
     )
+    // The model the bar is set to is written to the node either way; what
+    // must not happen is a resize for a value that is not a ratio.
     expect(
-      invoke.mock.calls.filter(([channel]) => channel === "canvas:node:update")
-    ).toHaveLength(0)
+      invoke.mock.calls
+        .filter(([channel]) => channel === "canvas:node:update")
+        .map(([, payload]) => (payload as { patch: object }).patch)
+    ).toEqual([{ modelKey: MODEL_KEY }])
   })
 
   it("offers the AI helpers next to Advanced and applies nothing on its own", async () => {

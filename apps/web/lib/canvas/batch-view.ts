@@ -180,3 +180,61 @@ export function pickableAssets(tiles: readonly BatchTile[]): AssetDto[] {
     .filter((tile) => tile.state === "succeeded" && tile.asset !== null)
     .map((tile) => tile.asset!)
 }
+
+export interface BatchHero {
+  /** The tile shown large. Null only when the node has no tiles at all. */
+  hero: BatchTile | null
+  /** Every other tile, in the order `batchTiles` produced them. */
+  rest: BatchTile[]
+  /** The hero's place in `tiles`, so a node can say "2 of 5". -1 when empty. */
+  index: number
+}
+
+/**
+ * One output large, the others small.
+ *
+ * The pick is the hero, because the pick is what every downstream edge reads —
+ * showing anything else large would be showing a picture the graph does not
+ * use. With nothing picked yet the first finished output stands in, and a
+ * batch that has finished nothing falls back to its first tile so a lone
+ * failure is still the thing the node shows rather than an empty box.
+ */
+export function heroAndRest(
+  tiles: readonly BatchTile[],
+  pickAssetId: string | null
+): BatchHero {
+  let index =
+    pickAssetId === null
+      ? -1
+      : tiles.findIndex((tile) => tile.asset?.id === pickAssetId)
+  if (index === -1) index = tiles.findIndex((tile) => tile.asset !== null)
+  if (index === -1 && tiles.length > 0) index = 0
+  if (index === -1) return { hero: null, rest: [], index: -1 }
+
+  return {
+    hero: tiles[index]!,
+    rest: tiles.filter((_, at) => at !== index),
+    index,
+  }
+}
+
+/**
+ * The pick one step left or right, for the arrow keys.
+ *
+ * Only finished outputs can be picked, so the step walks `pickableAssets` and
+ * skips the tiles that are still running or have failed — a key press can
+ * never land the pick on something no edge could read. It wraps, because a
+ * batch is a ring of alternatives rather than a list with an end.
+ */
+export function stepPick(
+  tiles: readonly BatchTile[],
+  pickAssetId: string | null,
+  delta: number
+): string | null {
+  const assets = pickableAssets(tiles)
+  if (assets.length === 0) return null
+  const at = assets.findIndex((asset) => asset.id === pickAssetId)
+  if (at === -1) return assets[0]!.id
+  const next = (at + delta + assets.length) % assets.length
+  return assets[next]!.id
+}

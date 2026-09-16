@@ -10,9 +10,10 @@
  * 2. **Running.** A ring and a percentage, both read off the job rows pushed
  *    by `jobs:update`. When no provider reports a number the ring is
  *    indeterminate rather than showing an invented one.
- * 3. **Landed.** A grid of every output across every sibling of the batch, one
- *    tile each, with the pick ringed. Any tile becomes the pick in one click
- *    and nothing downstream re-runs because of it.
+ * 3. **Landed.** The pick, large, with every other output of the batch as a
+ *    thumbnail under it and a "2 of 5" to say how many there are. A thumbnail
+ *    becomes the pick in one click, the arrow keys walk them, and nothing
+ *    downstream re-runs because of it.
  * 4. **Failed, wholly or partly.** Each tile carries its own provider message
  *    and its own Retry, because each sibling is a separately paid job. Three
  *    of four succeeding is a usable node, not a failed one.
@@ -22,7 +23,8 @@
  * polls rather than resubmits, which is what makes offering it safe. Choosing
  * a pick costs nothing and re-runs nothing.
  */
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import type { KeyboardEvent } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Alert02Icon,
@@ -39,6 +41,7 @@ import type {
   AssetDto,
   CanvasNodeDto,
   GenerationDto,
+  JobDto,
 } from "@opendirect/contract"
 import type { NodeProps } from "@xyflow/react"
 import { Button } from "@workspace/ui/components/button"
@@ -57,6 +60,8 @@ import { useModel } from "@/hooks/use-models"
 import {
   batchProgress,
   batchTiles,
+  heroAndRest,
+  stepPick,
   type BatchTile,
 } from "@/lib/canvas/batch-view"
 import { modelKeyOf } from "@/lib/model-key"
@@ -76,6 +81,24 @@ import type { CanvasFlowNode } from "./types"
 
 /** How many rows of the container the node reads to find its own siblings. */
 const PAGE_SIZE = 200
+
+/**
+ * Empty pages, as constants.
+ *
+ * `?? []` would hand the join memo a new array on every render and defeat it,
+ * which on a canvas of nodes is the difference between one join per push and
+ * one per node per render.
+ */
+const NO_GENERATIONS: GenerationDto[] = []
+const NO_ASSETS: AssetDto[] = []
+const NO_JOBS: JobDto[] = []
+
+/**
+ * Below this node height the filmstrip is dropped and the counter carries the
+ * whole message on its own, because a strip inside a node the size of a stamp
+ * eats the picture it is there to help you choose.
+ */
+const STRIP_MIN_HEIGHT = 220
 
 const RING_SIZE = 44
 const RING_RADIUS = 18
@@ -269,7 +292,9 @@ function ResultTile({
     onAddTo: () => setAddToOpen(true),
     // ⛔ Seeds a new node's prompt beside this one. It submits nothing.
     onBranch:
-      surface && generation ? () => surface.branch(node, generation) : undefined,
+      surface && generation
+        ? () => surface.branch(node, generation)
+        : undefined,
     onCompare: () => setCompareOpen(true),
     onOpen: () => open.mutate(asset.id),
     onReveal: () => reveal.mutate(asset.id),
@@ -319,11 +344,15 @@ function ResultTile({
         </p>
       ) : null}
 
-      <AddToContainerDialog
-        asset={asset}
-        open={addToOpen}
-        onOpenChange={setAddToOpen}
-      />
+      {/* Mounted only while open: a batch of sixteen otherwise carries
+          thirty-two dialog subtrees nobody has asked for. */}
+      {addToOpen ? (
+        <AddToContainerDialog
+          asset={asset}
+          open={addToOpen}
+          onOpenChange={setAddToOpen}
+        />
+      ) : null}
 
       {compareOpen ? (
         <CompareView
@@ -334,7 +363,7 @@ function ResultTile({
         />
       ) : null}
 
-      {asset.generationId ? (
+      {detailsOpen && asset.generationId ? (
         <RunDetailsPanel
           generationId={asset.generationId}
           node={node}
@@ -343,6 +372,47 @@ function ResultTile({
         />
       ) : null}
     </>
+  )
+}
+
+/**
+ * One alternative in the filmstrip.
+ *
+ * Deliberately not a `ResultTile`: a thumbnail is how you choose the hero, not
+ * a surface for eight menu items, and a batch of sixteen would otherwise mount
+ * sixteen context menus nobody has right-clicked. Everything you can do to an
+ * output is still one click away — on the hero, where the picture is.
+ */
+function ThumbTile({
+  asset,
+  picked,
+  position,
+  total,
+  onPick,
+}: {
+  asset: AssetDto
+  picked: boolean
+  /** 1-based, so the label reads the way the counter does. */
+  position: number
+  total: number
+  onPick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      aria-pressed={picked}
+      aria-label={`Result ${position} of ${total}`}
+      data-testid={`canvas-thumb-${asset.id}`}
+      className={cn(
+        "nodrag relative size-14 shrink-0 overflow-hidden rounded-sm bg-muted transition-opacity",
+        picked
+          ? "ring-2 ring-primary ring-offset-1 ring-offset-background"
+          : "opacity-60 hover:opacity-100"
+      )}
+    >
+      <AssetTile asset={asset} className="size-full" />
+    </button>
   )
 }
 
@@ -365,13 +435,44 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
   const jobs = useJobs()
   const pick = usePickCanvasNode()
 
-  const tiles = batchTiles({
-    node,
-    generations: generations.data?.items ?? [],
-    assets: assets.data?.items ?? [],
-    jobs: jobs.data ?? [],
-  })
-  const progress = batchProgress(tiles)
+  const generationItems = generations.data?.items
+  const assetItems = assets.data?.items
+  const jobItems = jobs.data
+
+  /**
+   * The three-query join, once per change rather than once per render.
+   *
+   * Every `jobs:update` push re-renders every node on the canvas, and the join
+   * walks 200 assets per sibling. The query rows keep their identity between
+   * pushes that did not change them, so this memo is what stops a screenful of
+   * nodes redoing thousands of comparisons for a push about one of them.
+   */
+  const tiles = useMemo(
+    () =>
+      batchTiles({
+        node,
+        generations: generationItems ?? NO_GENERATIONS,
+        assets: assetItems ?? NO_ASSETS,
+        jobs: jobItems ?? NO_JOBS,
+      }),
+    [node, generationItems, assetItems, jobItems]
+  )
+  const progress = useMemo(() => batchProgress(tiles), [tiles])
+  const { hero, rest, index } = useMemo(
+    () => heroAndRest(tiles, node.pickAssetId),
+    [tiles, node.pickAssetId]
+  )
+  // The rows the tiles were built from, so a tile's "Branch from this" has the
+  // run in hand rather than opening a query of its own per tile.
+  const runs = useMemo(
+    () =>
+      new Map((generationItems ?? NO_GENERATIONS).map((run) => [run.id, run])),
+    [generationItems]
+  )
+  const siblings = useMemo(
+    () => rest.flatMap((tile) => (tile.asset ? [tile.asset] : [])),
+    [rest]
+  )
 
   /**
    * The first successful output becomes the pick, once, as a default.
@@ -394,12 +495,35 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
     pickMutate({ id: node.id, assetId: firstOutputId })
   }, [node.id, node.pickAssetId, firstOutputId, pickMutate])
 
-  const choose = (assetId: string) => {
-    if (surface) {
-      surface.pick(node, assetId)
-      return
-    }
-    pick.mutate({ id: node.id, assetId })
+  const choose = useCallback(
+    (assetId: string) => {
+      if (surface) {
+        surface.pick(node, assetId)
+        return
+      }
+      pickMutate({ id: node.id, assetId })
+    },
+    [surface, node, pickMutate]
+  )
+
+  /**
+   * ← and → walk the outputs while the node has focus.
+   *
+   * The event is stopped because React Flow reads the same two keys as "nudge
+   * the node"; inside a batch they mean "show me the next one". ⛔ Changing the
+   * pick re-points the downstream edges and runs nothing.
+   */
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+    const next = stepPick(
+      tiles,
+      node.pickAssetId,
+      event.key === "ArrowRight" ? 1 : -1
+    )
+    if (next === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (next !== node.pickAssetId) choose(next)
   }
 
   if (tiles.length === 0) {
@@ -419,52 +543,85 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
     )
   }
 
-  const outputs = tiles.flatMap((tile) => (tile.asset ? [tile.asset] : []))
-  const hasOutputs = outputs.length > 0
-  // The rows the tiles were built from, so a tile's "Branch from this" has the
-  // run in hand rather than opening a query of its own per tile.
-  const runs = new Map(
-    (generations.data?.items ?? []).map((run) => [run.id, run])
-  )
   // Null, or pointing at an asset that is no longer one of the tiles — a pick
   // whose row was deleted is nulled by the foreign key, and either way the
-  // node does not quietly fall back to another tile.
+  // node does not quietly claim the hero is the user's choice.
   const pickIsResolved = tiles.some(
     (tile) => tile.asset !== null && tile.asset.id === node.pickAssetId
   )
+  const hasOutputs = tiles.some((tile) => tile.asset !== null)
+  const total = tiles.length
   /**
-   * As square a grid as the batch allows, capped at four across.
-   *
-   * A hard cap of two columns turned a batch of 16 — which `MAX_BATCH` allows
-   * — into an eight-row scroll inside a node the size of a postcard.
+   * A tile the hero is already showing large has no business in the strip —
+   * which only ever applies to a batch that has finished nothing, since a
+   * finished output is always the hero when there is one.
    */
-  const columns = Math.min(4, Math.max(1, Math.ceil(Math.sqrt(tiles.length))))
+  const strip = tiles.filter(
+    (tile) => tile.asset !== null || tile.id !== hero?.id
+  )
+  const showStrip = strip.length > 1 && node.height >= STRIP_MIN_HEIGHT
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div
-        className="nowheel grid min-h-0 flex-1 gap-1 overflow-auto p-1"
-        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-      >
-        {tiles.map((tile) =>
-          tile.asset ? (
-            <ResultTile
-              key={tile.id}
-              asset={tile.asset}
-              siblings={outputs.filter((one) => one.id !== tile.asset!.id)}
-              generation={runs.get(tile.generationId) ?? null}
-              containerId={containerId}
-              node={node}
-              picked={node.pickAssetId === tile.asset.id}
-              onPick={() => choose(tile.asset!.id)}
-            />
-          ) : tile.state === "failed" || tile.state === "canceled" ? (
-            <FailedTile key={tile.id} tile={tile} />
-          ) : (
-            <PendingTile key={tile.id} tile={tile} />
-          )
-        )}
+    <div
+      role="group"
+      aria-label="Batch results"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      className="flex h-full min-h-0 flex-col outline-none"
+    >
+      {/* Fixed box: the hero fills it whichever output is in it, so choosing
+          another one never changes the size of the node. */}
+      <div className="relative min-h-0 flex-1 p-1">
+        {hero?.asset ? (
+          <ResultTile
+            asset={hero.asset}
+            siblings={siblings}
+            generation={runs.get(hero.generationId) ?? null}
+            containerId={containerId}
+            node={node}
+            picked={node.pickAssetId === hero.asset.id}
+            onPick={() => choose(hero.asset!.id)}
+          />
+        ) : hero && (hero.state === "failed" || hero.state === "canceled") ? (
+          <FailedTile tile={hero} />
+        ) : hero ? (
+          <PendingTile tile={hero} />
+        ) : null}
+
+        {total > 1 ? (
+          <span
+            data-testid="canvas-batch-counter"
+            className="pointer-events-none absolute bottom-2 left-2 rounded-full bg-background/80 px-1.5 py-px text-[10px] text-muted-foreground tabular-nums shadow-sm backdrop-blur-sm"
+          >
+            {index + 1} of {total}
+          </span>
+        ) : null}
       </div>
+
+      {showStrip ? (
+        <div className="nowheel flex shrink-0 items-stretch gap-1 overflow-x-auto border-t p-1">
+          {strip.map((tile, at) =>
+            tile.asset ? (
+              <ThumbTile
+                key={tile.id}
+                asset={tile.asset}
+                picked={tile.id === hero?.id}
+                position={at + 1}
+                total={total}
+                onPick={() => choose(tile.asset!.id)}
+              />
+            ) : (
+              <div key={tile.id} className="h-14 w-44 shrink-0">
+                {tile.state === "failed" || tile.state === "canceled" ? (
+                  <FailedTile tile={tile} />
+                ) : (
+                  <PendingTile tile={tile} />
+                )}
+              </div>
+            )
+          )}
+        </div>
+      ) : null}
 
       {hasOutputs && !pickIsResolved ? (
         <p

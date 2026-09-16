@@ -25,6 +25,7 @@ import {
   real,
   sqliteTable,
   text,
+  uniqueIndex,
   type AnySQLiteColumn,
 } from "drizzle-orm/sqlite-core"
 
@@ -55,11 +56,25 @@ export const containers = sqliteTable(
     kind: text("kind").notNull(),
     name: text("name").notNull(),
     position: integer("position").notNull().default(0),
+    /**
+     * `venkz` — the `@handle` this container answers to in a prompt. Null for
+     * `project` and `folder` rows, which are not mentionable, and for a name
+     * that slugifies to nothing.
+     */
+    handle: text("handle"),
+    /**
+     * What `@venkz` becomes in the prompt when the chosen model takes no
+     * image — the user's own words for who or where this is.
+     */
+    description: text("description"),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [
     index("containers_project_id_idx").on(t.projectId),
     index("containers_parent_id_idx").on(t.parentId),
+    // SQLite treats NULLs as distinct in a unique index, so every folder and
+    // project row keeping `handle IS NULL` costs nothing and needs no backfill.
+    uniqueIndex("containers_project_handle_unq").on(t.projectId, t.handle),
   ]
 )
 
@@ -257,6 +272,8 @@ export const canvasNodes = sqliteTable(
     ),
     /** Groups the sibling runs of one batch; matches `generations.batch_id`. */
     batchId: text("batch_id"),
+    /** `provider:slug` — the model this node is set to run, before it has. */
+    modelKey: text("model_key"),
     /** Which tile downstream edges resolve to. The user's decision. */
     pickAssetId: text("pick_asset_id").references(
       (): AnySQLiteColumn => assets.id,

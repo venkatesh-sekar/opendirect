@@ -129,6 +129,7 @@ function node(overrides: Partial<CanvasNodeDto> = {}): CanvasNodeDto {
     generationId: "gen-1",
     batchId: "batch-1",
     pickAssetId: null,
+    modelKey: null,
     text: null,
     color: null,
     createdAt: 1,
@@ -205,7 +206,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("GenerateNodeBody", () => {
-  it("goes from a pushed job's progress, to a grid of outputs, to a new pick", async () => {
+  it("goes from a pushed job's progress, to a hero and a strip, to a new pick", async () => {
     let outputs: AssetDto[] = []
     invoke.mockImplementation((channel: IpcChannel) => {
       if (channel === "generations:list") {
@@ -251,10 +252,16 @@ describe("GenerateNodeBody", () => {
       })
     )
 
+    // The first output is the hero; the other is a thumbnail under it, and
+    // the counter says how many there are to choose between.
     await waitFor(() =>
       expect(screen.getByTestId("canvas-tile-asset-1")).toBeVisible()
     )
-    expect(screen.getByTestId("canvas-tile-asset-2")).toBeVisible()
+    expect(screen.getByTestId("canvas-thumb-asset-1")).toBeVisible()
+    expect(screen.getByTestId("canvas-thumb-asset-2")).toBeVisible()
+    expect(screen.getByTestId("canvas-batch-counter")).toHaveTextContent(
+      "1 of 2"
+    )
 
     // 3. No pick yet, so the first successful output becomes the default one.
     await waitFor(() =>
@@ -264,8 +271,8 @@ describe("GenerateNodeBody", () => {
       })
     )
 
-    // 4. And the user changes it, in one click, to the tile they want.
-    await userEvent.click(screen.getByTestId("canvas-tile-asset-2"))
+    // 4. And the user changes it, in one click on the thumbnail they want.
+    await userEvent.click(screen.getByTestId("canvas-thumb-asset-2"))
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("canvas:node:pick", {
         id: "node-1",
@@ -334,8 +341,9 @@ describe("GenerateNodeBody", () => {
 
     renderNode(node({ pickAssetId: "asset-1" }))
 
-    // Three of four succeeding is a usable node: the tile that worked is still
-    // there, and the one that did not carries the provider's own words.
+    // Three of four succeeding is a usable node: the tile that worked is the
+    // hero, and the one that did not is still in the strip with the
+    // provider's own words and its own Retry.
     expect(await screen.findByTestId("canvas-tile-asset-1")).toBeVisible()
     const failed = screen.getByTestId("canvas-tile-failed-gen-2")
     expect(failed).toHaveTextContent("NSFW content detected")
@@ -388,7 +396,67 @@ describe("GenerateNodeBody", () => {
     )
 
     expect(await screen.findByTestId("canvas-tile-asset-1")).toBeVisible()
-    expect(screen.getByTestId("canvas-tile-asset-2")).toBeVisible()
+    expect(screen.getByTestId("canvas-thumb-asset-2")).toBeVisible()
+  })
+
+  /**
+   * The pick is what every downstream edge reads, so it is the one shown
+   * large; the rest are there to say "there are others" and to be chosen.
+   */
+  it("shows the pick large and moves it with the arrow keys", async () => {
+    invoke.mockImplementation((channel: IpcChannel) => {
+      if (channel === "generations:list") {
+        return Promise.resolve({
+          items: [generation({ status: "succeeded" })],
+          total: 1,
+          nextOffset: null,
+        })
+      }
+      if (channel === "assets:list") {
+        return Promise.resolve({
+          items: [
+            asset(),
+            asset({ id: "asset-2", createdAt: 2_001 }),
+            asset({ id: "asset-3", createdAt: 2_002 }),
+          ],
+          total: 3,
+          nextOffset: null,
+        })
+      }
+      if (channel === "jobs:list") return Promise.resolve([])
+      return Promise.resolve({ ok: true })
+    })
+
+    // No surface, so the pick goes straight down the `canvas:node:pick`
+    // channel and can be asserted as the one call it is.
+    renderNode(node({ pickAssetId: "asset-2" }))
+
+    // The pick is the hero, not the first output, and the counter says so.
+    expect(await screen.findByTestId("canvas-tile-asset-2")).toBeVisible()
+    expect(screen.queryByTestId("canvas-tile-asset-1")).toBeNull()
+    expect(screen.getByTestId("canvas-batch-counter")).toHaveTextContent(
+      "2 of 3"
+    )
+    expect(screen.getByTestId("canvas-thumb-asset-2")).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    )
+
+    // ⛔ An arrow key re-points the downstream edges. It runs nothing.
+    fireEvent.keyDown(screen.getByRole("group", { name: /batch results/i }), {
+      key: "ArrowRight",
+    })
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:node:pick", {
+        id: "node-1",
+        assetId: "asset-3",
+      })
+    )
+    expect(
+      invoke.mock.calls.filter(
+        ([channel]) => channel === "generations:submitBatch"
+      )
+    ).toHaveLength(0)
   })
 
   /**

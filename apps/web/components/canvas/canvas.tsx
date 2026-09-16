@@ -120,9 +120,17 @@ function boxOf(node: CanvasNodeDto): Box {
   return { x: node.x, y: node.y, width: node.width, height: node.height }
 }
 
-/** The model a node's slots come from, or null before it has run. */
-function modelKeyOfNode(node: CanvasNodeDto | undefined): string | null {
-  return node?.generation ? modelKeyOf(node.generation) : null
+/**
+ * The model a node's slots come from.
+ *
+ * The node's own `modelKey` first — what the prompt bar wrote when the user
+ * chose a model — so a node that has never run still declares slots and a
+ * fresh edge into it can be resolved. The run behind it is the fallback, for
+ * rows that predate the column.
+ */
+export function modelKeyOfNode(node: CanvasNodeDto | undefined): string | null {
+  if (!node) return null
+  return node.modelKey ?? (node.generation ? modelKeyOf(node.generation) : null)
 }
 
 function CanvasSurfaceInner({ containerId }: CanvasProps) {
@@ -698,7 +706,9 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       })().catch((error: unknown) =>
         toast.error("Could not branch from that run", {
           description:
-            error instanceof Error ? error.message : "The node was not created.",
+            error instanceof Error
+              ? error.message
+              : "The node was not created.",
         })
       ),
     [addNode]

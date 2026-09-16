@@ -65,7 +65,7 @@ import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
 import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useContainerTree } from "@/hooks/use-containers"
 import { useSubmitBatch, useCostEstimate } from "@/hooks/use-generations"
-import { useUpdateCanvasNode } from "@/hooks/use-canvas"
+import { useUpdateCanvasEdge, useUpdateCanvasNode } from "@/hooks/use-canvas"
 import { useModel } from "@/hooks/use-models"
 import {
   findContainer,
@@ -74,8 +74,10 @@ import {
 import {
   composePrompt,
   edgesToInputs,
+  incomingEdges,
   isBlocked,
 } from "@/lib/canvas/edges-to-inputs"
+import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
 import type { IconGrid } from "@/lib/canvas/icon-grid"
 import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
 import { frameSize, parseAspectRatio } from "@/lib/canvas/layout"
@@ -411,6 +413,59 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
 
   const submission = useSubmitBatch()
   const updateNode = useUpdateCanvasNode()
+  const updateEdge = useUpdateCanvasEdge()
+
+  /**
+   * The chosen model, written onto the node itself.
+   *
+   * The draft is this window's memory; the *row* is what the rest of the
+   * canvas reads. `modelKeyOfNode` resolves a new edge's slot from it and the
+   * edge label's slot menu lists the same model's slots — neither of which can
+   * see a draft, and neither of which can wait for the node's first run.
+   *
+   * ⛔ It records a choice, not a run. Nothing here queues anything.
+   */
+  const chosenModelKey = draft.modelKey
+  const updateNodeMutate = updateNode.mutate
+  useEffect(() => {
+    if (!chosenModelKey) return
+    if (node.modelKey === chosenModelKey) return
+    updateNodeMutate({ id: node.id, patch: { modelKey: chosenModelKey } })
+  }, [chosenModelKey, node.id, node.modelKey, updateNodeMutate])
+
+  /**
+   * Edges drawn before this node had a model.
+   *
+   * A slot could not be guessed then — there were no slots to guess from — so
+   * the edge was written unresolved. Now that the model is known, the same
+   * rule `connect()` uses assigns one, rather than leaving the user with an
+   * error whose only remedy is to re-label every wire by hand.
+   */
+  const slots = descriptor?.referenceSlots
+  const updateEdgeMutate = updateEdge.mutate
+  useEffect(() => {
+    if (!slots || slots.length === 0) return
+    const byId = new Map(canvas.nodes.map((one) => [one.id, one]))
+    // Each assignment counts against the next one's capacity, exactly as two
+    // edges drawn one after the other would.
+    const settled = [...canvas.edges]
+    for (const edge of incomingEdges(canvas.edges, node.id)) {
+      if (edge.slotField !== null) continue
+      const source = byId.get(edge.sourceNodeId)
+      // A text edge has no slot by design: it prepends to the prompt.
+      if (!source || source.type === "text") continue
+      const slotField = firstFreeSlot({
+        slots,
+        edges: settled,
+        targetNodeId: node.id,
+        kind: contributedKind(source),
+      })
+      if (!slotField) continue
+      const at = settled.findIndex((one) => one.id === edge.id)
+      if (at >= 0) settled[at] = { ...edge, slotField }
+      updateEdgeMutate({ id: edge.id, slotField })
+    }
+  }, [canvas.edges, canvas.nodes, node.id, slots, updateEdgeMutate])
 
   const disabledReason =
     blockedReason ??

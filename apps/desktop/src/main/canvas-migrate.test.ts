@@ -180,6 +180,10 @@ describe("migrateCanvas", () => {
     expect(image?.pickAssetId).toBe("out1")
     expect(image?.asset?.id).toBe("out1")
     expect(image?.batchId).toBeNull()
+    // The run's own model, so a migrated node can resolve an edge's slot
+    // without being re-run.
+    expect(image?.modelKey).toBe("replicate:bytedance/seedance-2.5")
+    expect(ref?.modelKey).toBeNull()
     expect(video?.pickAssetId).toBe("out2")
     expect(video?.batchId).toBe("b1")
 

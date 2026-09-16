@@ -32,6 +32,7 @@ function node(
     generationId: null,
     batchId: null,
     pickAssetId: null,
+    modelKey: null,
     text: null,
     color: null,
     createdAt: 1,
@@ -256,6 +257,25 @@ describe("edgesToInputs", () => {
     )
     if (!isBlocked(result)) throw new Error("expected a block")
     expect(result.code).toBe("unresolved-slot")
+    // The edge label's menu lists this model's slots, so sending the user
+    // there is advice they can act on.
+    expect(result.blocked).toContain("from the edge label")
+  })
+
+  /**
+   * With no model chosen — or one that takes no references — the edge label's
+   * menu is empty, so "choose the slot from the edge label" is a dead end.
+   */
+  it("does not send the user to an empty slot menu", () => {
+    const result = run(
+      [node({ id: "m1", type: "media", assetId: "a1" })],
+      [edge({ id: "e1", sourceNodeId: "m1", slotField: null })],
+      []
+    )
+    if (!isBlocked(result)) throw new Error("expected a block")
+    expect(result.code).toBe("unresolved-slot")
+    expect(result.blocked).not.toContain("from the edge label")
+    expect(result.blocked).toMatch(/Pick a model that takes references/)
   })
 
   it("blocks a media node whose asset row is gone", () => {

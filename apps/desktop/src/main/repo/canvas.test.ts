@@ -211,6 +211,34 @@ describe("updateNode", () => {
     expect(cleared.asset).toBeNull()
   })
 
+  /**
+   * The model a generate node is set to run has to survive the window, because
+   * a fresh edge's slot is resolved from it before the node has ever run.
+   */
+  it("records the chosen model, and clears it on an explicit null", () => {
+    const node = generateNode()
+    expect(node.modelKey).toBeNull()
+
+    const chosen = updateNode(
+      db(),
+      node.id,
+      { modelKey: "replicate:google/nano-banana-2" },
+      NOW + 1
+    )
+    expect(chosen.modelKey).toBe("replicate:google/nano-banana-2")
+    expect(getCanvas(db(), PROJECT).nodes[0]?.modelKey).toBe(
+      "replicate:google/nano-banana-2"
+    )
+
+    // An omitted key is left alone; a null is the user clearing it.
+    expect(updateNode(db(), node.id, { x: 1 }, NOW + 2).modelKey).toBe(
+      "replicate:google/nano-banana-2"
+    )
+    expect(
+      updateNode(db(), node.id, { modelKey: null }, NOW + 3).modelKey
+    ).toBe(null)
+  })
+
   it("refuses a node that is not there", () => {
     expect(() => updateNode(db(), "nope", { x: 1 })).toThrow(/was not found/)
   })

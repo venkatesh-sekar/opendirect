@@ -6,7 +6,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { Canvas } from "./canvas"
+import type { CanvasNodeDto } from "@opendirect/contract"
+
+import { Canvas, modelKeyOfNode } from "./canvas"
 
 /**
  * No bridge, and therefore no project and nothing to draw.
@@ -48,6 +50,54 @@ function mount() {
     </QueryClientProvider>
   )
 }
+
+function node(over: Partial<CanvasNodeDto> & { id: string }): CanvasNodeDto {
+  return {
+    projectId: "p1",
+    type: "image_gen",
+    x: 0,
+    y: 0,
+    width: 320,
+    height: 320,
+    assetId: null,
+    generationId: null,
+    batchId: null,
+    pickAssetId: null,
+    modelKey: null,
+    text: null,
+    color: null,
+    createdAt: 1,
+    updatedAt: 1,
+    asset: null,
+    generation: null,
+    ...over,
+  } as CanvasNodeDto
+}
+
+/**
+ * The one function both the auto-assignment of a new edge's slot and the edge
+ * label's slot menu ask. A node that has never run has no generation, so
+ * before the row carried a model both of them came up empty.
+ */
+describe("modelKeyOfNode", () => {
+  it("reads the model chosen on a node that has never run", () => {
+    expect(
+      modelKeyOfNode(
+        node({ id: "g1", modelKey: "replicate:google/nano-banana-2" })
+      )
+    ).toBe("replicate:google/nano-banana-2")
+  })
+
+  it("falls back to the run behind the node, and to nothing at all", () => {
+    const ran = node({
+      id: "g1",
+      generation: { provider: "replicate", modelSlug: "a/b" },
+    } as unknown as Partial<CanvasNodeDto> & { id: string })
+    expect(modelKeyOfNode(ran)).toBe("replicate:a/b")
+    expect(modelKeyOfNode(node({ id: "g2" }))).toBeNull()
+    expect(modelKeyOfNode(undefined)).toBeNull()
+  })
+})
 
 describe("Canvas", () => {
   it("renders the placeholder outside Electron", () => {

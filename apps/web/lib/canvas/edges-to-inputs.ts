@@ -154,9 +154,14 @@ export function edgesToInputs(input: EdgesToInputsInput): CanvasInputsResult {
     }
 
     if (!edge.slotField) {
+      // Only send the user to the edge label when the label has something to
+      // offer. With no slots — no model chosen, or one that takes no
+      // references — its menu is empty and the advice is a dead end.
       return blockedBy(
         "unresolved-slot",
-        "A connection has no input slot. Choose the slot it feeds from the edge label.",
+        input.slots.length > 0
+          ? "A connection has no input slot. Choose the slot it feeds from the edge label."
+          : "A connection has no input slot, and this node's model declares none to choose from. Pick a model that takes references, or remove the connection.",
         edge,
         source
       )

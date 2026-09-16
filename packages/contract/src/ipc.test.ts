@@ -422,6 +422,7 @@ describe("canvas channels", () => {
       generationId: null,
       batchId: "b1",
       pickAssetId: null,
+      modelKey: "replicate:google/nano-banana-2",
       text: null,
       color: null,
       createdAt: 1,
@@ -430,6 +431,9 @@ describe("canvas channels", () => {
       generation: null,
     })
     expect(parsed.batchId).toBe("b1")
+    // The chosen model rides on the row, so an edge's slot can be resolved
+    // before the node has ever run.
+    expect(parsed.modelKey).toBe("replicate:google/nano-banana-2")
     expect(parsed.asset).toBeNull()
   })
 })
