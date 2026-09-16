@@ -131,6 +131,61 @@ describe("estimateCost", () => {
     expect(r.amount).toBeCloseTo(0.9676 * 5, 6)
   })
 
+  it("uses the model's own schema default when the resolution is unset", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: { duration: 5 },
+      inputSchema: {
+        type: "object",
+        properties: {
+          resolution: {
+            type: "string",
+            enum: ["480p", "720p"],
+            default: "480p",
+          },
+        },
+      },
+    })
+    // The form would have submitted the schema default, so quoting the
+    // worst-case tier here would overstate the price.
+    expect(r.amount).toBeCloseTo(0.1028 * 5, 6)
+    expect(r.sku).toBe("480p")
+    expect(r.note).not.toMatch(/worst-case/i)
+  })
+
+  it("keeps the video-input variant when the tier comes from a schema default", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: { duration: 5, reference_videos: ["file:///clip.mp4"] },
+      inputSchema: {
+        properties: { resolution: { default: "480p" } },
+      },
+    })
+    expect(r.sku).toBe("480p:video_in")
+    expect(r.amount).toBeCloseTo(0.4304 * 5, 6)
+  })
+
+  it("still quotes the worst-case tier when the schema default is unusable", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: { duration: 5 },
+      inputSchema: {
+        properties: { resolution: { default: null, enum: ["480p", "720p"] } },
+      },
+    })
+    expect(r.amount).toBeCloseTo(0.2312 * 5, 6)
+    expect(r.note).toMatch(/worst-case/i)
+  })
+
   it("falls back to the worst-case tier of the matching variant when the resolution is unset", () => {
     const r = estimateCost({
       provider: "replicate",

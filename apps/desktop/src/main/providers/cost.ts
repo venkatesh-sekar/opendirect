@@ -22,8 +22,10 @@
  * The rule this module never breaks: **never invent a price**. If a rate or
  * the quantity it multiplies is missing, the result is
  * `{ amount: 0, confidence: "unknown", source: "none" }`. Where an input that
- * only *selects* a tier is missing, the worst-case (dearest) tier is used and
- * the note says so, so the UI never under-quotes.
+ * only *selects* a tier is missing, the model's own schema default is used
+ * when it states one — that is what the form would submit — and otherwise the
+ * worst-case (dearest) tier, with the note saying so, so the UI never
+ * under-quotes.
  */
 import type {
   CostConfidence,
@@ -44,6 +46,13 @@ export interface EstimateCostInput {
   /** OpenRouter's `pricing_skus`, verbatim. Empty for Replicate. */
   pricingSkus: Record<string, string>
   params: GenerationParams
+  /**
+   * The model's own input JSON Schema, when the caller has it. Used only to
+   * read the default of a tier-selecting field (e.g. `resolution`) that the
+   * request leaves unset — the form would have submitted that default, so
+   * quoting the worst-case tier instead would overstate the price.
+   */
+  inputSchema?: Record<string, unknown>
 }
 
 export interface CostEstimateResult {
@@ -281,19 +290,36 @@ function estimateOpenRouter(input: EstimateCostInput): CostEstimateResult {
   return unknownCost(UNKNOWN_NOTE, "unknown")
 }
 
+/** The `default` a model's own input schema states for one property. */
+function schemaDefault(
+  inputSchema: Record<string, unknown> | undefined,
+  field: string
+): unknown {
+  const properties = inputSchema?.properties
+  if (typeof properties !== "object" || properties === null) return undefined
+  const property = (properties as Record<string, unknown>)[field]
+  if (typeof property !== "object" || property === null) return undefined
+  return (property as Record<string, unknown>).default
+}
+
 /**
  * Resolves the tier the request selects. A stated resolution picks its tier
- * exactly; an unstated one falls back to the dearest tier for the run's video
- * variant, flagged so the note can say the quote is worst-case.
+ * exactly; an unstated one falls back to the model's own schema default, and
+ * only then to the dearest tier for the run's video variant, flagged so the
+ * note can say the quote is worst-case.
  */
 function pickReplicateTier(
   price: ReplicatePrice,
-  params: GenerationParams
+  params: GenerationParams,
+  inputSchema?: Record<string, unknown>
 ): { key: string; usd: number; worstCase: boolean } | null {
   const suffix =
     price.videoInputVariant && hasVideoInput(params) ? ":video_in" : ""
-  const raw = params[price.tierField]
-  if (typeof raw === "string" && raw.trim() !== "") {
+  for (const raw of [
+    params[price.tierField],
+    schemaDefault(inputSchema, price.tierField),
+  ]) {
+    if (typeof raw !== "string" || raw.trim() === "") continue
     const key = `${raw.trim().toLowerCase()}${suffix}`
     const usd = price.tiers[key]
     if (usd !== undefined) return { key, usd, worstCase: false }
@@ -311,7 +337,7 @@ function estimateReplicate(input: EstimateCostInput): CostEstimateResult {
   const price = input.slug ? REPLICATE_PRICING[input.slug] : undefined
   if (!price) return unknownCost(UNKNOWN_NOTE, "unknown")
 
-  const tier = pickReplicateTier(price, input.params)
+  const tier = pickReplicateTier(price, input.params, input.inputSchema)
   if (!tier) return unknownCost(UNKNOWN_NOTE, price.basis)
 
   const quantity =

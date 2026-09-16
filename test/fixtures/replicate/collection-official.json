@@ -1,0 +1,2853 @@
+{
+  "name": "Official models",
+  "slug": "official",
+  "description": "Official models are always on, predictably priced, and have a stable API.",
+  "full_description": "Official models are just like other models on Replicate, but with a few extra benefits:\r\n\r\n- **Always on**: Official models are always warm and ready to respond to requests, so you can run them without worrying about cold boots.\r\n- **Stable API**: The input and output API for every official model is stable. You can reliably use official models without having to worry about breaking changes or unexpected changes in the API.\r\n- **Predictable pricing**: Unlike other models which are [priced by the hardware they use and the amount of time they run](https://replicate.com/pricing), official models are priced by predictable metrics, like the number of output image, seconds of video output, number of input and output tokens, etc.\r\n- **Actively maintained**: Replicate maintains the official models, and we work with the authors to make sure they're high quality. We also make sure they're always up to date with the latest version of the model.\r\n\r\n[Learn more in the documentation.](https://replicate.com/docs/topics/models/official-models)",
+  "models": [
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/80e7a89d-6163-4a92-927c-79ec74379079/nano-banana-2.png",
+      "created_at": "2025-11-20T13:26:30.686291Z",
+      "default_example": {
+        "completed_at": "2026-02-26T17:24:11.081801Z",
+        "created_at": "2026-02-26T17:23:46.266000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "61egkqv1v9rmt0cwkbxbzw766w",
+        "input": {
+          "prompt": "An isometric 3D miniature diorama of a cozy Japanese ramen shop at night. Warm light spills from the entrance. Tiny detailed figures sit at the counter. Steam rises from bowls of ramen. Rain puddles reflect neon signs on the street. Tilt-shift photography effect.",
+          "aspect_ratio": "1:1"
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Sid 61egkqv1v9rmt0cwkbxbzw766w\nGenerating image with Gemini Flash...\nTokens: 2130\nGenerated image in 24.77 seconds",
+        "metrics": {
+          "predict_time": 24.806426278,
+          "total_time": 24.815801705
+        },
+        "model": "google/nano-banana-2",
+        "output": "https://replicate.delivery/xezq/aW4vaIf7HUzcXqnlgGeyic1l1eH0zUrRxNGtwcdDYOfu7MuYB/tmp7ag51byn.jpeg",
+        "source": "api",
+        "started_at": "2026-02-26T17:23:46.275375Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/jbxs-pwvwlek4qtg7vwrng3j4vmaqadx33bwjgksthzeluhpmtlimfd2a",
+          "get": "https://api.replicate.com/v1/predictions/61egkqv1v9rmt0cwkbxbzw766w",
+          "cancel": "https://api.replicate.com/v1/predictions/61egkqv1v9rmt0cwkbxbzw766w/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "Google's fast image generation model with conversational editing, multi-image fusion, and character consistency",
+      "github_url": "https://github.com/replicate/cog-google-proxy",
+      "latest_version": {
+        "id": "d1be8b5fc0931a253d417e12a484ac01ee9ccbc6daffd4792151377d5e5ff55f",
+        "created_at": "2026-07-21T02:46:13.281378Z",
+        "cog_version": "0.21.0",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "x-order": 0,
+                    "description": "A text description of the image you want to generate"
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "1K",
+                    "x-order": 3,
+                    "description": "Resolution of the generated image. Higher resolutions take longer to generate."
+                  },
+                  "image_input": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Image Input",
+                    "default": [],
+                    "x-order": 1,
+                    "description": "Input images to transform or use as reference (supports up to 14 images)"
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "match_input_image",
+                    "x-order": 2,
+                    "description": "Aspect ratio of the generated image"
+                  },
+                  "image_search": {
+                    "type": "boolean",
+                    "title": "Image Search",
+                    "default": false,
+                    "x-order": 5,
+                    "description": "Use Google Image Search grounding to find web images as visual context for generation. When enabled, web search is also used automatically."
+                  },
+                  "google_search": {
+                    "type": "boolean",
+                    "title": "Google Search",
+                    "default": false,
+                    "x-order": 4,
+                    "description": "Use Google Web Search grounding to generate images based on real-time information (e.g. weather, sports scores, recent events)."
+                  },
+                  "output_format": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/output_format"
+                      }
+                    ],
+                    "default": "jpg",
+                    "x-order": 6,
+                    "description": "Format of the output image"
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "1K",
+                  "2K",
+                  "4K"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "match_input_image",
+                  "1:1",
+                  "1:4",
+                  "1:8",
+                  "2:3",
+                  "3:2",
+                  "3:4",
+                  "4:1",
+                  "4:3",
+                  "4:5",
+                  "5:4",
+                  "8:1",
+                  "9:16",
+                  "16:9",
+                  "21:9"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "output_format": {
+                "enum": [
+                  "jpg",
+                  "png"
+                ],
+                "type": "string",
+                "title": "output_format",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs"
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "type": "string",
+                    "title": "Status"
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics"
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time"
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "license_url": null,
+      "name": "nano-banana-2",
+      "owner": "google",
+      "is_official": true,
+      "paper_url": null,
+      "run_count": 19058584,
+      "url": "https://replicate.com/google/nano-banana-2",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/5ee636db-8712-442f-9644-63980f6786f4/banana2.png",
+      "created_at": "2025-11-12T13:02:27.307525Z",
+      "default_example": {
+        "completed_at": "2025-11-20T15:21:19.879898Z",
+        "created_at": "2025-11-20T15:19:26.597000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "cx23k6jpgnrmc0ctm7cvzk0s3m",
+        "input": {
+          "prompt": "How engineers see the San Francisco Bridge",
+          "resolution": "2K",
+          "image_input": [],
+          "aspect_ratio": "4:3",
+          "output_format": "png",
+          "safety_filter_level": "block_only_high"
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Generating image...\nGenerated image in 112.22 seconds",
+        "metrics": {
+          "predict_time": 113.223927808,
+          "total_time": 113.282898772
+        },
+        "model": "google/nano-banana-pro",
+        "output": "https://replicate.delivery/xezq/Z0tgPisAiYZZL9F59w7kIGdRY7w0YPS7fJ9VyWga2jZ3Hn1KA/tmp66pw609z.png",
+        "source": "web",
+        "started_at": "2025-11-20T15:19:26.655970Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/bcwr-mkaa4bblsd6q5kzodaotcakelwwv53h6nn4uurfgkefff5jeob4q",
+          "get": "https://api.replicate.com/v1/predictions/cx23k6jpgnrmc0ctm7cvzk0s3m",
+          "cancel": "https://api.replicate.com/v1/predictions/cx23k6jpgnrmc0ctm7cvzk0s3m/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "Google's state of the art image generation and editing model 🍌🍌",
+      "github_url": null,
+      "latest_version": {
+        "id": "93f55bfdbdfd4a62e16bf861729bcfa9e8fd9b0325fb218cbc4dd138ecc87cc7",
+        "created_at": "2026-07-21T02:46:54.925413Z",
+        "cog_version": "0.21.0",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "x-order": 0,
+                    "description": "A text description of the image you want to generate"
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "2K",
+                    "x-order": 3,
+                    "description": "Resolution of the generated image"
+                  },
+                  "image_input": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Image Input",
+                    "default": [],
+                    "x-order": 1,
+                    "description": "Input images to transform or use as reference (supports up to 14 images)"
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "match_input_image",
+                    "x-order": 2,
+                    "description": "Aspect ratio of the generated image"
+                  },
+                  "output_format": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/output_format"
+                      }
+                    ],
+                    "default": "jpg",
+                    "x-order": 4,
+                    "description": "Format of the output image"
+                  },
+                  "safety_filter_level": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/safety_filter_level"
+                      }
+                    ],
+                    "default": "block_only_high",
+                    "x-order": 5,
+                    "description": "block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked"
+                  },
+                  "allow_fallback_model": {
+                    "type": "boolean",
+                    "title": "Allow Fallback Model",
+                    "default": false,
+                    "x-order": 6,
+                    "description": "Fallback to another model (currently bytedance/seedream-5) if Nano Banana Pro is at capacity."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "1K",
+                  "2K",
+                  "4K"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "match_input_image",
+                  "1:1",
+                  "2:3",
+                  "3:2",
+                  "3:4",
+                  "4:3",
+                  "4:5",
+                  "5:4",
+                  "9:16",
+                  "16:9",
+                  "21:9"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "output_format": {
+                "enum": [
+                  "jpg",
+                  "png"
+                ],
+                "type": "string",
+                "title": "output_format",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs"
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "type": "string",
+                    "title": "Status"
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics"
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time"
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              },
+              "safety_filter_level": {
+                "enum": [
+                  "block_low_and_above",
+                  "block_medium_and_above",
+                  "block_only_high"
+                ],
+                "type": "string",
+                "title": "safety_filter_level",
+                "description": "An enumeration."
+              }
+            }
+          }
+        }
+      },
+      "license_url": null,
+      "name": "nano-banana-pro",
+      "owner": "google",
+      "is_official": true,
+      "paper_url": null,
+      "run_count": 35273413,
+      "url": "https://replicate.com/google/nano-banana-pro",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/267077a8-cae5-400b-8f93-53cebada6e04/Screenshot_2026-05-08_at_4.16..png",
+      "created_at": "2026-04-05T18:54:24.788006Z",
+      "default_example": {
+        "completed_at": "2026-04-08T19:11:49.852711Z",
+        "created_at": "2026-04-08T19:09:54.851000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "cvmsf12b4drmr0cxdt08pxwybm",
+        "input": {
+          "seed": 99,
+          "prompt": "A cozy cabin in a snowy forest at night, warm light glowing from the windows, gentle snowfall, camera slowly pushing in through the trees",
+          "duration": 7,
+          "resolution": "720p",
+          "aspect_ratio": "16:9",
+          "generate_audio": true
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Using seed: 99\nGenerating video...\nGenerated video in 111.7sec\nDownloading 2682088 bytes\nDownloaded 2.56MB in 2.74sec",
+        "metrics": {
+          "predict_time": 114.973751727,
+          "total_time": 115.001711667
+        },
+        "model": "bytedance/seedance-2.0",
+        "output": "https://replicate.delivery/xezq/3Uc0eKT36R2dIiXkrse8tD822Mhne8AIAMV6ekMcDg8WnWkZB/tmp7_ephsht.mp4",
+        "source": "api",
+        "started_at": "2026-04-08T19:09:54.878959Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/jbxs-j37no44vci5wchlkvopmcw5tpfem7aex2lcah6yqmvgmmu7j5hza",
+          "get": "https://api.replicate.com/v1/predictions/cvmsf12b4drmr0cxdt08pxwybm",
+          "cancel": "https://api.replicate.com/v1/predictions/cvmsf12b4drmr0cxdt08pxwybm/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "ByteDance's multimodal video generation model with native audio, multimodal reference inputs, and intelligent duration control.",
+      "github_url": null,
+      "latest_version": {
+        "id": "a6dcbae88b153e75fcccabacfb0eb430ab5be0a7ae27b316fc6f983658b349bc",
+        "created_at": "2026-06-23T15:52:18.230790Z",
+        "cog_version": "0.21.0",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "title": "Seed",
+                    "default": null,
+                    "x-order": 10,
+                    "nullable": true,
+                    "description": "Random seed. Set for reproducible generation."
+                  },
+                  "image": {
+                    "type": "string",
+                    "title": "Image",
+                    "format": "uri",
+                    "default": null,
+                    "x-order": 1,
+                    "nullable": true,
+                    "description": "Input image for image-to-video generation (first frame). Cannot be combined with reference images."
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "x-order": 0,
+                    "maxLength": 4000,
+                    "description": "Text prompt for video generation. Maximum 4000 characters. BytePlus recommends keeping prompts under 600 English words for best results."
+                  },
+                  "duration": {
+                    "type": "integer",
+                    "title": "Duration",
+                    "default": 5,
+                    "maximum": 15,
+                    "minimum": -1,
+                    "x-order": 6,
+                    "description": "Video duration in seconds. Set to -1 for intelligent duration (model picks the best length)."
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "720p",
+                    "x-order": 7,
+                    "description": "Video resolution. 4K outputs 10-bit H.265/HEVC at high bitrate."
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "16:9",
+                    "x-order": 8,
+                    "description": "Video aspect ratio. Set to 'adaptive' to let the model choose the best ratio based on inputs."
+                  },
+                  "generate_audio": {
+                    "type": "boolean",
+                    "title": "Generate Audio",
+                    "default": true,
+                    "x-order": 9,
+                    "description": "Generate synchronized audio with the video, including dialogue (use double quotes in prompt), sound effects, and background music."
+                  },
+                  "last_frame_image": {
+                    "type": "string",
+                    "title": "Last Frame Image",
+                    "format": "uri",
+                    "default": null,
+                    "x-order": 2,
+                    "nullable": true,
+                    "description": "Input image for last frame generation. Only works if a first frame image is also provided. Cannot be combined with reference images."
+                  },
+                  "reference_audios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Reference Audios",
+                    "default": [],
+                    "x-order": 5,
+                    "description": "Reference audio files (up to 3, total duration max 15s) for audio-driven generation and lip-sync. Requires at least one reference image or video. Reference them in your prompt as [Audio1], [Audio2], etc."
+                  },
+                  "reference_images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Reference Images",
+                    "default": [],
+                    "x-order": 3,
+                    "description": "Reference images (up to 9) for character consistency, style guidance, and scene composition. Cannot be used together with first/last frame images. You can reference them in your prompt as [Image1], [Image2], etc."
+                  },
+                  "reference_videos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Reference Videos",
+                    "default": [],
+                    "x-order": 4,
+                    "description": "Reference videos (up to 3, total duration max 15s) for motion transfer, style reference, and editing. Reference them in your prompt as [Video1], [Video2], etc."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "480p",
+                  "720p",
+                  "1080p",
+                  "4k"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "16:9",
+                  "4:3",
+                  "1:1",
+                  "3:4",
+                  "9:16",
+                  "21:9",
+                  "9:21",
+                  "adaptive"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs"
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "type": "string",
+                    "title": "Status"
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics"
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time"
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "license_url": null,
+      "name": "seedance-2.0",
+      "owner": "bytedance",
+      "is_official": true,
+      "paper_url": null,
+      "run_count": 1409160,
+      "url": "https://replicate.com/bytedance/seedance-2.0",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/7ecf3370-b371-4e83-a01e-7c93202c2f31/Screenshot_2026-08-07_at_5.49..png",
+      "created_at": "2026-08-07T07:02:25.200406Z",
+      "default_example": {
+        "completed_at": "2026-08-07T13:44:42.305235Z",
+        "created_at": "2026-08-07T13:40:58.189000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "5zy1qx4ysnrmw0czvht82q4sc4",
+        "input": {
+          "seed": 42,
+          "prompt": "a golden retriever puppy running across a green meadow toward the camera, slow motion, warm afternoon light",
+          "duration": 5,
+          "resolution": "720p"
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Using seed: 42\nGenerating video... (request ID: cgt-20260807214059-jrfw5)\nGenerated video in 220.3sec\nDownloading 6749922 bytes\nDownloaded 6.44MB in 3.18sec",
+        "metrics": {
+          "model_variant": "non_video_in",
+          "resolution_target": "720p",
+          "token_output_count": 108900,
+          "video_output_duration_seconds": 5,
+          "predict_time": 224.078431632,
+          "total_time": 224.116235762
+        },
+        "model": "bytedance/seedance-2.5",
+        "output": "https://replicate.delivery/xezq/3wyRfILDMs00CCsuqQk8A3xukwFvHjBH7bejjdBFU0eVayBuA/tmpxo_kp6e0.mp4",
+        "source": "api",
+        "started_at": "2026-08-07T13:40:58.226804Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/jbxs-ocaoytmovxt2y7k43xz4cc333erb27uuxsfajz6ji7ogyutst3pa",
+          "get": "https://api.replicate.com/v1/predictions/5zy1qx4ysnrmw0czvht82q4sc4",
+          "cancel": "https://api.replicate.com/v1/predictions/5zy1qx4ysnrmw0czvht82q4sc4/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "ByteDance's flagship multimodal video model with native audio, native 30-second generation, and large multimodal reference sets.",
+      "github_url": null,
+      "latest_version": {
+        "id": "ca38262bae0952bf80a7f10eda58af860a0eae7d48957a099e32632792b8f116",
+        "created_at": "2026-08-25T03:11:52.884451Z",
+        "cog_version": "0.22.0",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.22.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "title": "Seed",
+                    "default": null,
+                    "x-order": 12,
+                    "nullable": true,
+                    "description": "Random seed. Set for reproducible generation. Reproducibility is not guaranteed."
+                  },
+                  "image": {
+                    "type": "string",
+                    "title": "Image",
+                    "format": "uri",
+                    "default": null,
+                    "x-order": 1,
+                    "nullable": true,
+                    "description": "First-frame image for image-to-video or first/last-frame generation. Cannot be combined with reference images, videos, or audios."
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "default": "",
+                    "x-order": 0,
+                    "description": "Text prompt for video generation. Optional when a media input (image, reference images/videos/audios) is supplied. Seedance 2.5 works best with detailed, structured 'production brief' style prompts."
+                  },
+                  "duration": {
+                    "type": "integer",
+                    "title": "Duration",
+                    "default": 5,
+                    "maximum": 30,
+                    "minimum": -1,
+                    "x-order": 6,
+                    "description": "Video duration in seconds. Set to -1 for intelligent duration (the model picks the best length). Editing mode requires -1."
+                  },
+                  "watermark": {
+                    "type": "boolean",
+                    "title": "Watermark",
+                    "default": false,
+                    "x-order": 10,
+                    "description": "Add a watermark to the generated video."
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "720p",
+                    "x-order": 7,
+                    "description": "Video resolution."
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "16:9",
+                    "x-order": 8,
+                    "description": "Video aspect ratio. Set to 'adaptive' to let the model choose the best ratio based on inputs. First/last-frame, editing, and extension modes require 'adaptive'."
+                  },
+                  "output_format": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/output_format"
+                      }
+                    ],
+                    "default": "mp4",
+                    "x-order": 11,
+                    "description": "Output video container format."
+                  },
+                  "generate_audio": {
+                    "type": "boolean",
+                    "title": "Generate Audio",
+                    "default": true,
+                    "x-order": 9,
+                    "description": "Generate synchronized audio with the video, including dialogue (use double quotes in prompt), sound effects, and background music."
+                  },
+                  "last_frame_image": {
+                    "type": "string",
+                    "title": "Last Frame Image",
+                    "format": "uri",
+                    "default": null,
+                    "x-order": 2,
+                    "nullable": true,
+                    "description": "Last-frame image. Requires a first-frame image. Cannot be combined with reference images, videos, or audios."
+                  },
+                  "reference_audios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Reference Audios",
+                    "default": [],
+                    "x-order": 5,
+                    "description": "Reference audio files (up to 10, combined duration max 30s) for audio-driven generation and lip-sync. Requires at least one reference image or video. Reference them in your prompt as [Audio1], [Audio2], etc."
+                  },
+                  "reference_images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Reference Images",
+                    "default": [],
+                    "x-order": 3,
+                    "description": "Reference images (up to 30) for character consistency, style guidance, and scene composition. Cannot be combined with first/last frame images. Reference them in your prompt as [Image1], [Image2], etc."
+                  },
+                  "reference_videos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "title": "Reference Videos",
+                    "default": [],
+                    "x-order": 4,
+                    "description": "Reference videos (up to 10, combined duration max 30s) for motion transfer, style reference, editing, and extension. Reference them in your prompt as [Video1], [Video2], etc."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "480p",
+                  "720p"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "16:9",
+                  "4:3",
+                  "1:1",
+                  "3:4",
+                  "9:16",
+                  "21:9",
+                  "adaptive"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "output_format": {
+                "enum": [
+                  "mp4",
+                  "mov"
+                ],
+                "type": "string",
+                "title": "output_format",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs"
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "type": "string",
+                    "title": "Status"
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics"
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time"
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "license_url": null,
+      "name": "seedance-2.5",
+      "owner": "bytedance",
+      "is_official": true,
+      "paper_url": null,
+      "run_count": 147579,
+      "url": "https://replicate.com/bytedance/seedance-2.5",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/b97c9ffa-3332-4476-9fb2-062bf23038ac/replicate-prediction-hw96eg13.webp",
+      "created_at": "2025-02-27T11:03:48.583748Z",
+      "default_example": {
+        "completed_at": "2025-02-27T11:41:31.465107Z",
+        "created_at": "2025-02-27T11:41:25.348000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "hw96eg13whrm80cn8wv9vkd218",
+        "input": {
+          "prompt": "Vector art of a friendly robot, in a speech bubble it says \"Hello! I'm Ideogram V2A turbo\" in a friendly font, in a second speech bubble it says \"I go faster now!\", the robot is flying through the sky with turbo boosters",
+          "resolution": "None",
+          "style_type": "None",
+          "aspect_ratio": "3:2",
+          "magic_prompt_option": "Auto"
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Using seed: 2136539212\nModerating content...\nModeration complete in 0.20sec\nRunning prediction...\nGenerating...\nPrompt used: Vector art of a friendly robot, in a speech bubble it says \"Hello! I'm Ideogram V2A turbo\" in a friendly font, in a second speech bubble it says \"I go faster now!\", the robot is flying through the sky with turbo boosters\nImage generation took 5.55 seconds\nDownloading 570033 bytes\nDownloaded 0.54MB in 0.35sec",
+        "metrics": {
+          "image_count": 1,
+          "predict_time": 6.109770568,
+          "total_time": 6.117107
+        },
+        "model": "ideogram-ai/ideogram-v2a-turbo",
+        "output": "https://replicate.delivery/xezq/0MOOj7UCadZdCJ5UrIcqZT6Kieg4e2D4Pt9HvDfXtLetWAORB/tmpdiuv41kb.png",
+        "source": "web",
+        "started_at": "2025-02-27T11:41:25.355336Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/bcwr-qh23pbdhuy6kqycwvqhoj6lwj5swr5wfhhrwz66vkdbwdrgc53la",
+          "get": "https://api.replicate.com/v1/predictions/hw96eg13whrm80cn8wv9vkd218",
+          "cancel": "https://api.replicate.com/v1/predictions/hw96eg13whrm80cn8wv9vkd218/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "Like Ideogram v2 turbo, but now faster and cheaper",
+      "github_url": null,
+      "latest_version": {
+        "id": "0afb968f42d1f96ab92f9c8d669c0e819fa36ccc74f02a7cd057595c9e42da01",
+        "created_at": "2025-11-07T14:22:36.928321Z",
+        "cog_version": "0.16.8",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "title": "Seed",
+                    "maximum": 2147483647,
+                    "nullable": true,
+                    "description": "Random seed. Set for reproducible generation"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "description": "Text prompt for image generation"
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "None",
+                    "x-order": 2,
+                    "description": "Resolution. Overrides aspect ratio. Ignored if an inpainting image is given."
+                  },
+                  "style_type": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/style_type"
+                      }
+                    ],
+                    "default": "None",
+                    "x-order": 4,
+                    "description": "The styles help define the specific aesthetic of the image you want to generate."
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "1:1",
+                    "x-order": 1,
+                    "description": "Aspect ratio. Ignored if a resolution or inpainting image is given."
+                  },
+                  "magic_prompt_option": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/magic_prompt_option"
+                      }
+                    ],
+                    "default": "Auto",
+                    "x-order": 3,
+                    "description": "Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "None",
+                  "512x1536",
+                  "576x1408",
+                  "576x1472",
+                  "576x1536",
+                  "640x1344",
+                  "640x1408",
+                  "640x1472",
+                  "640x1536",
+                  "704x1152",
+                  "704x1216",
+                  "704x1280",
+                  "704x1344",
+                  "704x1408",
+                  "704x1472",
+                  "736x1312",
+                  "768x1088",
+                  "768x1216",
+                  "768x1280",
+                  "768x1344",
+                  "832x960",
+                  "832x1024",
+                  "832x1088",
+                  "832x1152",
+                  "832x1216",
+                  "832x1248",
+                  "864x1152",
+                  "896x960",
+                  "896x1024",
+                  "896x1088",
+                  "896x1120",
+                  "896x1152",
+                  "960x832",
+                  "960x896",
+                  "960x1024",
+                  "960x1088",
+                  "1024x832",
+                  "1024x896",
+                  "1024x960",
+                  "1024x1024",
+                  "1088x768",
+                  "1088x832",
+                  "1088x896",
+                  "1088x960",
+                  "1120x896",
+                  "1152x704",
+                  "1152x832",
+                  "1152x864",
+                  "1152x896",
+                  "1216x704",
+                  "1216x768",
+                  "1216x832",
+                  "1248x832",
+                  "1280x704",
+                  "1280x768",
+                  "1280x800",
+                  "1312x736",
+                  "1344x640",
+                  "1344x704",
+                  "1344x768",
+                  "1408x576",
+                  "1408x640",
+                  "1408x704",
+                  "1472x576",
+                  "1472x640",
+                  "1472x704",
+                  "1536x512",
+                  "1536x576",
+                  "1536x640"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "style_type": {
+                "enum": [
+                  "None",
+                  "Auto",
+                  "General",
+                  "Realistic",
+                  "Design",
+                  "Render 3D",
+                  "Anime"
+                ],
+                "type": "string",
+                "title": "style_type",
+                "description": "An enumeration."
+              },
+              "WebhookEvent": {
+                "enum": [
+                  "start",
+                  "output",
+                  "logs",
+                  "completed"
+                ],
+                "type": "string",
+                "title": "WebhookEvent",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "1:1",
+                  "16:9",
+                  "9:16",
+                  "4:3",
+                  "3:4",
+                  "3:2",
+                  "2:3",
+                  "16:10",
+                  "10:16",
+                  "3:1",
+                  "1:3"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id",
+                    "nullable": true
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input",
+                    "nullable": true
+                  },
+                  "context": {
+                    "type": "object",
+                    "title": "Context",
+                    "nullable": true,
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "webhook": {
+                    "type": "string",
+                    "title": "Webhook",
+                    "format": "uri",
+                    "nullable": true,
+                    "maxLength": 65536,
+                    "minLength": 1
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "output_file_prefix": {
+                    "type": "string",
+                    "title": "Output File Prefix",
+                    "nullable": true
+                  },
+                  "webhook_events_filter": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/WebhookEvent"
+                    },
+                    "default": [
+                      "start",
+                      "output",
+                      "logs",
+                      "completed"
+                    ],
+                    "nullable": true
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id",
+                    "nullable": true
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs",
+                    "default": ""
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error",
+                    "nullable": true
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input",
+                    "nullable": true
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/Status",
+                    "nullable": true
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics",
+                    "nullable": true,
+                    "additionalProperties": true
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version",
+                    "nullable": true
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time",
+                    "nullable": true
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              },
+              "magic_prompt_option": {
+                "enum": [
+                  "Auto",
+                  "On",
+                  "Off"
+                ],
+                "type": "string",
+                "title": "magic_prompt_option",
+                "description": "An enumeration."
+              }
+            }
+          }
+        }
+      },
+      "license_url": "https://about.ideogram.ai/legal/api-tos",
+      "name": "ideogram-v2a-turbo",
+      "owner": "ideogram-ai",
+      "is_official": true,
+      "paper_url": "https://ideogram.ai/",
+      "run_count": 392400,
+      "url": "https://replicate.com/ideogram-ai/ideogram-v2a-turbo",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/6e45e974-f381-435a-b9dd-23f3e6801c19/replicate-prediction-1yv65m0q.webp",
+      "created_at": "2025-02-27T11:03:37.256216Z",
+      "default_example": {
+        "completed_at": "2025-02-27T11:34:59.521793Z",
+        "created_at": "2025-02-27T11:34:49.065000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "1yv65m0qx5rmc0cn8wr9eqa3vw",
+        "input": {
+          "prompt": "Vector art of a friendly robot, in a speech bubble it says \"Hello! I'm Ideogram V2A\" in a friendly font, in a second speech bubble it says \"I'm faster!\", the robot is in a 3D garden",
+          "resolution": "None",
+          "style_type": "None",
+          "aspect_ratio": "3:2",
+          "magic_prompt_option": "Auto"
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Using seed: 1481275024\nModerating content...\nModeration complete in 0.21sec\nRunning prediction...\nGenerating...\nPrompt used: Vector art of a friendly robot, in a speech bubble it says \"Hello! I'm Ideogram V2A\" in a friendly font, in a second speech bubble it says \"I'm faster!\", the robot is in a 3D garden\nImage generation took 9.84 seconds\nDownloading 608948 bytes\nDownloaded 0.58MB in 0.39sec",
+        "metrics": {
+          "image_count": 1,
+          "predict_time": 10.447605138,
+          "total_time": 10.456793
+        },
+        "model": "ideogram-ai/ideogram-v2a",
+        "output": "https://replicate.delivery/xezq/QYvIf0JBe8kd4UDVLm1XxxdtYfva6jVmVUZwJfonkuQOef3EF/tmp682z_d3p.png",
+        "source": "web",
+        "started_at": "2025-02-27T11:34:49.074188Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/bcwr-3leikxoixt4tqacxqecm3nwcw4imwhyghmoa2hwwqdo3srdkvrkq",
+          "get": "https://api.replicate.com/v1/predictions/1yv65m0qx5rmc0cn8wr9eqa3vw",
+          "cancel": "https://api.replicate.com/v1/predictions/1yv65m0qx5rmc0cn8wr9eqa3vw/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "Like Ideogram v2, but faster and cheaper",
+      "github_url": null,
+      "latest_version": {
+        "id": "8b85e4363b03c25f1d248d0f7e3e118503f2b33773a51bab414603bd52f6112d",
+        "created_at": "2025-11-07T14:14:51.015217Z",
+        "cog_version": "0.16.8",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "title": "Seed",
+                    "maximum": 2147483647,
+                    "nullable": true,
+                    "description": "Random seed. Set for reproducible generation"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "description": "Text prompt for image generation"
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "None",
+                    "x-order": 2,
+                    "description": "Resolution. Overrides aspect ratio. Ignored if an inpainting image is given."
+                  },
+                  "style_type": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/style_type"
+                      }
+                    ],
+                    "default": "None",
+                    "x-order": 4,
+                    "description": "The styles help define the specific aesthetic of the image you want to generate."
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "1:1",
+                    "x-order": 1,
+                    "description": "Aspect ratio. Ignored if a resolution or inpainting image is given."
+                  },
+                  "magic_prompt_option": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/magic_prompt_option"
+                      }
+                    ],
+                    "default": "Auto",
+                    "x-order": 3,
+                    "description": "Magic Prompt will interpret your prompt and optimize it to maximize variety and quality of the images generated. You can also use it to write prompts in different languages."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "None",
+                  "512x1536",
+                  "576x1408",
+                  "576x1472",
+                  "576x1536",
+                  "640x1344",
+                  "640x1408",
+                  "640x1472",
+                  "640x1536",
+                  "704x1152",
+                  "704x1216",
+                  "704x1280",
+                  "704x1344",
+                  "704x1408",
+                  "704x1472",
+                  "736x1312",
+                  "768x1088",
+                  "768x1216",
+                  "768x1280",
+                  "768x1344",
+                  "832x960",
+                  "832x1024",
+                  "832x1088",
+                  "832x1152",
+                  "832x1216",
+                  "832x1248",
+                  "864x1152",
+                  "896x960",
+                  "896x1024",
+                  "896x1088",
+                  "896x1120",
+                  "896x1152",
+                  "960x832",
+                  "960x896",
+                  "960x1024",
+                  "960x1088",
+                  "1024x832",
+                  "1024x896",
+                  "1024x960",
+                  "1024x1024",
+                  "1088x768",
+                  "1088x832",
+                  "1088x896",
+                  "1088x960",
+                  "1120x896",
+                  "1152x704",
+                  "1152x832",
+                  "1152x864",
+                  "1152x896",
+                  "1216x704",
+                  "1216x768",
+                  "1216x832",
+                  "1248x832",
+                  "1280x704",
+                  "1280x768",
+                  "1280x800",
+                  "1312x736",
+                  "1344x640",
+                  "1344x704",
+                  "1344x768",
+                  "1408x576",
+                  "1408x640",
+                  "1408x704",
+                  "1472x576",
+                  "1472x640",
+                  "1472x704",
+                  "1536x512",
+                  "1536x576",
+                  "1536x640"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "style_type": {
+                "enum": [
+                  "None",
+                  "Auto",
+                  "General",
+                  "Realistic",
+                  "Design",
+                  "Render 3D",
+                  "Anime"
+                ],
+                "type": "string",
+                "title": "style_type",
+                "description": "An enumeration."
+              },
+              "WebhookEvent": {
+                "enum": [
+                  "start",
+                  "output",
+                  "logs",
+                  "completed"
+                ],
+                "type": "string",
+                "title": "WebhookEvent",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "1:1",
+                  "16:9",
+                  "9:16",
+                  "4:3",
+                  "3:4",
+                  "3:2",
+                  "2:3",
+                  "16:10",
+                  "10:16",
+                  "3:1",
+                  "1:3"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id",
+                    "nullable": true
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input",
+                    "nullable": true
+                  },
+                  "context": {
+                    "type": "object",
+                    "title": "Context",
+                    "nullable": true,
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "webhook": {
+                    "type": "string",
+                    "title": "Webhook",
+                    "format": "uri",
+                    "nullable": true,
+                    "maxLength": 65536,
+                    "minLength": 1
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "output_file_prefix": {
+                    "type": "string",
+                    "title": "Output File Prefix",
+                    "nullable": true
+                  },
+                  "webhook_events_filter": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/WebhookEvent"
+                    },
+                    "default": [
+                      "start",
+                      "output",
+                      "logs",
+                      "completed"
+                    ],
+                    "nullable": true
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id",
+                    "nullable": true
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs",
+                    "default": ""
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error",
+                    "nullable": true
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input",
+                    "nullable": true
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/Status",
+                    "nullable": true
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics",
+                    "nullable": true,
+                    "additionalProperties": true
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version",
+                    "nullable": true
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time",
+                    "nullable": true
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              },
+              "magic_prompt_option": {
+                "enum": [
+                  "Auto",
+                  "On",
+                  "Off"
+                ],
+                "type": "string",
+                "title": "magic_prompt_option",
+                "description": "An enumeration."
+              }
+            }
+          }
+        }
+      },
+      "license_url": "https://ideogram.ai/legal/api-tos",
+      "name": "ideogram-v2a",
+      "owner": "ideogram-ai",
+      "is_official": true,
+      "paper_url": "https://ideogram.ai/",
+      "run_count": 2194000,
+      "url": "https://replicate.com/ideogram-ai/ideogram-v2a",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/de2ae1dd-f7b8-4b9e-901e-86125ac2b4a8/tmpcoezojc2.jpg",
+      "created_at": "2025-06-25T09:52:01.536291Z",
+      "default_example": {
+        "completed_at": "2025-09-10T11:31:10.972287Z",
+        "created_at": "2025-09-10T11:31:05.296000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "y263t6p1t1rm80cs6dj9w2bd98",
+        "input": {
+          "size": "regular",
+          "width": 2048,
+          "height": 2048,
+          "prompt": "A cinematic, photorealistic medium shot capturing the nostalgic warmth of a mid-2000s indie film. The focus is a young woman with a sleek, straight bob haircut in cool platinum white with freckled skin, looking directly and intently into the camera lens with a knowing smirk, her head is looking up slightly. She wears an oversized band t-shirt that says \"Seedream 3.0 on Replicate\" in huge stylized text over a long-sleeved striped top and simple silver stud earrings. The lighting is soft, golden hour sunlight creating lens flare and illuminating dust motes in the air. The background shows a blurred outdoor urban setting with graffiti-covered walls (the graffiti says \"seedream\" in stylized graffiti lettering), rendered with a shallow depth of field. Natural film grain, a warm, slightly muted color palette, and sharp focus on her expressive eyes enhance the intimate, authentic feel",
+          "aspect_ratio": "16:9",
+          "guidance_scale": 2.5
+        },
+        "is_free_trial_prediction": false,
+        "logs": "Using seed: 65795849\nGenerating 1280x720 image\nGenerating...\nGenerated in 5.7sec",
+        "metrics": {
+          "predict_time": 5.659357165,
+          "total_time": 5.676287
+        },
+        "model": "bytedance/seedream-3",
+        "output": "https://replicate.delivery/xezq/fwttrfq1zJiTQknKOH5RXK99VHWG2oCvoCyf5ZGeYKI63EPVB/tmp3jpnpnrz.jpg",
+        "source": "web",
+        "started_at": "2025-09-10T11:31:05.312930Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/bcwr-dpsqk74cli4oukbcawve6b5aorhmgxjzfzn3nd55f4dwt5cc2x6a",
+          "get": "https://api.replicate.com/v1/predictions/y263t6p1t1rm80cs6dj9w2bd98",
+          "cancel": "https://api.replicate.com/v1/predictions/y263t6p1t1rm80cs6dj9w2bd98/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "A text-to-image model with support for native high-resolution (2K) image generation",
+      "github_url": null,
+      "latest_version": {
+        "id": "ed344813bc9f4996be6de4febd8b9c14c7849ad7b21ab047572e3620ee374ee7",
+        "created_at": "2025-11-10T17:29:34.687457Z",
+        "cog_version": "0.16.8",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "size": {
+                "enum": [
+                  "small",
+                  "regular",
+                  "big"
+                ],
+                "type": "string",
+                "title": "size",
+                "description": "An enumeration."
+              },
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "seed": {
+                    "type": "integer",
+                    "title": "Seed",
+                    "nullable": true,
+                    "description": "Random seed. Set for reproducible generation"
+                  },
+                  "size": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/size"
+                      }
+                    ],
+                    "default": "regular",
+                    "x-order": 3,
+                    "description": "Big images will have their longest dimension be 2048px. Small images will have their shortest dimension be 512px. Regular images will always be 1 megapixel. Ignored if aspect ratio is custom."
+                  },
+                  "width": {
+                    "type": "integer",
+                    "title": "Width",
+                    "default": 2048,
+                    "maximum": 2048,
+                    "minimum": 512,
+                    "description": "Image width"
+                  },
+                  "height": {
+                    "type": "integer",
+                    "title": "Height",
+                    "default": 2048,
+                    "maximum": 2048,
+                    "minimum": 512,
+                    "description": "Image height"
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "description": "Text prompt for image generation"
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "16:9",
+                    "x-order": 2,
+                    "description": "Image aspect ratio. Set to 'custom' to specify width and height."
+                  },
+                  "guidance_scale": {
+                    "type": "number",
+                    "title": "Guidance Scale",
+                    "default": 2.5,
+                    "maximum": 10,
+                    "minimum": 1,
+                    "description": "Prompt adherence. Higher = more literal."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "WebhookEvent": {
+                "enum": [
+                  "start",
+                  "output",
+                  "logs",
+                  "completed"
+                ],
+                "type": "string",
+                "title": "WebhookEvent",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "1:1",
+                  "3:4",
+                  "4:3",
+                  "16:9",
+                  "9:16",
+                  "2:3",
+                  "3:2",
+                  "21:9",
+                  "custom"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id",
+                    "nullable": true
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input",
+                    "nullable": true
+                  },
+                  "context": {
+                    "type": "object",
+                    "title": "Context",
+                    "nullable": true,
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "webhook": {
+                    "type": "string",
+                    "title": "Webhook",
+                    "format": "uri",
+                    "nullable": true,
+                    "maxLength": 65536,
+                    "minLength": 1
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "output_file_prefix": {
+                    "type": "string",
+                    "title": "Output File Prefix",
+                    "nullable": true
+                  },
+                  "webhook_events_filter": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/WebhookEvent"
+                    },
+                    "default": [
+                      "start",
+                      "output",
+                      "logs",
+                      "completed"
+                    ],
+                    "nullable": true
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id",
+                    "nullable": true
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs",
+                    "default": ""
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error",
+                    "nullable": true
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input",
+                    "nullable": true
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "$ref": "#/components/schemas/Status",
+                    "nullable": true
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics",
+                    "nullable": true,
+                    "additionalProperties": true
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version",
+                    "nullable": true
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time",
+                    "nullable": true
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "license_url": null,
+      "name": "seedream-3",
+      "owner": "bytedance",
+      "is_official": true,
+      "paper_url": "https://arxiv.org/pdf/2504.11346",
+      "run_count": 3411270,
+      "url": "https://replicate.com/bytedance/seedream-3",
+      "visibility": "public",
+      "weights_url": null
+    },
+    {
+      "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/a2897531-939c-4da7-8062-fd90d8ed1f41/P-video.mp4",
+      "created_at": "2026-01-22T00:10:43.636902Z",
+      "default_example": {
+        "completed_at": "2026-03-20T14:00:30.753446Z",
+        "created_at": "2026-03-20T14:00:25.070000Z",
+        "data_removed": false,
+        "error": null,
+        "id": "jmc9cpgwxsrmw0cx1e6bew4fsc",
+        "input": {
+          "fps": 24,
+          "draft": false,
+          "image": "https://replicate.delivery/pbxt/OejQrIXERvqS9kpygH9PfQZDOIdzkD6GKytAXxedNSyyRtej/9.png",
+          "no_op": false,
+          "prompt": "The prune says \"And this, kids, is how you generate a video in less than 10 seconds\".",
+          "duration": 5,
+          "resolution": "720p",
+          "save_audio": true,
+          "aspect_ratio": "16:9",
+          "prompt_upsampling": false,
+          "disable_safety_filter": true
+        },
+        "is_free_trial_prediction": false,
+        "logs": "14:00:25.172 Using seed: 697104166",
+        "metrics": {
+          "predict_time": 5.668492289,
+          "total_time": 5.683446585
+        },
+        "model": "prunaai/p-video",
+        "output": "https://replicate.delivery/xezq/pyaeIfrebUZZpowThXDgjyaS98rlFKiuOtlbfpb3i4P7PBLZB/output.mp4",
+        "source": "web",
+        "started_at": "2026-03-20T14:00:25.084954Z",
+        "status": "succeeded",
+        "urls": {
+          "stream": "https://stream.replicate.com/v1/files/jbxs-sqb4t6pgwl5cgj3hwrflnmb4rp32fvzzpp6r2n5pmk3dnpqdn7oa",
+          "get": "https://api.replicate.com/v1/predictions/jmc9cpgwxsrmw0cx1e6bew4fsc",
+          "cancel": "https://api.replicate.com/v1/predictions/jmc9cpgwxsrmw0cx1e6bew4fsc/cancel"
+        },
+        "version": "hidden"
+      },
+      "description": "Fast video generation with built-in draft mode for rapid creative iteration. Text-to-video, image-to-video, and audio-to-video in a single endpoint.",
+      "github_url": null,
+      "latest_version": {
+        "id": "50e52eaadc2a1648c1c4f854695c2ac7d56c23068802e8cafb8b69f1100b9ece",
+        "created_at": "2026-09-14T09:29:32.119022Z",
+        "cog_version": "0.18.0",
+        "openapi_schema": {
+          "info": {
+            "title": "Cog",
+            "version": "0.1.0"
+          },
+          "paths": {},
+          "openapi": "3.0.2",
+          "components": {
+            "schemas": {
+              "fps": {
+                "enum": [
+                  24,
+                  48
+                ],
+                "type": "integer",
+                "title": "fps",
+                "description": "An enumeration."
+              },
+              "Input": {
+                "type": "object",
+                "title": "Input",
+                "required": [
+                  "prompt"
+                ],
+                "properties": {
+                  "fps": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/fps"
+                      }
+                    ],
+                    "default": 24,
+                    "x-order": 7,
+                    "description": "Frames per second of the video."
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "title": "Seed",
+                    "x-order": 12,
+                    "nullable": true,
+                    "description": "Random seed. Set for reproducible generation."
+                  },
+                  "audio": {
+                    "type": "string",
+                    "title": "Audio",
+                    "format": "uri",
+                    "x-order": 3,
+                    "nullable": true,
+                    "description": "Input audio to condition video generation. Supports flac, mp3, wav."
+                  },
+                  "draft": {
+                    "type": "boolean",
+                    "title": "Draft",
+                    "default": false,
+                    "x-order": 8,
+                    "description": "Draft mode. Generates a lower-quality preview of the video."
+                  },
+                  "image": {
+                    "type": "string",
+                    "title": "Image",
+                    "format": "uri",
+                    "x-order": 1,
+                    "nullable": true,
+                    "description": "Input image to generate video from (image-to-video). Supports jpg, jpeg, png, webp."
+                  },
+                  "no_op": {
+                    "type": "boolean",
+                    "title": "No Op",
+                    "default": false,
+                    "x-order": 13,
+                    "description": "Health check mode - returns status without inference."
+                  },
+                  "prompt": {
+                    "type": "string",
+                    "title": "Prompt",
+                    "x-order": 0,
+                    "description": "Text prompt for video generation."
+                  },
+                  "duration": {
+                    "type": "integer",
+                    "title": "Duration",
+                    "default": 5,
+                    "maximum": 20,
+                    "minimum": 1,
+                    "x-order": 4,
+                    "description": "Duration of the video in seconds (1-20). Ignored when audio is provided."
+                  },
+                  "resolution": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/resolution"
+                      }
+                    ],
+                    "default": "720p",
+                    "x-order": 6,
+                    "description": "Resolution of the video."
+                  },
+                  "save_audio": {
+                    "type": "boolean",
+                    "title": "Save Audio",
+                    "default": true,
+                    "x-order": 11,
+                    "description": "Save the video with audio."
+                  },
+                  "aspect_ratio": {
+                    "allOf": [
+                      {
+                        "$ref": "#/components/schemas/aspect_ratio"
+                      }
+                    ],
+                    "default": "16:9",
+                    "x-order": 5,
+                    "description": "Aspect ratio of the video. Ignored when an input image is provided."
+                  },
+                  "last_frame_image": {
+                    "type": "string",
+                    "title": "Last Frame Image",
+                    "format": "uri",
+                    "x-order": 2,
+                    "nullable": true,
+                    "description": "Reference image for the last frame of the video. Supports jpg, jpeg, png, webp."
+                  },
+                  "prompt_upsampling": {
+                    "type": "boolean",
+                    "title": "Prompt Upsampling",
+                    "default": true,
+                    "x-order": 9,
+                    "description": "Use prompt upsampling to enhance the prompt."
+                  },
+                  "disable_safety_filter": {
+                    "type": "boolean",
+                    "title": "Disable Safety Filter",
+                    "default": true,
+                    "x-order": 10,
+                    "description": "Disable safety filter for prompts (and input image). When disabled, prompts are not checked for unsafe content before generation."
+                  }
+                }
+              },
+              "Output": {
+                "type": "string",
+                "title": "Output",
+                "format": "uri"
+              },
+              "Status": {
+                "enum": [
+                  "starting",
+                  "processing",
+                  "succeeded",
+                  "canceled",
+                  "failed"
+                ],
+                "type": "string",
+                "title": "Status",
+                "description": "An enumeration."
+              },
+              "resolution": {
+                "enum": [
+                  "720p",
+                  "1080p"
+                ],
+                "type": "string",
+                "title": "resolution",
+                "description": "An enumeration."
+              },
+              "aspect_ratio": {
+                "enum": [
+                  "16:9",
+                  "9:16",
+                  "4:3",
+                  "3:4",
+                  "3:2",
+                  "2:3",
+                  "1:1"
+                ],
+                "type": "string",
+                "title": "aspect_ratio",
+                "description": "An enumeration."
+              },
+              "ValidationError": {
+                "type": "object",
+                "title": "ValidationError",
+                "required": [
+                  "loc",
+                  "msg",
+                  "type"
+                ],
+                "properties": {
+                  "loc": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "integer"
+                        }
+                      ]
+                    },
+                    "title": "Location"
+                  },
+                  "msg": {
+                    "type": "string",
+                    "title": "Message"
+                  },
+                  "type": {
+                    "type": "string",
+                    "title": "Error Type"
+                  }
+                }
+              },
+              "PredictionRequest": {
+                "type": "object",
+                "title": "PredictionRequest",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  }
+                }
+              },
+              "PredictionResponse": {
+                "type": "object",
+                "title": "PredictionResponse",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "title": "Id"
+                  },
+                  "logs": {
+                    "type": "string",
+                    "title": "Logs"
+                  },
+                  "error": {
+                    "type": "string",
+                    "title": "Error"
+                  },
+                  "input": {
+                    "$ref": "#/components/schemas/Input"
+                  },
+                  "output": {
+                    "$ref": "#/components/schemas/Output"
+                  },
+                  "status": {
+                    "type": "string",
+                    "title": "Status"
+                  },
+                  "metrics": {
+                    "type": "object",
+                    "title": "Metrics"
+                  },
+                  "version": {
+                    "type": "string",
+                    "title": "Version"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "title": "Created At",
+                    "format": "date-time"
+                  },
+                  "started_at": {
+                    "type": "string",
+                    "title": "Started At",
+                    "format": "date-time"
+                  },
+                  "completed_at": {
+                    "type": "string",
+                    "title": "Completed At",
+                    "format": "date-time"
+                  }
+                }
+              },
+              "HTTPValidationError": {
+                "type": "object",
+                "title": "HTTPValidationError",
+                "properties": {
+                  "detail": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ValidationError"
+                    },
+                    "title": "Detail"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "license_url": null,
+      "name": "p-video",
+      "owner": "prunaai",
+      "is_official": true,
+      "paper_url": null,
+      "run_count": 3704318,
+      "url": "https://replicate.com/prunaai/p-video",
+      "visibility": "public",
+      "weights_url": null
+    }
+  ]
+}

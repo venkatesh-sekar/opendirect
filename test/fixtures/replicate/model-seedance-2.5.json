@@ -1,0 +1,350 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/7ecf3370-b371-4e83-a01e-7c93202c2f31/Screenshot_2026-08-07_at_5.49..png",
+  "created_at": "2026-08-07T07:02:25.200406Z",
+  "default_example": {
+    "completed_at": "2026-08-07T13:44:42.305235Z",
+    "created_at": "2026-08-07T13:40:58.189000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "5zy1qx4ysnrmw0czvht82q4sc4",
+    "input": {
+      "seed": 42,
+      "prompt": "a golden retriever puppy running across a green meadow toward the camera, slow motion, warm afternoon light",
+      "duration": 5,
+      "resolution": "720p"
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using seed: 42\nGenerating video... (request ID: cgt-20260807214059-jrfw5)\nGenerated video in 220.3sec\nDownloading 6749922 bytes\nDownloaded 6.44MB in 3.18sec",
+    "metrics": {
+      "model_variant": "non_video_in",
+      "resolution_target": "720p",
+      "token_output_count": 108900,
+      "video_output_duration_seconds": 5,
+      "predict_time": 224.078431632,
+      "total_time": 224.116235762
+    },
+    "model": "bytedance/seedance-2.5",
+    "output": "https://replicate.delivery/xezq/3wyRfILDMs00CCsuqQk8A3xukwFvHjBH7bejjdBFU0eVayBuA/tmpxo_kp6e0.mp4",
+    "source": "api",
+    "started_at": "2026-08-07T13:40:58.226804Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/jbxs-ocaoytmovxt2y7k43xz4cc333erb27uuxsfajz6ji7ogyutst3pa",
+      "get": "https://api.replicate.com/v1/predictions/5zy1qx4ysnrmw0czvht82q4sc4",
+      "cancel": "https://api.replicate.com/v1/predictions/5zy1qx4ysnrmw0czvht82q4sc4/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "ByteDance's flagship multimodal video model with native audio, native 30-second generation, and large multimodal reference sets.",
+  "github_url": null,
+  "latest_version": {
+    "id": "ca38262bae0952bf80a7f10eda58af860a0eae7d48957a099e32632792b8f116",
+    "created_at": "2026-08-25T03:11:52.884451Z",
+    "cog_version": "0.22.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.22.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "default": null,
+                "x-order": 12,
+                "nullable": true,
+                "description": "Random seed. Set for reproducible generation. Reproducibility is not guaranteed."
+              },
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "default": null,
+                "x-order": 1,
+                "nullable": true,
+                "description": "First-frame image for image-to-video or first/last-frame generation. Cannot be combined with reference images, videos, or audios."
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "default": "",
+                "x-order": 0,
+                "description": "Text prompt for video generation. Optional when a media input (image, reference images/videos/audios) is supplied. Seedance 2.5 works best with detailed, structured 'production brief' style prompts."
+              },
+              "duration": {
+                "type": "integer",
+                "title": "Duration",
+                "default": 5,
+                "maximum": 30,
+                "minimum": -1,
+                "x-order": 6,
+                "description": "Video duration in seconds. Set to -1 for intelligent duration (the model picks the best length). Editing mode requires -1."
+              },
+              "watermark": {
+                "type": "boolean",
+                "title": "Watermark",
+                "default": false,
+                "x-order": 10,
+                "description": "Add a watermark to the generated video."
+              },
+              "resolution": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/resolution"
+                  }
+                ],
+                "default": "720p",
+                "x-order": 7,
+                "description": "Video resolution."
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "16:9",
+                "x-order": 8,
+                "description": "Video aspect ratio. Set to 'adaptive' to let the model choose the best ratio based on inputs. First/last-frame, editing, and extension modes require 'adaptive'."
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/output_format"
+                  }
+                ],
+                "default": "mp4",
+                "x-order": 11,
+                "description": "Output video container format."
+              },
+              "generate_audio": {
+                "type": "boolean",
+                "title": "Generate Audio",
+                "default": true,
+                "x-order": 9,
+                "description": "Generate synchronized audio with the video, including dialogue (use double quotes in prompt), sound effects, and background music."
+              },
+              "last_frame_image": {
+                "type": "string",
+                "title": "Last Frame Image",
+                "format": "uri",
+                "default": null,
+                "x-order": 2,
+                "nullable": true,
+                "description": "Last-frame image. Requires a first-frame image. Cannot be combined with reference images, videos, or audios."
+              },
+              "reference_audios": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "title": "Reference Audios",
+                "default": [],
+                "x-order": 5,
+                "description": "Reference audio files (up to 10, combined duration max 30s) for audio-driven generation and lip-sync. Requires at least one reference image or video. Reference them in your prompt as [Audio1], [Audio2], etc."
+              },
+              "reference_images": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "title": "Reference Images",
+                "default": [],
+                "x-order": 3,
+                "description": "Reference images (up to 30) for character consistency, style guidance, and scene composition. Cannot be combined with first/last frame images. Reference them in your prompt as [Image1], [Image2], etc."
+              },
+              "reference_videos": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "title": "Reference Videos",
+                "default": [],
+                "x-order": 4,
+                "description": "Reference videos (up to 10, combined duration max 30s) for motion transfer, style reference, editing, and extension. Reference them in your prompt as [Video1], [Video2], etc."
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "resolution": {
+            "enum": [
+              "480p",
+              "720p"
+            ],
+            "type": "string",
+            "title": "resolution",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": [
+              "16:9",
+              "4:3",
+              "1:1",
+              "3:4",
+              "9:16",
+              "21:9",
+              "adaptive"
+            ],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "output_format": {
+            "enum": [
+              "mp4",
+              "mov"
+            ],
+            "type": "string",
+            "title": "output_format",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": [
+              "loc",
+              "msg",
+              "type"
+            ],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "seedance-2.5",
+  "owner": "bytedance",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 147579,
+  "url": "https://replicate.com/bytedance/seedance-2.5",
+  "visibility": "public",
+  "weights_url": null
+}
