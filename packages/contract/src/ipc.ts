@@ -1,5 +1,12 @@
 import { z } from "zod"
 
+import {
+  aiProgressSchema,
+  aiResultSchema,
+  aiRunRequestSchema,
+  aiToolIdSchema,
+  aiToolsSchema,
+} from "./ai"
 import { costQuoteSchema, generationRequestSchema } from "./generation"
 import {
   catalogListingSchema,
@@ -57,6 +64,12 @@ export const settingsSchema = z.object({
   defaultImageModel: z.string().nullable(),
   maxConcurrentJobs: z.number().int().min(1).max(8),
   pollIntervalMs: z.number().int().min(500).max(60_000),
+  /**
+   * Which local CLI the AI helpers use when both are installed. Null means
+   * "whichever is there" — it is a preference, not a requirement, and a
+   * machine with neither never sees an AI menu at all.
+   */
+  preferredAiTool: aiToolIdSchema.nullable(),
 })
 export type Settings = z.output<typeof settingsSchema>
 
@@ -68,6 +81,7 @@ export const settingsDefaults: Settings = {
   defaultImageModel: null,
   maxConcurrentJobs: 2,
   pollIntervalMs: 3000,
+  preferredAiTool: null,
 }
 
 export const okSchema = z.object({ ok: z.literal(true) })
@@ -370,6 +384,28 @@ export const ipcContract = {
    * ever from an explicit click on Retry in the job list.
    */
   "jobs:retry": { input: z.object({ id: z.string() }), output: jobSchema },
+
+  /**
+   * Which locally installed AI CLIs the app found. Detected once at startup
+   * and cached; the renderer hides every AI entry point when `preferred` is
+   * null, so a machine with neither binary never sees a greyed-out teaser.
+   */
+  "ai:tools": { input: z.void(), output: aiToolsSchema },
+  /** Runs detection again — the "Re-detect" button in Settings. */
+  "ai:detect": { input: z.void(), output: aiToolsSchema },
+  /**
+   * Runs one helper by spawning the user's own `claude` / `codex` binary.
+   *
+   * ⛔ Not a generation: no provider is called and nothing is charged beyond
+   * whatever the user's own CLI subscription already covers. The result is
+   * handed back for the user to accept — main never applies it anywhere.
+   */
+  "ai:run": { input: aiRunRequestSchema, output: aiResultSchema },
+  /** Kills the child process behind a run; a no-op once it has finished. */
+  "ai:cancel": {
+    input: z.object({ runId: z.string().min(1) }),
+    output: okSchema,
+  },
 } as const
 
 export type IpcContract = typeof ipcContract
@@ -421,6 +457,12 @@ export const ipcEvents = {
    * appear without polling from the renderer as well.
    */
   "jobs:update": { payload: jobSchema },
+  /**
+   * Live progress from a running AI helper: one `started`, any number of
+   * `output` chunks as the CLI writes, and exactly one terminal event. The
+   * chunks are the CLI's own stdout/stderr — never the prompt.
+   */
+  "ai:progress": { payload: aiProgressSchema },
 } as const
 
 export type IpcEvents = typeof ipcEvents

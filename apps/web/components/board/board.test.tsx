@@ -28,6 +28,8 @@ vi.mock("@/lib/ipc", () => ({
   invoke,
   isBridgeAvailable: () => true,
   pathsForFiles: () => [],
+  // The AI helpers subscribe to `ai:progress`; nothing here ever pushes one.
+  subscribe: () => () => {},
 }))
 
 function asset(id: string, overrides: Partial<AssetDto> = {}): AssetDto {

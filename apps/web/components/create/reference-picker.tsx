@@ -9,10 +9,11 @@
  * count in the confirm button is the only thing that moves as you pick, and
  * the button stays disabled until the selection is within the model's limit.
  *
- * The "✨ Suggest" button is deliberately inert here: the helper that ranks
- * references is a local `claude`/`codex` CLI call added in Task 18. Until it
- * exists the button is disabled and says so, rather than being hidden — a user
- * who was promised suggestions should see where they will appear.
+ * The "✨ Suggest" button is deliberately inert here. The local `claude` /
+ * `codex` helpers exist now (`components/ai/`), but ranking references is not
+ * one of the four — a helper that chose *which* assets to spend money on is a
+ * bigger promise than describing one, and it is on the roadmap rather than in
+ * the build. Until it exists the button is disabled and says so.
  */
 import { useState } from "react"
 import type { AssetDto, ReferenceSlot } from "@opendirect/contract"

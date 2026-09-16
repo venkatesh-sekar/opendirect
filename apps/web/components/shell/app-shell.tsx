@@ -230,6 +230,7 @@ export function AppShell() {
                   }
                   onUseAsReference={creation.useAsReference}
                   onBranch={branchFromGeneration}
+                  onUsePromptText={creation.appendToPrompt}
                 />
               </div>
             </ResizablePanel>
@@ -259,7 +260,7 @@ export function AppShell() {
             A `sticky bottom-0` sibling of the panel group, so the bar sits
             above the board's own scroll box rather than scrolling away with it.
           */}
-          <CreationBar creation={creation} />
+          <CreationBar creation={creation} containerName={title} />
         </SidebarInset>
       </SidebarProvider>
 

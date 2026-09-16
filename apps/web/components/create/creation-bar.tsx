@@ -38,9 +38,12 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import type { CreationController } from "@/hooks/use-creation"
 import { CommonFieldControl } from "@/lib/schema-form/widgets"
 
+import { HelperMenu } from "@/components/ai/helper-menu"
+import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
 import { ModelPicker } from "@/components/models/model-picker"
 
 import { AdvancedParams } from "./advanced-params"
@@ -50,6 +53,8 @@ import { ReferencesTray } from "./references-tray"
 
 export interface CreationBarProps {
   creation: CreationController
+  /** The board being filled — what a suggested shot list is *for*. */
+  containerName?: string | null
 }
 
 /**
@@ -76,10 +81,20 @@ function blockedReason(creation: CreationController): string | null {
   return null
 }
 
-export function CreationBar({ creation }: CreationBarProps) {
+export function CreationBar({ creation, containerName }: CreationBarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const promptRef = useRef<HTMLTextAreaElement>(null)
+
+  /**
+   * The AI helpers, which are here only if the user already has a `claude` or
+   * `codex` CLI installed — `<HelperMenu/>` renders nothing at all otherwise.
+   *
+   * ⛔ Neither helper touches the prompt by itself: the answer opens in a
+   * dialog, and Apply is a button the user presses.
+   */
+  const aiTools = useAiTools()
+  const ai = useAiHelper()
 
   // A branch fills the bar and then hands the caret over: the prompt is the
   // one thing the user is expected to change.
@@ -180,6 +195,39 @@ export function CreationBar({ creation }: CreationBarProps) {
             className="max-h-32 min-h-9 flex-1 resize-y py-2"
           />
 
+          <HelperMenu
+            tools={aiTools.data}
+            helpers={["improve-prompt", "suggest-shots"]}
+            disabled={ai.state === "running"}
+            onRun={(helper, tool) => {
+              if (helper === "improve-prompt") {
+                if (!creation.prompt.trim()) {
+                  creation.notify(
+                    "Write a rough prompt first — the helper improves what is there."
+                  )
+                  return
+                }
+                ai.run(
+                  {
+                    helper: "improve-prompt",
+                    prompt: creation.prompt,
+                    modelName: creation.descriptor?.name ?? null,
+                  },
+                  tool
+                )
+                return
+              }
+              ai.run(
+                {
+                  helper: "suggest-shots",
+                  containerName: containerName?.trim() || "this sequence",
+                  notes: creation.prompt.trim() || null,
+                },
+                tool
+              )
+            }}
+          />
+
           <ModelPicker
             value={creation.modelKey}
             onChange={creation.setModelKey}
@@ -274,6 +322,22 @@ export function CreationBar({ creation }: CreationBarProps) {
           request={creation.request}
         />
       ) : null}
+
+      {/*
+        The AI answer, and the only place it can become the prompt: Apply
+        replaces the prompt for an improved one, Insert adds a single suggested
+        shot. Nothing is written into the bar without one of those clicks.
+      */}
+      <HelperResultDialog
+        controller={ai}
+        onApply={
+          ai.helper === "improve-prompt"
+            ? (text) => creation.setPrompt(text)
+            : undefined
+        }
+        applyLabel="Use this prompt"
+        onInsertShot={(shot) => creation.appendToPrompt(shot)}
+      />
 
       {creation.picker ? (
         <ReferencePicker

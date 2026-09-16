@@ -1,4 +1,5 @@
 export * from "./ipc"
+export * from "./ai"
 export * from "./provider"
 export * from "./model"
 export * from "./generation"

@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 
+import { initAiTools, stopAiRuns } from "./ai/ai-service"
 import { disposeIpcHandlers, registerIpcHandlers } from "./ipc"
 import { recoverJobs, stopJobRunner } from "./jobs-service"
 import { prepareMediaProtocol, registerMediaProtocol } from "./media-service"
@@ -44,6 +45,10 @@ void app.whenReady().then(async () => {
   // close-all-windows-then-reactivate cycle.
   initAutoUpdater()
 
+  // Which of the user's AI CLIs are installed, probed once. Never fatal: with
+  // neither on PATH the app simply has no AI menus.
+  initAiTools()
+
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) void createMainWindow()
   })
@@ -51,6 +56,8 @@ void app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   stopAutoUpdater()
+  // Any helper still talking to a CLI is killed rather than orphaned.
+  stopAiRuns()
   stopJobRunner()
   disposeIpcHandlers()
   // Checkpoints the WAL so the project folder is consistent if it is synced.

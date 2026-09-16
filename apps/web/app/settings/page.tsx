@@ -7,6 +7,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 
+import { AiToolsForm } from "@/components/settings/ai-tools-form"
 import { GeneralSettingsForm } from "@/components/settings/general-settings-form"
 import { ProviderKeysForm } from "@/components/settings/provider-keys-form"
 
@@ -24,12 +25,16 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="providers">Providers</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="ai">AI helpers</TabsTrigger>
         </TabsList>
         <TabsContent value="providers" className="pt-4">
           <ProviderKeysForm />
         </TabsContent>
         <TabsContent value="general" className="pt-4">
           <GeneralSettingsForm />
+        </TabsContent>
+        <TabsContent value="ai" className="pt-4">
+          <AiToolsForm />
         </TabsContent>
       </Tabs>
     </main>

@@ -112,6 +112,12 @@ export interface BoardProps {
   onUseAsReference?: (asset: AssetDto) => void
   /** ⛔ Pre-fills the creation bar from a run; it never submits one. */
   onBranch?: (generationId: string) => void
+  /**
+   * Adds text to the creation bar's prompt — how an AI description on a card
+   * gets somewhere useful, and only ever from an explicit click in the result
+   * dialog.
+   */
+  onUsePromptText?: (text: string) => void
 }
 
 /**
@@ -153,6 +159,7 @@ export function Board({
   onSelectAsset,
   onUseAsReference,
   onBranch,
+  onUsePromptText,
 }: BoardProps) {
   // The generations view never paints media, so it never asks for any.
   const assets = useAssets(view === "generations" ? null : containerId, {
@@ -238,6 +245,7 @@ export function Board({
           siblings={media}
           onUseAsReference={onUseAsReference}
           onBranch={onBranch}
+          onUsePromptText={onUsePromptText}
         />
       ) : (
         <GenerationCard generation={data.generation} width={cellWidth} />
@@ -248,6 +256,7 @@ export function Board({
       onBranch,
       onSelectAsset,
       onUseAsReference,
+      onUsePromptText,
       removeAsset,
       selectedAssetId,
     ]

@@ -422,3 +422,33 @@ step in the project that spends money, and nothing automated may perform it.
 pushes to `main` and on every pull request.
 `.github/workflows/release.yml` runs on `v*` tags and publishes signed
 installers plus auto-update metadata to a GitHub Release.
+
+## AI helpers
+
+The four AI helpers — Improve prompt, Describe reference, Analyze video,
+Suggest shots — are the user's own locally installed `claude` or `codex` CLI,
+spawned by the main process. OpenDirect ships no assistant and calls no AI
+provider for them.
+
+```
+apps/desktop/src/main/ai/
+  detect.ts      which/where + --version, cached; "Re-detect" in Settings
+  run-cli.ts     spawn with shell: false, an argv array, a deadline and an abort
+  helpers.ts     the four prompts, and how each answer is parsed
+  ai-service.ts  the Electron wiring: paths, settings, progress events
+```
+
+The first three are Electron-free and tested in plain Node. Spawn behaviour is
+tested against `test/fixtures/ai/fake-cli.mjs`, a small executable that mimics
+both CLIs — **no test ever runs the real `claude` or `codex`.**
+
+Three rules hold the feature together:
+
+- **No shell.** `spawn(cmd, args, { shell: false })` with the prompt as one
+  argv element, so a prompt is never a command.
+- **No path from the renderer.** A reference helper is given an *asset id*;
+  main resolves it through `realAssetPath`, the same containment check
+  `shell:openAsset` uses, before the path reaches a child process.
+- **Nothing is applied.** `ai:run` returns text. Putting it in the prompt is a
+  button the user presses in `<HelperResultDialog/>`; when neither CLI is
+  installed the menus are not rendered at all.

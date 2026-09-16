@@ -194,6 +194,7 @@ describe("settings store", () => {
       defaultImageModel: null,
       maxConcurrentJobs: 2,
       pollIntervalMs: 3000,
+      preferredAiTool: null,
     })
   })
 

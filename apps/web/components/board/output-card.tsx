@@ -25,7 +25,11 @@ import {
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
 
+import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useOpenAsset, useRevealAsset } from "@/hooks/use-assets"
+import { cardHelpers } from "@/components/ai/card-helpers"
+import { HelperMenu } from "@/components/ai/helper-menu"
+import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
 
 import { AssetCard } from "./asset-card"
 import {
@@ -49,6 +53,8 @@ export interface OutputCardProps {
   onUseAsReference?: (asset: AssetDto) => void
   /** ⛔ Pre-fills the creation bar from a run; never submits one. */
   onBranch?: (generationId: string) => void
+  /** Adds an AI description to the prompt — from the result dialog only. */
+  onUsePromptText?: (text: string) => void
 }
 
 export function OutputCard({
@@ -61,6 +67,7 @@ export function OutputCard({
   siblings,
   onUseAsReference,
   onBranch,
+  onUsePromptText,
 }: OutputCardProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [addToOpen, setAddToOpen] = useState(false)
@@ -69,6 +76,11 @@ export function OutputCard({
 
   const open = useOpenAsset()
   const reveal = useRevealAsset()
+  // The AI menu is absent entirely when no local CLI was found, so this query
+  // is the only thing standing between "no claude installed" and no menu.
+  const aiTools = useAiTools()
+  const ai = useAiHelper()
+  const helpers = cardHelpers(asset)
   const failure = open.error ?? reveal.error
 
   const actions = outputActions({
@@ -94,29 +106,53 @@ export function OutputCard({
         onRemove={onRemove}
         menuItems={<OutputActionMenuItems actions={actions} />}
         overlay={
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <PopoverTrigger
-              render={
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  aria-label={`Actions for ${asset.label ?? asset.originalName ?? asset.kind}`}
-                  className="size-7"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                />
+          <>
+            <HelperMenu
+              tools={aiTools.data}
+              helpers={helpers}
+              label={`AI helpers for ${asset.label ?? asset.originalName ?? asset.kind}`}
+              className="size-7 bg-secondary text-secondary-foreground"
+              onRun={(helper, tool) =>
+                ai.run(
+                  helper === "analyze-video"
+                    ? { helper: "analyze-video", assetId: asset.id }
+                    : { helper: "describe-reference", assetId: asset.id },
+                  tool
+                )
               }
-            >
-              <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 p-1">
-              <OutputActionButtons
-                actions={actions}
-                onDone={() => setMenuOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
+            />
+            <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    aria-label={`Actions for ${asset.label ?? asset.originalName ?? asset.kind}`}
+                    className="size-7"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                }
+              >
+                <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-56 p-1">
+                <OutputActionButtons
+                  actions={actions}
+                  onDone={() => setMenuOpen(false)}
+                />
+              </PopoverContent>
+            </Popover>
+          </>
         }
+      />
+
+      {/* ⛔ Read-only help: the answer is text until the user inserts it. */}
+      <HelperResultDialog
+        controller={ai}
+        onApply={onUsePromptText}
+        applyLabel="Add to prompt"
+        onInsertShot={onUsePromptText}
       />
 
       {failure ? (

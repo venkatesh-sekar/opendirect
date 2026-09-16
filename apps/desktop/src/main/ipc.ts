@@ -1,5 +1,11 @@
 import { app, dialog, ipcMain } from "electron"
 
+import {
+  cancelAiRun,
+  detectAiTools,
+  getAiTools,
+  runAiHelper,
+} from "./ai/ai-service"
 import { registerModelHandlers } from "./catalog"
 import { getModelCatalog, invalidateModelCatalog } from "./catalog-service"
 import { registerProjectHandlers } from "./handlers"
@@ -74,6 +80,21 @@ export function registerIpcHandlers(): void {
   // Project folder, containers, assets and generations — all scoped to the
   // currently open project (`project-service.ts`).
   registerProjectHandlers(handle, getModelCatalog)
+
+  /**
+   * The AI helpers, backed by the user's own locally installed `claude` /
+   * `codex`. `ai:tools` answering with `preferred: null` is how the renderer
+   * knows to hide every AI entry point entirely.
+   *
+   * ⛔ Not a provider call and not a generation — see `ai/run-cli.ts`.
+   */
+  handle("ai:tools", () => getAiTools())
+  handle("ai:detect", () => detectAiTools())
+  handle("ai:run", (request) => runAiHelper(request))
+  handle("ai:cancel", ({ runId }) => {
+    cancelAiRun(runId)
+    return { ok: true as const }
+  })
 }
 
 /** Tears every handler down — used on quit and by hot-reload in development. */

@@ -24,6 +24,8 @@ vi.mock("@/lib/ipc", () => ({
   invoke,
   isBridgeAvailable: () => true,
   pathsForFiles: () => [],
+  // The AI helpers subscribe to `ai:progress`; nothing here ever pushes one.
+  subscribe: () => () => {},
 }))
 
 const MODEL_KEY = "replicate:bytedance/seedance-2.5"
