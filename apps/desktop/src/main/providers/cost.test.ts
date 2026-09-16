@@ -91,20 +91,6 @@ describe("estimateCost", () => {
     expect(r.source).toBe("none")
   })
 
-  it("multiplies a per-output Replicate image model by the output count", () => {
-    const entry = REPLICATE_PRICING["google/nano-banana-pro"]
-    expect(entry?.basis).toBe("per_output")
-    const r = estimateCost({
-      provider: "replicate",
-      kind: "image",
-      slug: "google/nano-banana-pro",
-      pricingSkus: {},
-      params: { num_outputs: 3 },
-    })
-    expect(r.amount).toBeCloseTo(entry!.usd * 3, 6)
-    expect(r.source).toBe("local_table")
-  })
-
   it("never invents a price for a Replicate model missing a duration", () => {
     const r = estimateCost({
       provider: "replicate",
@@ -115,5 +101,133 @@ describe("estimateCost", () => {
     })
     expect(r.confidence).toBe("unknown")
     expect(r.amount).toBe(0)
+  })
+
+  it("prices the Replicate tier the requested resolution selects", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: { duration: 5, resolution: "480p" },
+    })
+    expect(r.amount).toBeCloseTo(0.1028 * 5, 6)
+    expect(r.confidence).toBe("estimated")
+    expect(r.source).toBe("local_table")
+  })
+
+  it("uses the dearer video-input tier when a video reference is attached", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: {
+        duration: 5,
+        resolution: "720p",
+        reference_videos: ["file:///clip.mp4"],
+      },
+    })
+    expect(r.amount).toBeCloseTo(0.9676 * 5, 6)
+  })
+
+  it("falls back to the worst-case tier of the matching variant when the resolution is unset", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: { duration: 5 },
+    })
+    // No video input, so the fallback stays inside the non-video tiers.
+    expect(r.amount).toBeCloseTo(0.2312 * 5, 6)
+    expect(r.note).toMatch(/worst-case/i)
+  })
+
+  it("falls back inside the video-input tiers when a video is attached", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.5",
+      pricingSkus: {},
+      params: { duration: 5, reference_videos: ["file:///clip.mp4"] },
+    })
+    expect(r.amount).toBeCloseTo(0.9676 * 5, 6)
+    expect(r.sku).toBe("720p:video_in")
+  })
+
+  it("matches Replicate tier keys case-insensitively", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "image",
+      slug: "google/nano-banana-2",
+      pricingSkus: {},
+      params: { resolution: "2K", num_outputs: 2 },
+    })
+    expect(r.amount).toBeCloseTo(0.101 * 2, 6)
+    expect(r.basis).toBe("per_output")
+  })
+
+  it("defaults a per-output model to a single output", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "image",
+      slug: "google/nano-banana-pro",
+      pricingSkus: {},
+      params: { resolution: "4K" },
+    })
+    expect(r.amount).toBeCloseTo(0.3, 6)
+  })
+
+  it("does not read num_frames as a duration in seconds", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.0",
+      pricingSkus: {},
+      params: { num_frames: 121, resolution: "480p" },
+    })
+    expect(r.confidence).toBe("unknown")
+    expect(r.amount).toBe(0)
+  })
+
+  it("derives a duration from num_frames and fps when both are given", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "video",
+      slug: "bytedance/seedance-2.0",
+      pricingSkus: {},
+      params: { num_frames: 120, fps: 24, resolution: "480p" },
+    })
+    expect(r.amount).toBeCloseTo(0.08 * 5, 6)
+  })
+
+  it("assumes the dearer audio SKU when the request does not say", () => {
+    const r = estimateCost({
+      provider: "openrouter",
+      kind: "video",
+      pricingSkus: {
+        duration_seconds_with_audio: "0.08",
+        duration_seconds_without_audio: "0.05",
+      },
+      params: { duration: 8 },
+    })
+    expect(r.amount).toBeCloseTo(0.64, 5)
+    expect(r.note).toMatch(/audio/i)
+  })
+
+  it("keeps every published tier for the curated Replicate models", () => {
+    expect(Object.keys(REPLICATE_PRICING).sort()).toEqual([
+      "bytedance/seedance-2.0",
+      "bytedance/seedance-2.5",
+      "google/nano-banana-2",
+      "google/nano-banana-pro",
+    ])
+    expect(REPLICATE_PRICING["bytedance/seedance-2.0"]?.tiers).toMatchObject({
+      "480p": 0.08,
+      "480p:video_in": 0.1,
+      "4k": 1,
+      "4k:video_in": 1.25,
+    })
   })
 })
