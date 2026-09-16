@@ -124,6 +124,30 @@ describe("deriveReferenceSlots", () => {
     expect(slot?.kind).toBe("video")
   })
 
+  it("maps input_references, OpenRouter's own field name, to the reference role", () => {
+    const [slot] = deriveReferenceSlots(
+      schema({ input_references: uriArray() })
+    )
+    expect(slot?.role).toBe("reference")
+  })
+
+  it("prefers an explicit contentMediaType over the name/description guess", () => {
+    const slots = deriveReferenceSlots(
+      schema({
+        first_frame: uri({ contentMediaType: "image/*" }),
+        backdrop: uri({
+          description: "A reference video used as the backdrop.",
+          contentMediaType: "audio/*",
+        }),
+        input_references: uriArray({
+          items: { type: "string", format: "uri", contentMediaType: "*/*" },
+          description: "Reference images, video or audio.",
+        }),
+      })
+    )
+    expect(slots.map((slot) => slot.kind)).toEqual(["image", "audio", "any"])
+  })
+
   it("takes max from maxItems", () => {
     const [slot] = deriveReferenceSlots(
       schema({ reference_images: uriArray({ maxItems: 4 }) })

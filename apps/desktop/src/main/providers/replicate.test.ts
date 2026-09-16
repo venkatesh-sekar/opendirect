@@ -272,6 +272,18 @@ describe("createReplicateProvider", () => {
       ).resolves.not.toHaveLength(0)
     })
 
+    it("surfaces a rejected key instead of returning an empty catalog", async () => {
+      server.use(
+        http.get("https://api.replicate.com/v1/collections/text-to-video", () =>
+          HttpResponse.json({ detail: "Invalid token." }, { status: 401 })
+        )
+      )
+
+      await expect(
+        provider.listModels({ kinds: ["video", "image"] })
+      ).rejects.toThrow(/rejected the Replicate API key/i)
+    })
+
     it("reuses the collection index when a descriptor is fetched afterwards", async () => {
       await provider.listModels({ kinds: ["video", "image"] })
       const d = await provider.getModel("bytedance/seedance-2.0")

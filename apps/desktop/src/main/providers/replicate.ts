@@ -47,8 +47,6 @@ export interface ReplicateProviderDeps {
   getKey: () => string | null
   /** Injected for deterministic `fetchedAt` in tests. */
   now?: () => number
-  /** Overridden only by tests and the read-only verification script. */
-  baseUrl?: string
 }
 
 /**
@@ -307,6 +305,19 @@ function outputUrlsOf(output: unknown): string[] {
   return []
 }
 
+/**
+ * The HTTP status behind a thrown error, when there is one. The Replicate SDK
+ * throws its own `ApiError` carrying the `Response`; anything else (a DNS
+ * failure, an abort) has no status and is never treated as a 404.
+ */
+function statusOf(error: unknown): number | null {
+  if (!isObject(error)) return null
+  const response = (error as { response?: unknown }).response
+  if (!isObject(response)) return null
+  const status = response.status
+  return typeof status === "number" ? status : null
+}
+
 function errorMessageOf(error: unknown): string | null {
   if (typeof error === "string" && error) return error
   if (error instanceof Error) return error.message
@@ -335,21 +346,34 @@ export function createReplicateProvider(
     }
     return new Replicate({
       auth,
-      ...(deps.baseUrl ? { baseUrl: deps.baseUrl } : {}),
       // Outputs are downloaded to the project folder by the job runner, which
       // wants plain URLs rather than the SDK's lazy `FileOutput` streams.
       useFileOutput: false,
     })
   }
 
+  /**
+   * One seed collection's models.
+   *
+   * A renamed or retired collection (404) must not empty the catalog — the
+   * remaining collections still seed it. Everything else is reported: a
+   * rejected key or a Replicate outage silently producing "no models" is the
+   * worst possible failure mode for the picker.
+   */
   async function collectionModels(slug: string): Promise<Model[]> {
     try {
       const collection = await client().collections.get(slug)
       return collection.models ?? []
-    } catch {
-      // A renamed or unavailable collection must not empty the catalog; the
-      // remaining collections still seed it.
-      return []
+    } catch (error) {
+      const status = statusOf(error)
+      if (status === 404 || status === 410) return []
+      if (status === 401 || status === 403) {
+        throw new Error(
+          `Replicate rejected the Replicate API key (HTTP ${status}). Check the key in Settings.`,
+          { cause: error }
+        )
+      }
+      throw error
     }
   }
 

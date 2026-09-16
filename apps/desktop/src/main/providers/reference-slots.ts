@@ -32,11 +32,23 @@ const ROLE_HINTS: Array<[RegExp, ReferenceRole]> = [
   [/^(last_frame|last_frame_image|end_image|end_frame)$/i, "last_frame"],
   [/(motion|camera)_?(reference|video)/i, "motion"],
   [/^(video|input_video|source_video|subject_video)$/i, "source"],
+  [/^(input_references|references|reference)$/i, "reference"],
   [/(reference|ref)_?(image|images|video|videos|audio|audios)/i, "reference"],
   [
     /^(image|images|input_image|input_images|image_input|subject_image)$/i,
     "reference",
   ],
+]
+
+/**
+ * Media types, checked before the name/description guess. OpenRouter's schemas
+ * are synthesized by us and state `contentMediaType` outright, so there the
+ * kind is read rather than guessed.
+ */
+const MEDIA_TYPE_KINDS: Array<[RegExp, ReferenceSlot["kind"]]> = [
+  [/^image\//i, "image"],
+  [/^video\//i, "video"],
+  [/^audio\//i, "audio"],
 ]
 
 /** Media hints, checked against the field name first and its description second. */
@@ -73,10 +85,26 @@ function roleOf(field: string): ReferenceRole {
   return "unknown"
 }
 
+/** `contentMediaType` on the property, or on an array's items. */
+function mediaTypeOf(schema: JsonObject): string | null {
+  const own = asString(schema.contentMediaType)
+  if (own) return own
+  return isObject(schema.items) ? asString(schema.items.contentMediaType) : null
+}
+
 function kindOf(
   field: string,
-  description: string | null
+  description: string | null,
+  mediaType: string | null
 ): ReferenceSlot["kind"] {
+  if (mediaType) {
+    for (const [pattern, kind] of MEDIA_TYPE_KINDS) {
+      if (pattern.test(mediaType)) return kind
+    }
+    // An explicit wildcard (`*/*`) is a statement, not a silence: the model
+    // takes any asset, so the name must not narrow it.
+    return "any"
+  }
   for (const source of [field, description ?? ""]) {
     if (!source) continue
     for (const [pattern, kind] of KIND_HINTS) {
@@ -128,7 +156,7 @@ export function deriveReferenceSlots(inputSchema: unknown): ReferenceSlot[] {
     slots.push({
       field,
       label: asString(raw.title) ?? humanize(field),
-      kind: kindOf(field, description),
+      kind: kindOf(field, description, mediaTypeOf(raw)),
       multiple,
       max: multiple ? maxOf(raw, description) : null,
       role: roleOf(field),
