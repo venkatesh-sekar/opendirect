@@ -280,17 +280,24 @@ Board tiles mix assets and generations. A finished run is already on the board
 as its output assets, so its own record is dropped; a queued, running or failed
 run has no asset yet and gets a placeholder tile (`buildBoardItems`).
 
-**Drag and drop.** Dropping a card on a container **adds** it — an asset
+**Drag and drop.** A card is a `role="button"` tile: Enter selects it, Space
+picks it up for the `KeyboardSensor` and the arrow keys walk it to a container.
+Dropping a card on a container **adds** it — an asset
 legitimately lives in many containers and a copy is the non-destructive
 default. Starting the drag with Shift held **moves** it: the same add, then an
 unlink from the source board, in that order and only on success. The decision
-is `lib/board/drop-target.ts`; the mutations are `hooks/use-asset-dnd.ts`.
+is `lib/board/drop-target.ts`; the mutations are `hooks/use-asset-dnd.ts`,
+which tracks Shift for the whole drag so the overlay says what the drop will
+actually do.
 
 **File import.** `File.path` was removed in Electron 32, so a dropped file is
 resolved through `webUtils.getPathForFile` in the preload, exposed as
 `window.opendirect.pathForFile` and wrapped by `pathsForFiles` in
 `apps/web/lib/ipc.ts`. Outside Electron it returns an empty list rather than
-throwing. The Import button uses the `assets:choose` dialog channel instead.
+throwing, and the board says "Nothing to import" instead of firing a no-op
+mutation. The Import button uses the `assets:choose` dialog channel instead.
+Either way the board reports the counts the main process returns — imported,
+already here, failed — and lists the files it could not read.
 
 Component tests run under jsdom via a `// @vitest-environment jsdom` pragma.
 `vitest.config.ts` sets the automatic JSX runtime (the renderer's tsconfig says

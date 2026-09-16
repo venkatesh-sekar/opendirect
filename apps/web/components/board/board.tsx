@@ -2,9 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DragEvent } from "react"
-import type { AssetDto } from "@opendirect/contract"
+import type { AssetDto, ImportResult } from "@opendirect/contract"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Upload04Icon } from "@hugeicons/core-free-icons"
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@workspace/ui/components/alert"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
@@ -36,6 +41,64 @@ import { BoardEmptyState } from "./empty-state"
 
 /** How many assets one board page holds; the contract caps it at 500. */
 const PAGE_SIZE = 200
+
+type ImportNotice =
+  { kind: "result"; result: ImportResult } | { kind: "no-paths" }
+
+/** What an import actually did — counts first, then the files it could not read. */
+function ImportSummary({
+  notice,
+  onDismiss,
+}: {
+  notice: ImportNotice
+  onDismiss: () => void
+}) {
+  if (notice.kind === "no-paths") {
+    return (
+      <Alert className="mb-3">
+        <AlertTitle>Nothing to import</AlertTitle>
+        <AlertDescription>
+          Drag files in from Finder or Explorer, or use Import to pick them.
+        </AlertDescription>
+        <Button size="sm" variant="ghost" onClick={onDismiss}>
+          Dismiss
+        </Button>
+      </Alert>
+    )
+  }
+
+  const { imported, deduped, failures } = notice.result
+  const counts = [
+    `${imported} imported`,
+    deduped > 0 ? `${deduped} already here` : null,
+    failures.length > 0 ? `${failures.length} failed` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
+
+  return (
+    <Alert
+      className="mb-3"
+      variant={failures.length > 0 ? "destructive" : "default"}
+    >
+      <AlertTitle>{counts}</AlertTitle>
+      {failures.length > 0 ? (
+        <AlertDescription>
+          <ul className="list-inside list-disc">
+            {failures.map((failure) => (
+              <li key={failure.path} className="truncate">
+                {failure.path} — {failure.message}
+              </li>
+            ))}
+          </ul>
+        </AlertDescription>
+      ) : null}
+      <Button size="sm" variant="ghost" onClick={onDismiss}>
+        Dismiss
+      </Button>
+    </Alert>
+  )
+}
 
 export interface BoardProps {
   containerId: string | null
@@ -84,7 +147,10 @@ export function Board({
   selectedAssetId,
   onSelectAsset,
 }: BoardProps) {
-  const assets = useAssets(containerId, { limit: PAGE_SIZE })
+  // The generations view never paints media, so it never asks for any.
+  const assets = useAssets(view === "generations" ? null : containerId, {
+    limit: PAGE_SIZE,
+  })
   const generations = useGenerations(containerId, { limit: PAGE_SIZE })
   const importAssets = useImportAssets()
   const chooseFiles = useChooseFiles()
@@ -93,14 +159,12 @@ export function Board({
   const scrollRef = useRef<HTMLDivElement>(null)
   const { width, height, scrollTop, onScroll } = useScrollViewport(scrollRef)
   const [dropActive, setDropActive] = useState(false)
+  const [notice, setNotice] = useState<ImportNotice | null>(null)
 
   const items = useMemo(
     () =>
-      buildBoardItems(
-        view === "generations" ? [] : (assets.data?.items ?? []),
-        generations.data?.items ?? []
-      ),
-    [assets.data, generations.data, view]
+      buildBoardItems(assets.data?.items ?? [], generations.data?.items ?? []),
+    [assets.data, generations.data]
   )
 
   const positioner = usePositioner(
@@ -115,8 +179,16 @@ export function Board({
 
   const importPaths = useCallback(
     (paths: string[]) => {
-      if (paths.length === 0) return
-      importAssets.mutate({ paths, containerId })
+      if (paths.length === 0) {
+        // Either the user dropped something that is not a file, or the app is
+        // running outside Electron and there is no path to resolve.
+        setNotice({ kind: "no-paths" })
+        return
+      }
+      importAssets.mutate(
+        { paths, containerId },
+        { onSuccess: (result) => setNotice({ kind: "result", result }) }
+      )
     },
     [importAssets, containerId]
   )
@@ -162,12 +234,12 @@ export function Board({
     scrollTop,
     overscanBy: 2,
     itemKey: (item) => item.id,
-    role: "list",
     className: "mx-auto",
     render: renderItem,
   })
 
-  const loading = assets.isPending && containerId !== null
+  const loading =
+    assets.isPending && containerId !== null && view !== "generations"
   const error = assets.error ?? generations.error
 
   return (
@@ -211,6 +283,15 @@ export function Board({
           dropActive && "bg-accent/40 ring-2 ring-primary ring-inset"
         )}
       >
+        {importAssets.error ? (
+          <Alert variant="destructive" className="mb-3">
+            <AlertTitle>Import failed</AlertTitle>
+            <AlertDescription>{importAssets.error.message}</AlertDescription>
+          </Alert>
+        ) : notice ? (
+          <ImportSummary notice={notice} onDismiss={() => setNotice(null)} />
+        ) : null}
+
         {error ? (
           <p className="p-4 text-sm text-destructive">{error.message}</p>
         ) : loading ? (

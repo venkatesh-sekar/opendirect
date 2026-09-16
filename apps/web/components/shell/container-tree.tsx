@@ -87,7 +87,11 @@ function ContainerRow({
   }
 
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem
+      role="treeitem"
+      aria-selected={selectedId === node.id}
+      aria-expanded={hasChildren ? expanded : undefined}
+    >
       <ContextMenu>
         <ContextMenuTrigger className="block w-full">
           <div
@@ -106,7 +110,6 @@ function ContainerRow({
               aria-label={
                 expanded ? `Collapse ${node.name}` : `Expand ${node.name}`
               }
-              aria-expanded={hasChildren ? expanded : undefined}
               onClick={() => setExpanded((value) => !value)}
               className={cn(
                 "flex size-4 shrink-0 items-center justify-center rounded text-muted-foreground",
@@ -181,7 +184,10 @@ function ContainerRow({
       </ContextMenu>
 
       {hasChildren && expanded ? (
-        <SidebarMenuSub className="mx-0 translate-x-0 border-none px-0">
+        <SidebarMenuSub
+          role="group"
+          className="mx-0 translate-x-0 border-none px-0"
+        >
           {node.children.map((child) => (
             <ContainerRow
               key={child.id}
@@ -204,7 +210,7 @@ export function ContainerTree({
   depth = 0,
 }: ContainerTreeProps) {
   return (
-    <SidebarMenu>
+    <SidebarMenu role="tree">
       {nodes.map((node) => (
         <ContainerRow
           key={node.id}

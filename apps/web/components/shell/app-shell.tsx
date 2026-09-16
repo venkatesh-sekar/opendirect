@@ -4,10 +4,12 @@ import { useMemo, useState } from "react"
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable"
 import type { ContainerNodeDto } from "@opendirect/contract"
 import {
   ResizableHandle,
@@ -70,6 +72,16 @@ export function AppShell() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: DRAG_ACTIVATION_DISTANCE },
+    }),
+    // Space picks a card up and puts it down; the arrow keys walk it to a
+    // container. Enter is left to the card, which uses it to select.
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: {
+        start: ["Space"],
+        cancel: ["Escape"],
+        end: ["Space"],
+      },
     })
   )
 
@@ -193,8 +205,15 @@ export function AppShell() {
 
       <DragOverlay dropAnimation={null}>
         {dnd.activeDrag ? (
-          <div className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground shadow-lg">
-            Move to a container
+          <div className="flex flex-col gap-0.5 rounded-md bg-primary px-2 py-1.5 text-xs text-primary-foreground shadow-lg">
+            <span>
+              {dnd.moveIntent ? "Move to container" : "Add to container"}
+            </span>
+            <span className="text-primary-foreground/70">
+              {dnd.moveIntent
+                ? "Release Shift to keep a copy here"
+                : "Hold Shift to move"}
+            </span>
           </div>
         ) : null}
       </DragOverlay>

@@ -4,10 +4,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type {
   AssetDto,
   ContainerNodeDto,
+  ImportResult,
   IpcChannel,
 } from "@opendirect/contract"
 import { SidebarProvider } from "@workspace/ui/components/sidebar"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ContainerTree } from "@/components/shell/container-tree"
@@ -62,13 +69,26 @@ function container(id: string): ContainerNodeDto {
 }
 
 /** Every channel the board and the tree reach for, answered from memory. */
-function stubIpc(assets: AssetDto[]) {
+function stubIpc(
+  assets: AssetDto[],
+  importResult?: Partial<ImportResult> & { paths?: string[] }
+) {
   invoke.mockImplementation(async (channel: IpcChannel) => {
     switch (channel) {
       case "assets:list":
         return { items: assets, total: assets.length, nextOffset: null }
       case "generations:list":
         return { items: [], total: 0, nextOffset: null }
+      case "assets:choose":
+        return { paths: importResult?.paths ?? [] }
+      case "assets:import":
+        return {
+          assets: [],
+          imported: 0,
+          deduped: 0,
+          failures: [],
+          ...importResult,
+        }
       case "assets:addToContainer":
       case "assets:removeFromContainer":
         return { ok: true }
@@ -157,6 +177,38 @@ describe("Board", () => {
     const video = root.querySelector("video")!
     expect(video.getAttribute("src")).toBe("asset://p1/v1.mp4")
     expect(video.hasAttribute("poster")).toBe(false)
+  })
+})
+
+describe("importing", () => {
+  it("reports what the import did, failures included", async () => {
+    stubIpc([], {
+      paths: ["/tmp/a.png", "/tmp/b.png", "/tmp/c.png"],
+      imported: 2,
+      deduped: 1,
+      failures: [{ path: "/tmp/c.png", message: "Unreadable" }],
+    })
+    renderHarness({ containerId: "c1" })
+
+    fireEvent.click(await screen.findByRole("button", { name: /import/i }))
+
+    expect(
+      await screen.findByText("2 imported · 1 already here · 1 failed")
+    ).toBeDefined()
+    expect(screen.getByText(/\/tmp\/c\.png — Unreadable/)).toBeDefined()
+  })
+
+  it("explains itself when a drop carries no file paths", async () => {
+    stubIpc([])
+    renderHarness({ containerId: "c1" })
+    const scroll = await screen.findByTestId("board-scroll")
+
+    fireEvent.drop(scroll, { dataTransfer: { files: [], types: ["Files"] } })
+
+    expect(await screen.findByText("Nothing to import")).toBeDefined()
+    expect(
+      invoke.mock.calls.filter(([channel]) => channel === "assets:import")
+    ).toHaveLength(0)
   })
 })
 

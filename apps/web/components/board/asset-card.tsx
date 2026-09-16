@@ -70,6 +70,8 @@ export function AssetCard({
           ref={setNodeRef}
           {...listeners}
           {...attributes}
+          role="button"
+          tabIndex={0}
           aria-label={label}
           data-testid="asset-card"
           data-asset-id={asset.id}
@@ -82,7 +84,12 @@ export function AssetCard({
           )}
           onClick={() => onSelect?.(asset)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
+            // Space belongs to the keyboard sensor — it picks the card up and
+            // puts it down. Enter is ours, and only when the sensor has not
+            // already claimed the keystroke.
+            listeners?.onKeyDown?.(event)
+            if (event.defaultPrevented) return
+            if (event.key === "Enter") {
               event.preventDefault()
               onSelect?.(asset)
             }
