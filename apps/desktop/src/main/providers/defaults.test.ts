@@ -9,7 +9,12 @@ import { resolve } from "node:path"
 import { parseModelKey } from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
-import { RECOMMENDED, recommendedFor, recommendedKeys } from "./defaults"
+import {
+  RECOMMENDED,
+  describeRecommended,
+  recommendedFor,
+  recommendedKeys,
+} from "./defaults"
 
 function fixtureIds(provider: string, name: string): string[] {
   const path = resolve(process.cwd(), "test/fixtures", provider, `${name}.json`)
@@ -46,6 +51,26 @@ describe("RECOMMENDED", () => {
     for (const parsed of openrouterVideo) {
       expect(listed).toContain(parsed.slug)
     }
+  })
+
+  it("marks a recommendation the catalog no longer lists as unavailable", () => {
+    const described = describeRecommended([
+      "replicate:bytedance/seedance-2.5",
+      "replicate:google/nano-banana-2",
+    ])
+
+    expect(described.video).toContainEqual({
+      key: "replicate:bytedance/seedance-2.5",
+      label: "Seedance 2.5 (Replicate)",
+      kind: "video",
+      available: true,
+    })
+    expect(
+      described.video.find((m) => m.key === "openrouter:bytedance/seedance-2.5")
+        ?.available
+    ).toBe(false)
+    expect(described.image.map((m) => m.available)).toEqual([true, false])
+    expect(described.video).toHaveLength(RECOMMENDED.video.length)
   })
 
   it("exposes the list per modality and nothing for the others", () => {

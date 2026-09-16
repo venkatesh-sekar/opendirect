@@ -11,9 +11,9 @@
  * the picker must show it greyed out and keep working, rather than treating a
  * recommendation as a guarantee.
  */
-import type { ModelKind } from "@opendirect/contract"
+import type { ModelKind, RecommendedModel } from "@opendirect/contract"
 
-export interface RecommendedModel {
+export interface RecommendedEntry {
   /** A catalog key: `"<provider>:<slug>"`. */
   key: string
   label: string
@@ -38,10 +38,10 @@ export const RECOMMENDED = {
     { key: "replicate:google/nano-banana-2", label: "Nano Banana 2" },
     { key: "replicate:google/nano-banana-pro", label: "Nano Banana Pro" },
   ],
-} as const satisfies Partial<Record<ModelKind, readonly RecommendedModel[]>>
+} as const satisfies Partial<Record<ModelKind, readonly RecommendedEntry[]>>
 
 /** The recommendations for a modality, or none when it has no curated list. */
-export function recommendedFor(kind: ModelKind): readonly RecommendedModel[] {
+export function recommendedFor(kind: ModelKind): readonly RecommendedEntry[] {
   return kind in RECOMMENDED
     ? RECOMMENDED[kind as keyof typeof RECOMMENDED]
     : []
@@ -52,4 +52,26 @@ export function recommendedKeys(): string[] {
   return Object.values(RECOMMENDED).flatMap((models) =>
     models.map((model) => model.key)
   )
+}
+
+/**
+ * The curated shortlist, annotated against the catalog the picker actually
+ * has. A key the providers no longer list stays in the result with
+ * `available: false` so the picker can grey it out and say why, rather than
+ * quietly dropping a model the user may be looking for.
+ */
+export function describeRecommended(availableKeys: Iterable<string>): {
+  video: RecommendedModel[]
+  image: RecommendedModel[]
+} {
+  const available = new Set(availableKeys)
+  const describe = (kind: "video" | "image"): RecommendedModel[] =>
+    RECOMMENDED[kind].map((model) => ({
+      key: model.key,
+      label: model.label,
+      kind,
+      available: available.has(model.key),
+    }))
+
+  return { video: describe("video"), image: describe("image") }
 }

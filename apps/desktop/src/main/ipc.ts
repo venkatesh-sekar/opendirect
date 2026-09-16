@@ -1,5 +1,7 @@
 import { app, dialog, ipcMain } from "electron"
 
+import { registerModelHandlers } from "./catalog"
+import { getModelCatalog } from "./catalog-service"
 import { createIpcRegistrar } from "./ipc-registry"
 import { getSettingsService } from "./settings-service"
 import { describeKeys, verifyProviderKey } from "./settings"
@@ -57,6 +59,12 @@ export function registerIpcHandlers(): void {
     }
     return verifyProviderKey(provider, key)
   })
+
+  /**
+   * ⛔ Listing endpoints only. The catalog never submits a generation; see
+   * `catalog.ts`.
+   */
+  registerModelHandlers(handle, getModelCatalog)
 }
 
 /** Tears every handler down — used on quit and by hot-reload in development. */

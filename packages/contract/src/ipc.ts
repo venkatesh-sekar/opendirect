@@ -1,8 +1,12 @@
 import { z } from "zod"
 
-/** The two model providers OpenDirect talks to. */
-export const providerIdSchema = z.enum(["replicate", "openrouter"])
-export type ProviderId = z.output<typeof providerIdSchema>
+import {
+  modelDescriptorSchema,
+  modelKindSchema,
+  modelSummarySchema,
+  recommendedModelSchema,
+} from "./model"
+import { providerIdSchema } from "./provider"
 
 /**
  * Where a resolved API key came from. `env` means a `.env.local` /
@@ -95,6 +99,33 @@ export const ipcContract = {
   "settings:keys:verify": {
     input: z.object({ provider: providerIdSchema }),
     output: z.object({ valid: z.boolean(), message: z.string().optional() }),
+  },
+
+  /**
+   * The model catalog. Served from the on-disk cache while it is fresh; a
+   * `refresh: true` re-fetches from every configured provider first.
+   *
+   * ⛔ Backed by the providers' free, read-only listing endpoints only.
+   */
+  "models:list": {
+    input: z.object({
+      kinds: z.array(modelKindSchema).optional(),
+      refresh: z.boolean().optional(),
+    }),
+    output: z.array(modelSummarySchema),
+  },
+  /** One full descriptor — schema included — fetched and cached on demand. */
+  "models:get": {
+    input: z.object({ key: z.string() }),
+    output: modelDescriptorSchema,
+  },
+  /** The curated shortlist, annotated with whether the catalog still lists it. */
+  "models:recommended": {
+    input: z.void(),
+    output: z.object({
+      video: z.array(recommendedModelSchema),
+      image: z.array(recommendedModelSchema),
+    }),
   },
 } as const
 

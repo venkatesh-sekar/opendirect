@@ -47,6 +47,24 @@ happening in CI.
 > Read-only provider endpoints (`GET /v1/models`, etc.) are free but still
 > belong behind a mock in tests.
 
+## Model catalog cache
+
+`apps/desktop/src/main/catalog.ts` merges every **configured** provider's model
+list into one catalog and caches it at
+`<userData>/model-catalog.json` as `{ version, models, descriptors, fetchedAt }`.
+A `list()` serves that file for 24 hours and re-fetches once it is older; the
+picker's "Refresh catalog" item forces a re-fetch. Full `ModelDescriptor`s
+(which carry the whole input JSON Schema) are fetched one key at a time and
+cached under `descriptors`, never eagerly.
+
+Both adapters are registered at startup (`providers/bootstrap.ts`) and are
+handed a *getter* for their key, so a key added in Settings takes effect on the
+next refresh without re-registering anything. A provider that fails a refresh
+is logged and skipped; if every provider fails, the previous cache is kept
+rather than replaced with an empty catalog.
+
+> ⛔ The catalog only ever calls the providers' free listing endpoints.
+
 ## Packaging and releases
 
 `apps/desktop/electron-builder.yml` packages the app. The Next.js static export

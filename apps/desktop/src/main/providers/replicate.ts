@@ -24,6 +24,7 @@ import {
   type ModelDescriptor,
   type ModelKind,
   type ModelSummary,
+  type PriceHint,
   type Pricing,
   type CommonControls,
 } from "@opendirect/contract"
@@ -273,6 +274,35 @@ function pricingFor(slug: string): Pricing {
   }
 }
 
+/**
+ * The cheapest published rate for the picker's one-line hint, or null when the
+ * local table has nothing for this model — which the picker renders as
+ * "price unknown", never as $0.00.
+ *
+ * Only the base tiers are considered: the `:video_in` variants are dearer by
+ * construction, and `nano-banana-pro`'s `fallback` tier is a rate Replicate
+ * publishes but OpenDirect never quotes (see `cost.ts`), so advertising it as
+ * the "from" price would understate every real run.
+ */
+function priceHintFor(slug: string): PriceHint | null {
+  const price = REPLICATE_PRICING[slug]
+  if (!price) return null
+
+  let lowest: number | null = null
+  for (const [tier, usd] of Object.entries(price.tiers)) {
+    if (tier.includes(":") || tier === "fallback") continue
+    if (lowest === null || usd < lowest) lowest = usd
+  }
+  if (lowest === null) return null
+
+  return {
+    amount: lowest,
+    unit: price.unit,
+    basis: price.basis,
+    source: "local_table",
+  }
+}
+
 function summaryOf(model: Model, kind: ModelKind): ModelSummary {
   const slug = `${model.owner}/${model.name}`
   return {
@@ -283,6 +313,7 @@ function summaryOf(model: Model, kind: ModelKind): ModelSummary {
     description: model.description ?? null,
     kind,
     coverImageUrl: model.cover_image_url ?? null,
+    priceHint: priceHintFor(slug),
   }
 }
 

@@ -9,7 +9,7 @@
  */
 import { z } from "zod"
 
-import { providerIdSchema } from "./ipc"
+import { providerIdSchema } from "./provider"
 
 /** Coarse output modality, used for filtering and for picking a cost basis. */
 export const modelKindSchema = z.enum([
@@ -110,6 +110,22 @@ export const pricingSchema = z.object({
 })
 export type Pricing = z.output<typeof pricingSchema>
 
+/**
+ * The cheapest published rate for a model, for the one-line hint in the model
+ * picker. It is deliberately *not* a quote: a real number needs the form
+ * values, which the picker does not have. `null` on a summary means the price
+ * is unknown, and the picker must say exactly that rather than show "$0.00".
+ */
+export const priceHintSchema = z.object({
+  /** Lowest published rate across the model's tiers/SKUs, in USD. */
+  amount: z.number(),
+  /** What the rate is charged per: `second`, `output`, `token`. */
+  unit: z.string(),
+  basis: pricingBasisSchema,
+  source: pricingSourceSchema,
+})
+export type PriceHint = z.output<typeof priceHintSchema>
+
 /** Everything the model picker needs, without the full JSON Schema payload. */
 export const modelSummarySchema = z.object({
   key: z.string(),
@@ -119,8 +135,23 @@ export const modelSummarySchema = z.object({
   description: z.string().nullable(),
   kind: modelKindSchema,
   coverImageUrl: z.string().nullable(),
+  /** Null when no rate is published — rendered as "price unknown". */
+  priceHint: priceHintSchema.nullable(),
 })
 export type ModelSummary = z.output<typeof modelSummarySchema>
+
+/**
+ * A curated model the picker offers first. `available` is false when the
+ * refreshed catalog does not list the key — a recommendation is a hint, never
+ * a promise, so the row is shown greyed out rather than silently dropped.
+ */
+export const recommendedModelSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  kind: modelKindSchema,
+  available: z.boolean(),
+})
+export type RecommendedModel = z.output<typeof recommendedModelSchema>
 
 export const modelDescriptorSchema = z.object({
   /** Globally unique: `"replicate:bytedance/seedance-2.5"`. */

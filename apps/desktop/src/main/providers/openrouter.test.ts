@@ -44,6 +44,12 @@ function useReadOnlyApi(): void {
     http.get("https://openrouter.ai/api/v1/images/models", () =>
       HttpResponse.json(fixture("images-models"))
     ),
+    // The plain model id is tried first; OpenRouter does not serve it for
+    // this model, so the adapter falls back to the `canonical_slug` spelling.
+    http.get(
+      "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5/endpoints",
+      () => HttpResponse.json({ error: "Not found" }, { status: 404 })
+    ),
     http.get(
       "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5-20260807/endpoints",
       () => HttpResponse.json(endpointsFixture("video-endpoints-seedance-2.5"))
@@ -114,6 +120,24 @@ describe("createOpenRouterProvider", () => {
 
     expect(models.map((m) => m.slug)).toContain("openai/gpt-image-2.5-sunburst")
     expect(models.every((m) => m.kind === "image")).toBe(true)
+  })
+
+  it("hints the cheapest per-second rate for a video model", async () => {
+    const models = await provider.listModels({ kinds: ["video"] })
+    const veo = models.find((m) => m.slug === "google/veo-3.1-lite")
+
+    expect(veo?.priceHint).toEqual({
+      amount: 0.03,
+      unit: "second",
+      basis: "per_second",
+      source: "provider_api",
+    })
+  })
+
+  it("leaves the price hint unset for image models, which publish no SKUs", async () => {
+    const models = await provider.listModels({ kinds: ["image"] })
+
+    expect(models.every((m) => m.priceHint === null)).toBe(true)
   })
 
   it("fetches each catalog once and reuses it", async () => {
@@ -499,7 +523,79 @@ describe("createOpenRouterProvider", () => {
       expect(endpointCalls).toBe(0)
     })
 
-    it("falls back to the model owner when the endpoints document is unavailable", async () => {
+    it("reads the video endpoints document under the plain model id first", async () => {
+      let plainIdCalls = 0
+      let canonicalCalls = 0
+      let body: Record<string, unknown> | null = null
+      server.use(
+        http.get(
+          "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5/endpoints",
+          () => {
+            plainIdCalls += 1
+            return HttpResponse.json(
+              endpointsFixture("video-endpoints-seedance-2.5")
+            )
+          }
+        ),
+        http.get(
+          "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5-20260807/endpoints",
+          () => {
+            canonicalCalls += 1
+            return HttpResponse.json(
+              endpointsFixture("video-endpoints-seedance-2.5")
+            )
+          }
+        ),
+        http.post(
+          "https://openrouter.ai/api/v1/videos",
+          async ({ request }) => {
+            body = (await request.json()) as Record<string, unknown>
+            return HttpResponse.json(job())
+          }
+        )
+      )
+
+      await provider.submit({
+        slug: "bytedance/seedance-2.5",
+        params: { prompt: "a cat", watermark: false },
+      })
+
+      expect(plainIdCalls).toBe(1)
+      // The canonical spelling is a fallback, not the first choice.
+      expect(canonicalCalls).toBe(0)
+      expect(body).toEqual({
+        model: "bytedance/seedance-2.5",
+        prompt: "a cat",
+        provider: { options: { seed: { watermark: false } } },
+      })
+    })
+
+    it("falls back to the canonical slug when the plain model id 404s", async () => {
+      let body: Record<string, unknown> | null = null
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/videos",
+          async ({ request }) => {
+            body = (await request.json()) as Record<string, unknown>
+            return HttpResponse.json(job())
+          }
+        )
+      )
+
+      await provider.submit({
+        slug: "bytedance/seedance-2.5",
+        params: { prompt: "a cat", watermark: false },
+      })
+
+      // `seed` comes from the canonical-slug endpoints document.
+      expect(body).toEqual({
+        model: "bytedance/seedance-2.5",
+        prompt: "a cat",
+        provider: { options: { seed: { watermark: false } } },
+      })
+    })
+
+    it("falls back to the model owner when no endpoints document is available", async () => {
       let body: Record<string, unknown> | null = null
       server.use(
         http.get(

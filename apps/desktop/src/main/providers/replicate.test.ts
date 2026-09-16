@@ -12,6 +12,7 @@ import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { server } from "../../../../../test/msw/server"
+import { REPLICATE_PRICING } from "./cost"
 import { dereferenceCogSchema, createReplicateProvider } from "./replicate"
 import type { ModelProvider } from "./types"
 
@@ -255,6 +256,26 @@ describe("createReplicateProvider", () => {
 
       expect(seedance25).toBeDefined()
       expect(seedance25!.kind).toBe("video")
+    })
+
+    it("hints the cheapest published rate, and leaves it null when there is none", async () => {
+      const summaries = await provider.listModels({
+        kinds: ["video", "image", "other"],
+      })
+      const bySlug = new Map(summaries.map((s) => [s.slug, s]))
+
+      expect(bySlug.get("bytedance/seedance-2.0")!.priceHint).toEqual({
+        amount: 0.08,
+        unit: "second",
+        basis: "per_second",
+        source: "local_table",
+      })
+      // `fallback` is a published tier OpenDirect never quotes, so it must not
+      // become the advertised "from" price.
+      expect(bySlug.get("google/nano-banana-pro")?.priceHint?.amount).toBe(0.15)
+
+      const unpriced = summaries.find((s) => !(s.slug in REPLICATE_PRICING))
+      expect(unpriced?.priceHint ?? null).toBeNull()
     })
 
     it("filters by the requested kinds", async () => {

@@ -27,6 +27,7 @@ import {
   type ModelDescriptor,
   type ModelKind,
   type ModelSummary,
+  type PriceHint,
   type Pricing,
   type PricingBasis,
 } from "@opendirect/contract"
@@ -157,6 +158,45 @@ function pricingFor(skus: unknown): Pricing {
   }
 }
 
+/** The unit a basis is charged in, for the picker's price hint. */
+const BASIS_UNITS: Record<PricingBasis, string | null> = {
+  per_second: "second",
+  per_output: "output",
+  per_token: "token",
+  unknown: null,
+}
+
+/**
+ * The cheapest rate among the SKUs that share the model's own basis, for the
+ * picker's one-line hint. Null when OpenRouter publishes no usable rate, which
+ * the picker renders as "price unknown" rather than as $0.00.
+ */
+function priceHintOf(pricing: Pricing): PriceHint | null {
+  const unit = BASIS_UNITS[pricing.basis]
+  if (!unit) return null
+
+  // Only the SKUs the basis was inferred from are comparable; a model that
+  // prices per second may also list a token SKU, and mixing the two would
+  // advertise a rate that is not what the run is billed at.
+  const matches = (key: string): boolean => {
+    if (pricing.basis === "per_second")
+      return key.startsWith("duration_seconds")
+    if (pricing.basis === "per_token") return key.includes("token")
+    return true
+  }
+
+  let lowest: number | null = null
+  for (const [key, value] of Object.entries(pricing.skus)) {
+    if (!matches(key)) continue
+    const rate = Number.parseFloat(value)
+    if (!Number.isFinite(rate) || rate <= 0) continue
+    if (lowest === null || rate < lowest) lowest = rate
+  }
+  if (lowest === null) return null
+
+  return { amount: lowest, unit, basis: pricing.basis, source: pricing.source }
+}
+
 function commonControlsOf(inputSchema: JsonObject): CommonControls {
   const properties = isObject(inputSchema.properties)
     ? inputSchema.properties
@@ -176,7 +216,8 @@ function commonControlsOf(inputSchema: JsonObject): CommonControls {
 
 function summaryOf(
   model: { id: string; name?: string | null; description?: string | null },
-  kind: ModelKind
+  kind: ModelKind,
+  priceHint: PriceHint | null
 ): ModelSummary {
   return {
     key: modelKey("openrouter", model.id),
@@ -187,6 +228,7 @@ function summaryOf(
     kind,
     // The media catalogs carry no imagery.
     coverImageUrl: null,
+    priceHint,
   }
 }
 
@@ -436,16 +478,30 @@ export function createOpenRouterProvider(
     const cached = providerSlugs.get(slug)
     if (cached) return cached
 
-    const path =
+    // The video endpoints document is served under the plain model id for
+    // most models; `canonical_slug` (the dated build, e.g.
+    // `bytedance/seedance-2.5-20260807`) is the fallback spelling for the ones
+    // where it is not. Both are tried before the owner-segment guess.
+    const canonical =
+      found.kind === "video" ? asString(found.model.canonical_slug) : null
+    const paths =
       found.kind === "video"
-        ? `/models/${asString(found.model.canonical_slug) ?? slug}/endpoints`
-        : `/images/models/${slug}/endpoints`
+        ? [
+            `/models/${slug}/endpoints`,
+            ...(canonical && canonical !== slug
+              ? [`/models/${canonical}/endpoints`]
+              : []),
+          ]
+        : [`/images/models/${slug}/endpoints`]
 
     let resolved: string | null = null
-    try {
-      resolved = providerSlugOf(await request(path))
-    } catch {
-      resolved = null
+    for (const path of paths) {
+      try {
+        resolved = providerSlugOf(await request(path))
+      } catch {
+        resolved = null
+      }
+      if (resolved) break
     }
 
     const result = resolved ?? ownerSlug(slug)
@@ -613,11 +669,19 @@ export function createOpenRouterProvider(
 
       if (wanted.has("video")) {
         for (const model of (await videoModels()).values())
-          summaries.push(summaryOf(model, "video"))
+          summaries.push(
+            summaryOf(
+              model,
+              "video",
+              priceHintOf(pricingFor(model.pricing_skus))
+            )
+          )
       }
       if (wanted.has("image")) {
+        // The image catalog publishes no `pricing_skus` at all, so every image
+        // model is honestly "price unknown" rather than free.
         for (const model of (await imageModels()).values())
-          summaries.push(summaryOf(model, "image"))
+          summaries.push(summaryOf(model, "image", null))
       }
 
       return summaries
