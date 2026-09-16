@@ -202,6 +202,24 @@ const STATUS_MAP: Record<string, ProviderJobStatus> = {
   expired: "failed",
 }
 
+/**
+ * The fields `POST /api/v1/images` names itself (per `@openrouter/sdk`'s
+ * `ImageGenerationRequest`). Anything else in a form submission is a
+ * passthrough parameter and is nested under `provider.options`.
+ */
+const IMAGE_REQUEST_FIELDS = [
+  "prompt",
+  "n",
+  "aspect_ratio",
+  "background",
+  "quality",
+  "resolution",
+  "size",
+  "seed",
+  "output_format",
+  "output_compression",
+]
+
 const VIDEO_EXTENSIONS = /\.(mp4|mov|webm|mkv|m4v)(\?|#|$)/i
 const AUDIO_EXTENSIONS = /\.(mp3|wav|m4a|aac|flac|ogg|opus)(\?|#|$)/i
 
@@ -219,6 +237,43 @@ function inputReferencePart(url: string): JsonObject {
   return { type: "image_url", image_url: { url } }
 }
 
+/**
+ * The provider slug an endpoints document names, or null.
+ *
+ * The two documents disagree in shape: the image one
+ * (`GET /api/v1/images/models/{id}/endpoints`) states `provider_slug`, while
+ * the generic one (`GET /api/v1/models/{canonical_slug}/endpoints`, the only
+ * per-endpoint view of a video model) states a `tag` instead — for
+ * `bytedance/seedance-2.5` that tag is `seed`, not `bytedance`. Both are read,
+ * first endpoint wins, because `provider.options` is keyed by exactly this
+ * slug and OpenRouter silently drops options under an unrecognised key.
+ */
+export function providerSlugOf(document: unknown): string | null {
+  const root = isObject(document) ? document : {}
+  const body = isObject(root.data) ? root.data : root
+  const endpoints = Array.isArray(body.endpoints) ? body.endpoints : []
+  for (const endpoint of endpoints) {
+    if (!isObject(endpoint)) continue
+    const slug =
+      asString(endpoint.provider_slug) ??
+      asString(endpoint.provider_tag) ??
+      asString(endpoint.tag)
+    if (slug) return slug
+  }
+  return null
+}
+
+/**
+ * The fallback slug when no endpoints document can be read: the owner segment
+ * of the model id. It is a guess — `bytedance/seedance-2.5` is served by
+ * `seed` — but sending a passthrough parameter under a slug OpenRouter may
+ * ignore beats dropping the user's value on the floor.
+ */
+function ownerSlug(slug: string): string {
+  const owner = slug.split("/")[0]
+  return owner && owner.length > 0 ? owner : slug
+}
+
 function urlList(value: unknown): string[] {
   if (typeof value === "string") return value ? [value] : []
   if (Array.isArray(value))
@@ -233,6 +288,8 @@ export function createOpenRouterProvider(
   /** Cached catalog fetches; a rejection is dropped so the next call retries. */
   let videoCatalog: Promise<Map<string, OpenRouterVideoModel>> | null = null
   let imageCatalog: Promise<Map<string, OpenRouterImageModel>> | null = null
+  /** model id → provider slug, resolved lazily from its endpoints document. */
+  const providerSlugs = new Map<string, string>()
   /** Image generations complete in one call, so their result is held here. */
   const imageJobs = new Map<string, ProviderJobState>()
   let imageJobCounter = 0
@@ -364,6 +421,58 @@ export function createOpenRouterProvider(
     }
   }
 
+  /**
+   * The provider slug to key `provider.options` by, for a model that has
+   * passthrough parameters to send. Fetched only when there is something to
+   * pass through, cached per model, and never fatal: an unreadable endpoints
+   * document falls back to the owner segment rather than failing the job.
+   */
+  async function providerSlugFor(
+    slug: string,
+    found:
+      | { kind: "video"; model: OpenRouterVideoModel }
+      | { kind: "image"; model: OpenRouterImageModel }
+  ): Promise<string> {
+    const cached = providerSlugs.get(slug)
+    if (cached) return cached
+
+    const path =
+      found.kind === "video"
+        ? `/models/${asString(found.model.canonical_slug) ?? slug}/endpoints`
+        : `/images/models/${slug}/endpoints`
+
+    let resolved: string | null = null
+    try {
+      resolved = providerSlugOf(await request(path))
+    } catch {
+      resolved = null
+    }
+
+    const result = resolved ?? ownerSlug(slug)
+    providerSlugs.set(slug, result)
+    return result
+  }
+
+  /**
+   * `provider.options.<provider_slug>` for the leftover form values.
+   *
+   * Everything the request body does not name itself is a passthrough
+   * parameter — the synthesized schema only ever emits documented fields plus
+   * the model's own `allowed_passthrough_parameters` — and OpenRouter takes
+   * those nested under the serving provider's slug, not at the top level.
+   */
+  async function providerOptions(
+    slug: string,
+    found:
+      | { kind: "video"; model: OpenRouterVideoModel }
+      | { kind: "image"; model: OpenRouterImageModel },
+    passthrough: JsonObject
+  ): Promise<JsonObject> {
+    if (Object.keys(passthrough).length === 0) return {}
+    const providerSlug = await providerSlugFor(slug, found)
+    return { provider: { options: { [providerSlug]: passthrough } } }
+  }
+
   /** Splits form values into the request's own fields and the passthrough rest. */
   function take(
     params: JsonObject,
@@ -382,9 +491,9 @@ export function createOpenRouterProvider(
 
   async function submitVideo(
     req: GenerationRequest,
-    model: OpenRouterVideoModel
+    found: { kind: "video"; model: OpenRouterVideoModel }
   ): Promise<ProviderJobRef> {
-    const frames = model.supported_frame_images ?? []
+    const frames = found.model.supported_frame_images ?? []
     const [known, passthrough] = take(req.params as JsonObject, [
       "prompt",
       "duration",
@@ -415,7 +524,7 @@ export function createOpenRouterProvider(
       ...known,
       ...(frameImages.length > 0 ? { frame_images: frameImages } : {}),
       ...(references.length > 0 ? { [INPUT_REFERENCES]: references } : {}),
-      ...passthrough,
+      ...(await providerOptions(req.slug, found, passthrough)),
     }
 
     const response = await request("/videos", {
@@ -438,21 +547,29 @@ export function createOpenRouterProvider(
    * runner still speaks submit/poll, so the finished state is parked under a
    * locally issued id and handed back on the first poll.
    */
-  async function submitImage(req: GenerationRequest): Promise<ProviderJobRef> {
+  async function submitImage(
+    req: GenerationRequest,
+    found: { kind: "image"; model: OpenRouterImageModel }
+  ): Promise<ProviderJobRef> {
     const [known, passthrough] = take(req.params as JsonObject, [
+      ...IMAGE_REQUEST_FIELDS,
       INPUT_REFERENCES,
     ])
     const references = urlList(known[INPUT_REFERENCES]).map((url) => ({
       type: "image_url",
       image_url: { url },
     }))
+    delete known[INPUT_REFERENCES]
 
-    const response = await request("/images/generations", {
+    // The image router is `POST /api/v1/images`; `/images/generations` is the
+    // OpenAI-compatible spelling, which OpenRouter does not serve.
+    const response = await request("/images", {
       method: "POST",
       body: JSON.stringify({
         model: req.slug,
-        ...passthrough,
+        ...known,
         ...(references.length > 0 ? { [INPUT_REFERENCES]: references } : {}),
+        ...(await providerOptions(req.slug, found, passthrough)),
       }),
     })
 
@@ -514,8 +631,8 @@ export function createOpenRouterProvider(
     async submit(req: GenerationRequest): Promise<ProviderJobRef> {
       const found = await findModel(req.slug)
       return found.kind === "video"
-        ? submitVideo(req, found.model)
-        : submitImage(req)
+        ? submitVideo(req, found)
+        : submitImage(req, found)
     },
 
     async poll(ref: ProviderJobRef): Promise<ProviderJobState> {

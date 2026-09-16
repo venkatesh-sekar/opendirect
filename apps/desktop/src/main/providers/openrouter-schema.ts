@@ -268,9 +268,11 @@ export function buildVideoInputSchema(model: OpenRouterVideoModel): JsonObject {
 
   for (const parameter of nonEmpty(model.allowed_passthrough_parameters) ??
     []) {
-    // The catalog states the name and nothing else, so the type is left open
-    // rather than guessed; the value is forwarded to the provider untouched.
+    // The catalog states the name and nothing else. It is typed as a string so
+    // the generated form renders an editable widget; the value is forwarded to
+    // the provider untouched, under `provider.options.<provider_slug>`.
     properties[parameter] = {
+      type: "string",
       title: humanize(parameter),
       description: `Passed through to the provider unchanged (${parameter}).`,
       [ADVANCED_MARKER]: true,

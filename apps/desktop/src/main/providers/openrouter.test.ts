@@ -25,6 +25,16 @@ function fixture(name: string): { data: unknown[] } {
   ) as { data: unknown[] }
 }
 
+/** The per-endpoint documents, which are the only source of a provider slug. */
+function endpointsFixture(name: string): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(
+      resolve(process.cwd(), "test/fixtures/openrouter", `${name}.json`),
+      "utf8"
+    )
+  ) as Record<string, unknown>
+}
+
 /** Serves the two capability catalogs, and nothing else. */
 function useReadOnlyApi(): void {
   server.use(
@@ -33,6 +43,17 @@ function useReadOnlyApi(): void {
     ),
     http.get("https://openrouter.ai/api/v1/images/models", () =>
       HttpResponse.json(fixture("images-models"))
+    ),
+    http.get(
+      "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5-20260807/endpoints",
+      () => HttpResponse.json(endpointsFixture("video-endpoints-seedance-2.5"))
+    ),
+    http.get(
+      "https://openrouter.ai/api/v1/images/models/openai/gpt-image-2.5-sunburst/endpoints",
+      () =>
+        HttpResponse.json(
+          endpointsFixture("image-endpoints-gpt-image-2.5-sunburst")
+        )
     )
   )
 }
@@ -179,7 +200,10 @@ describe("createOpenRouterProvider", () => {
     expect(Object.keys(props)).toEqual(
       expect.arrayContaining(["watermark", "req_key", "output_format"])
     )
-    expect(props.watermark!["x-opendirect-advanced"]).toBe(true)
+    expect(props.watermark).toMatchObject({
+      type: "string",
+      "x-opendirect-advanced": true,
+    })
     expect(props.prompt!["x-opendirect-advanced"]).toBeUndefined()
   })
 
@@ -427,8 +451,81 @@ describe("createOpenRouterProvider", () => {
           { type: "video_url", video_url: { url: "https://cdn.test/ref.mp4" } },
           { type: "audio_url", audio_url: { url: "https://cdn.test/ref.mp3" } },
         ],
-        // The passthrough parameter rides along untouched.
-        watermark: false,
+        // The passthrough parameter rides along untouched, but nested under
+        // the provider slug the endpoints document names.
+        provider: { options: { seed: { watermark: false } } },
+      })
+    })
+
+    it("posts a video job to /api/v1/videos", async () => {
+      let requestedUrl: string | null = null
+      server.use(
+        http.post("https://openrouter.ai/api/v1/videos", ({ request }) => {
+          requestedUrl = request.url
+          return HttpResponse.json(job())
+        })
+      )
+
+      await provider.submit({
+        slug: "bytedance/seedance-2.5",
+        params: { prompt: "a cat" },
+      })
+
+      expect(requestedUrl).toBe("https://openrouter.ai/api/v1/videos")
+    })
+
+    it("never asks for a provider slug when there is nothing to pass through", async () => {
+      let endpointCalls = 0
+      server.use(
+        http.get(
+          "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5-20260807/endpoints",
+          () => {
+            endpointCalls += 1
+            return HttpResponse.json(
+              endpointsFixture("video-endpoints-seedance-2.5")
+            )
+          }
+        ),
+        http.post("https://openrouter.ai/api/v1/videos", () =>
+          HttpResponse.json(job())
+        )
+      )
+
+      await provider.submit({
+        slug: "bytedance/seedance-2.5",
+        params: { prompt: "a cat", duration: 5 },
+      })
+
+      expect(endpointCalls).toBe(0)
+    })
+
+    it("falls back to the model owner when the endpoints document is unavailable", async () => {
+      let body: Record<string, unknown> | null = null
+      server.use(
+        http.get(
+          "https://openrouter.ai/api/v1/models/bytedance/seedance-2.5-20260807/endpoints",
+          () => HttpResponse.json({ error: "Not found" }, { status: 404 })
+        ),
+        http.post(
+          "https://openrouter.ai/api/v1/videos",
+          async ({ request }) => {
+            body = (await request.json()) as Record<string, unknown>
+            return HttpResponse.json(job())
+          }
+        )
+      )
+
+      await provider.submit({
+        slug: "bytedance/seedance-2.5",
+        params: { prompt: "a cat", watermark: false },
+      })
+
+      // Never dropped: a passthrough parameter is still sent, under the best
+      // slug we can derive without the endpoints document.
+      expect(body).toEqual({
+        model: "bytedance/seedance-2.5",
+        prompt: "a cat",
+        provider: { options: { bytedance: { watermark: false } } },
       })
     })
 
@@ -506,10 +603,12 @@ describe("createOpenRouterProvider", () => {
 
     it("submits an image generation and polls it straight back", async () => {
       let body: Record<string, unknown> | null = null
+      let requestedUrl: string | null = null
       server.use(
         http.post(
-          "https://openrouter.ai/api/v1/images/generations",
+          "https://openrouter.ai/api/v1/images",
           async ({ request }) => {
+            requestedUrl = request.url
             body = (await request.json()) as Record<string, unknown>
             return HttpResponse.json({
               created: 1,
@@ -526,10 +625,14 @@ describe("createOpenRouterProvider", () => {
           prompt: "a cat",
           n: 1,
           input_references: ["https://cdn.test/ref.png"],
+          moderation: "low",
         },
       })
       const state = await provider.poll(ref)
 
+      // The image router lives at /api/v1/images — /images/generations is the
+      // OpenAI-compatible path, which OpenRouter does not serve.
+      expect(requestedUrl).toBe("https://openrouter.ai/api/v1/images")
       expect(body).toEqual({
         model: "openai/gpt-image-2.5-sunburst",
         prompt: "a cat",
@@ -537,6 +640,7 @@ describe("createOpenRouterProvider", () => {
         input_references: [
           { type: "image_url", image_url: { url: "https://cdn.test/ref.png" } },
         ],
+        provider: { options: { openai: { moderation: "low" } } },
       })
       expect(state.status).toBe("succeeded")
       expect(state.outputUrls).toEqual(["data:image/png;base64,AAAA"])
@@ -545,7 +649,7 @@ describe("createOpenRouterProvider", () => {
 
     it("cancels a still-uncollected image generation locally", async () => {
       server.use(
-        http.post("https://openrouter.ai/api/v1/images/generations", () =>
+        http.post("https://openrouter.ai/api/v1/images", () =>
           HttpResponse.json({ created: 1, data: [{ b64_json: "AAAA" }] })
         )
       )
