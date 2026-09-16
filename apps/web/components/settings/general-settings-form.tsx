@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 import { Button } from "@workspace/ui/components/button"
 import {
   Card,
@@ -20,6 +22,88 @@ import {
 /** Clamps a numeric field to the contract's range before it is sent. */
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+interface NumberSettingProps {
+  id: string
+  label: string
+  description: string
+  min: number
+  max: number
+  step?: number
+  /** The persisted value, or `undefined` while settings are still loading. */
+  value: number | undefined
+  fallback: number
+  disabled?: boolean
+  onCommit: (value: number) => void
+}
+
+/**
+ * A number field that keeps its own draft string while the user types and only
+ * persists on blur or Enter. Editing character-by-character would otherwise
+ * write a half-typed number (and an empty field would clamp to the minimum).
+ * An empty or unparseable draft is discarded and the persisted value restored.
+ */
+function NumberSetting({
+  id,
+  label,
+  description,
+  min,
+  max,
+  step,
+  value,
+  fallback,
+  disabled,
+  onCommit,
+}: NumberSettingProps) {
+  const persisted = value ?? fallback
+  const [draft, setDraft] = useState(String(persisted))
+  const [syncedFrom, setSyncedFrom] = useState(persisted)
+
+  // Adopt the persisted value whenever it changes underneath us (React's
+  // "adjust state during render" pattern — no effect, no cascading render).
+  if (syncedFrom !== persisted) {
+    setSyncedFrom(persisted)
+    setDraft(String(persisted))
+  }
+
+  function commit() {
+    const parsed = Number(draft.trim())
+    if (draft.trim() === "" || !Number.isFinite(parsed)) {
+      setDraft(String(persisted))
+      return
+    }
+    const next = clamp(Math.round(parsed), min, max)
+    setDraft(String(next))
+    if (next !== persisted) onCommit(next)
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="number"
+        min={min}
+        max={max}
+        step={step}
+        className="w-32"
+        value={draft}
+        disabled={disabled}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault()
+            commit()
+          } else if (event.key === "Escape") {
+            setDraft(String(persisted))
+          }
+        }}
+      />
+      <p className="text-xs text-muted-foreground">{description}</p>
+    </div>
+  )
 }
 
 export function GeneralSettingsForm() {
@@ -65,48 +149,30 @@ export function GeneralSettingsForm() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="max-concurrent-jobs">Concurrent jobs</Label>
-          <Input
-            id="max-concurrent-jobs"
-            type="number"
-            min={1}
-            max={8}
-            className="w-32"
-            value={data?.maxConcurrentJobs ?? 2}
-            disabled={!data}
-            onChange={(event) =>
-              update.mutate({
-                maxConcurrentJobs: clamp(Number(event.target.value), 1, 8),
-              })
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            How many generations run at once. Between 1 and 8.
-          </p>
-        </div>
+        <NumberSetting
+          id="max-concurrent-jobs"
+          label="Concurrent jobs"
+          description="How many generations run at once. Between 1 and 8."
+          min={1}
+          max={8}
+          value={data?.maxConcurrentJobs}
+          fallback={2}
+          disabled={!data}
+          onCommit={(maxConcurrentJobs) => update.mutate({ maxConcurrentJobs })}
+        />
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="poll-interval">Poll interval (ms)</Label>
-          <Input
-            id="poll-interval"
-            type="number"
-            min={500}
-            max={60000}
-            step={500}
-            className="w-32"
-            value={data?.pollIntervalMs ?? 3000}
-            disabled={!data}
-            onChange={(event) =>
-              update.mutate({
-                pollIntervalMs: clamp(Number(event.target.value), 500, 60_000),
-              })
-            }
-          />
-          <p className="text-xs text-muted-foreground">
-            How often a running job is checked for progress.
-          </p>
-        </div>
+        <NumberSetting
+          id="poll-interval"
+          label="Poll interval (ms)"
+          description="How often a running job is checked for progress."
+          min={500}
+          max={60_000}
+          step={500}
+          value={data?.pollIntervalMs}
+          fallback={3000}
+          disabled={!data}
+          onCommit={(pollIntervalMs) => update.mutate({ pollIntervalMs })}
+        />
 
         {settings.isError ? (
           <p className="text-xs text-destructive">{settings.error.message}</p>
