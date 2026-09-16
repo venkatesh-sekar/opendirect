@@ -6,7 +6,11 @@ import { disposeIpcHandlers, registerIpcHandlers } from "./ipc"
 import { recoverJobs, stopJobRunner } from "./jobs-service"
 import { prepareMediaProtocol, registerMediaProtocol } from "./media-service"
 import { buildMenuTemplate } from "./menu"
-import { closeCurrentProject, restoreLastProject } from "./project-service"
+import {
+  closeCurrentProject,
+  onProjectClose,
+  restoreLastProject,
+} from "./project-service"
 import { isDevelopment } from "./resolve"
 import { loadDevEnv } from "./settings-service"
 import { initAutoUpdater, stopAutoUpdater } from "./updater"
@@ -48,6 +52,12 @@ prepareProductionRenderer()
 // Same rule for the `asset://` media scheme the board displays local files
 // through: privileged schemes must be declared before the app is ready.
 prepareMediaProtocol()
+
+// The runner holds the open project's database. Closing a project therefore
+// has to take its runner with it — a poll timer that outlived the project it
+// belongs to would query a connection that is no longer open, and in-flight
+// results would be written into a project the user has already left.
+onProjectClose(() => stopJobRunner())
 
 // Handlers exist before any renderer loads, so an early `invoke` cannot race them.
 registerIpcHandlers()

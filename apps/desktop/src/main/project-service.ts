@@ -7,7 +7,7 @@
  * `settings.ts` / `settings-service.ts`.
  */
 import { existsSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 
 import { app } from "electron"
 import log from "electron-log/main"
@@ -29,6 +29,29 @@ export const DEFAULT_PROJECT_FOLDER = "OpenDirect"
 
 let recent: RecentProjects | undefined
 let current: OpenProject | undefined
+
+/** Run just before the open project's database handle is closed. */
+export type ProjectCloseListener = (project: OpenProject) => void
+
+const closeListeners = new Set<ProjectCloseListener>()
+
+/**
+ * Subscribes to "the open project is about to close".
+ *
+ * This exists so `jobs-service.ts` can drop its runner the moment the project
+ * goes rather than at whatever later point someone next asks for one — its poll
+ * timers would otherwise keep querying a closed connection. It is a callback
+ * rather than a direct call because the dependency only runs one way: the job
+ * runner needs the project, and this module must not need the job runner.
+ *
+ * `index.ts` does the wiring, as it does for every other cross-service edge.
+ */
+export function onProjectClose(listener: ProjectCloseListener): () => void {
+  closeListeners.add(listener)
+  return () => {
+    closeListeners.delete(listener)
+  }
+}
 
 /**
  * Where the generated SQL lives once tsup has bundled the main process.
@@ -64,8 +87,20 @@ export async function createProjectInRoot(name: string): Promise<ProjectRef> {
 /**
  * Opens a project folder, migrating it, and makes it the current one. Closing
  * the previous handle here is what keeps the WAL files from piling up.
+ *
+ * Opening the project that is *already* open is a no-op beyond the recency
+ * bump. Re-opening it would hand back a second handle and close the first, and
+ * everything holding that first one — the job runner above all — would be left
+ * with a connection someone else had closed. The launcher does exactly this:
+ * startup restores the last project, and then the user clicks it in the list.
  */
 export async function openProjectAt(path: string): Promise<OpenProject> {
+  const open = current
+  if (open && resolve(path) === open.project.path) {
+    getRecentProjects().remember(open.project)
+    return open
+  }
+
   const opened = await openProject(path, {
     migrationsFolder: migrationsFolder(),
   })
@@ -79,9 +114,26 @@ export function getCurrentProject(): OpenProject | undefined {
   return current
 }
 
+/**
+ * Listeners run before the handle closes, and with `current` already cleared —
+ * so a listener that asks what is open gets the honest answer ("nothing")
+ * rather than a project that is halfway through going away.
+ */
 export function closeCurrentProject(): void {
-  current?.close()
+  const closing = current
   current = undefined
+  if (!closing) return
+
+  for (const listener of closeListeners) {
+    try {
+      listener(closing)
+    } catch (error) {
+      // A listener that throws must not leave the database handle open.
+      log.warn("A project-close listener failed", error)
+    }
+  }
+
+  closing.close()
 }
 
 /**
@@ -108,7 +160,8 @@ export async function restoreLastProject(): Promise<OpenProject | undefined> {
   return undefined
 }
 
-/** Test/hot-reload seam. */
+/** Test/hot-reload seam. Leaves the close listeners in place: they are wired
+ *  once at startup and are not part of what a reset is resetting. */
 export function resetProjectService(): void {
   closeCurrentProject()
   recent = undefined

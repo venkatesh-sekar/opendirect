@@ -7,14 +7,18 @@
  * desktop process can: the open project, the live settings, the provider
  * registry, and the windows a `jobs:update` event is pushed to.
  *
- * The runner is bound to one project. Opening another disposes the old one, so
- * a run can never write into a project the user has closed.
+ * The runner is bound to one *open database handle*, not to a project id.
+ * `openProjectAt` opens a second handle and closes the first even when the path
+ * is the same one — re-opening the project already open is exactly what the
+ * launcher does after startup has restored it — so a runner kept on an id match
+ * would go on holding a connection that has been closed under it.
  */
 import type { JobDto } from "@opendirect/contract"
 import { BrowserWindow } from "electron"
 import log from "electron-log/main"
 
 import { getModelCatalog } from "./catalog-service"
+import type { ProjectDatabase } from "./db/client"
 import { emitIpcEvent } from "./ipc-registry"
 import { createJobRunner, type JobRunner } from "./jobs/runner"
 import { getCurrentProject } from "./project-service"
@@ -22,7 +26,8 @@ import { requireProvider } from "./providers/registry"
 import { getSettingsService } from "./settings-service"
 
 let runner: JobRunner | undefined
-let boundProjectId: string | undefined
+/** The exact database the live runner holds — identity, not equality. */
+let boundDb: ProjectDatabase | undefined
 
 /** Every live window sees every job update; the job list may be open in any. */
 function broadcast(job: JobDto): void {
@@ -36,11 +41,11 @@ function broadcast(job: JobDto): void {
   }
 }
 
-/** The runner for the open project, built on first use. */
+/** The runner for the open project, built on first use and after a re-open. */
 export function getJobRunner(): JobRunner {
   const current = getCurrentProject()
   if (!current) throw new Error("No project is open")
-  if (runner && boundProjectId === current.project.id) return runner
+  if (runner && boundDb === current.handle.db) return runner
 
   runner?.dispose()
   runner = createJobRunner({
@@ -60,7 +65,7 @@ export function getJobRunner(): JobRunner {
     onUpdate: broadcast,
     log: (message, error) => log.warn(message, error),
   })
-  boundProjectId = current.project.id
+  boundDb = current.handle.db
   return runner
 }
 
@@ -85,5 +90,5 @@ export async function recoverJobs(): Promise<void> {
 export function stopJobRunner(): void {
   runner?.dispose()
   runner = undefined
-  boundProjectId = undefined
+  boundDb = undefined
 }
