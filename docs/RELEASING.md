@@ -30,7 +30,9 @@ pnpm changeset version
 ```
 
 This consumes the pending changeset files, bumps `apps/desktop/package.json` and
-writes the entries into `CHANGELOG.md`. Review the diff, then commit it:
+writes the entries into **`apps/desktop/CHANGELOG.md`** — changesets writes a
+changelog per package, so there is deliberately no changelog at the repo root.
+Review the diff, then commit it:
 
 ```bash
 git add -A && git commit -m "chore(release): v<version>"

@@ -10,16 +10,19 @@ log.initialize()
 prepareProductionRenderer()
 
 void app.whenReady().then(async () => {
-  const win = await createMainWindow()
-  initAutoUpdater(win)
+  await createMainWindow()
+  // App-scoped, not window-scoped: it must survive the macOS
+  // close-all-windows-then-reactivate cycle.
+  initAutoUpdater()
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) void createMainWindow()
   })
 })
 
+app.on("before-quit", () => stopAutoUpdater())
+
 app.on("window-all-closed", () => {
-  stopAutoUpdater()
   if (process.platform !== "darwin") app.quit()
 })
 

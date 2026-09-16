@@ -76,9 +76,16 @@ layout in production builds (`apps/web/lib/csp.ts`). The main process still sets
 the same policy as a response header for anything that does go through the
 network stack, and `test/csp.test.ts` keeps the two strings identical.
 
+A meta policy only governs what the parser sees after it, and React hoists
+`<meta>` to the *end* of `<head>`, behind Next's async script tags. The
+`node scripts/hoist-csp.ts` step in `web`'s build therefore moves the tag to the
+front of `<head>` in every exported page. Note that `frame-ancestors` is ignored
+in the meta form — framing is prevented by the shell never loading the renderer
+in a frame, and `frame-src 'none'` stops the renderer framing anything else.
+
 > **TODO (first GUI run):** no display is available in the current environment,
-> so this has only been verified by reading electron-serve's source and grepping
-> the built `apps/web/out/index.html`. On the first real GUI run, open DevTools
+> so this has only been verified by reading electron-serve's source and checking
+> the tag order in the built `apps/web/out/*.html`. On the first real GUI run, open DevTools
 > on a production build and confirm the CSP is reported as active and that
 > nothing in the app is blocked by it.
 

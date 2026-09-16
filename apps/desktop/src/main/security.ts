@@ -17,6 +17,11 @@ export const APP_ORIGIN = "app://-"
  * root layout from `apps/web/lib/csp.ts`. `test/csp.test.ts` keeps the two
  * strings identical.
  *
+ * The header form is also the only place `frame-ancestors` has any effect: a
+ * meta policy ignores that directive. The app never frames the renderer, and
+ * `frame-src 'none'` stops the renderer framing anything else, so nothing
+ * depends on it — but it stays here for requests that do carry the header.
+ *
  * `'unsafe-inline'` is required for scripts and styles because a Next.js static
  * export inlines its hydration bootstrap and critical CSS. Everything else is
  * locked to the app bundle: no remote code, no framing, no `<base>` hijacking.

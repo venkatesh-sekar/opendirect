@@ -52,6 +52,26 @@ function messageOf(error: unknown): string {
   return String(error)
 }
 
+/** The slice of `BrowserWindow` the updater needs to pick a delivery target. */
+export interface StatusTarget {
+  isDestroyed(): boolean
+}
+
+/**
+ * Picks the window that should receive an update status.
+ *
+ * The updater is app-scoped, not window-scoped: on macOS the last window can be
+ * closed and a new one created while the app keeps running, so statuses go to
+ * whichever live window is focused, falling back to the first live one.
+ */
+export function pickStatusTarget<T extends StatusTarget>(
+  windows: readonly T[],
+  focused?: T | null
+): T | undefined {
+  if (focused && !focused.isDestroyed()) return focused
+  return windows.find((window) => !window.isDestroyed())
+}
+
 /** Normalises an electron-updater event into the renderer-facing status. */
 export function toUpdaterStatus(event: UpdaterEvent): UpdaterStatus {
   switch (event.type) {

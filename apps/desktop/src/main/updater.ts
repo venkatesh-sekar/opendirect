@@ -1,9 +1,9 @@
-import { app } from "electron"
-import type { BrowserWindow } from "electron"
+import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 import { autoUpdater } from "electron-updater"
 
 import {
+  pickStatusTarget,
   shouldEnableUpdater,
   toUpdaterStatus,
   UPDATE_CHECK_INTERVAL_MS,
@@ -12,40 +12,53 @@ import {
 } from "./updater-policy"
 
 let timer: NodeJS.Timeout | undefined
+let started = false
+
+/** Whichever live window should show the status; on macOS windows come and go. */
+function sendStatus(event: UpdaterEvent): void {
+  const target = pickStatusTarget(
+    BrowserWindow.getAllWindows(),
+    BrowserWindow.getFocusedWindow()
+  )
+  target?.webContents.send(UPDATER_STATUS_CHANNEL, toUpdaterStatus(event))
+}
 
 /**
  * Wires electron-updater to the GitHub Releases feed baked into
  * `app-update.yml` by electron-builder's `publish` config.
  *
+ * App-scoped on purpose: the updater outlives any individual window (on macOS
+ * the app keeps running with none open), so it is started once after `ready`,
+ * resolves its delivery window per event, and is stopped on `before-quit`.
+ *
  * Updates download in the background and install on quit, so the renderer only
  * ever needs to surface progress — never block on it.
  */
-export function initAutoUpdater(win: BrowserWindow): void {
+export function initAutoUpdater(): void {
+  if (started) return
   if (!shouldEnableUpdater({ packaged: app.isPackaged, env: process.env })) {
     log.info("auto-updater disabled (unpackaged build)")
     return
   }
-
-  const send = (event: UpdaterEvent): void => {
-    if (win.isDestroyed()) return
-    win.webContents.send(UPDATER_STATUS_CHANNEL, toUpdaterStatus(event))
-  }
+  started = true
 
   autoUpdater.logger = log
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on("update-available", (info) =>
-    send({ type: "available", version: info.version })
+    sendStatus({ type: "available", version: info.version })
   )
-  autoUpdater.on("update-not-available", () => send({ type: "not-available" }))
+  autoUpdater.on("update-not-available", () =>
+    sendStatus({ type: "not-available" })
+  )
   autoUpdater.on("download-progress", (progress) =>
-    send({ type: "downloading", percent: progress.percent })
+    sendStatus({ type: "downloading", percent: progress.percent })
   )
   autoUpdater.on("update-downloaded", (info) =>
-    send({ type: "ready", version: info.version })
+    sendStatus({ type: "ready", version: info.version })
   )
-  autoUpdater.on("error", (error) => send({ type: "error", error }))
+  autoUpdater.on("error", (error) => sendStatus({ type: "error", error }))
 
   const check = (): void => {
     void autoUpdater.checkForUpdates().catch((error: unknown) => {
@@ -54,9 +67,9 @@ export function initAutoUpdater(win: BrowserWindow): void {
   }
 
   check()
-  timer = setInterval(check, UPDATE_CHECK_INTERVAL_MS)
   // A lingering interval keeps the event loop alive and would delay quit.
-  win.on("closed", () => stopAutoUpdater())
+  timer = setInterval(check, UPDATE_CHECK_INTERVAL_MS)
+  app.once("before-quit", stopAutoUpdater)
 }
 
 /** Cancels the periodic check; safe to call when the updater never started. */

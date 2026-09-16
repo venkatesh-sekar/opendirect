@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  pickStatusTarget,
   shouldEnableUpdater,
   toUpdaterStatus,
   UPDATE_CHECK_INTERVAL_MS,
@@ -110,6 +111,35 @@ describe("toUpdaterStatus", () => {
       state: "available",
       version: "unknown",
     })
+  })
+})
+
+describe("pickStatusTarget", () => {
+  const live = (id: string) => ({ id, isDestroyed: () => false })
+  const dead = (id: string) => ({ id, isDestroyed: () => true })
+
+  it("prefers the focused window", () => {
+    const a = live("a")
+    const b = live("b")
+    expect(pickStatusTarget([a, b], b)).toBe(b)
+  })
+
+  it("falls back to the first live window when nothing is focused", () => {
+    const a = live("a")
+    expect(pickStatusTarget([a, live("b")], null)).toBe(a)
+  })
+
+  it("skips a destroyed focused window", () => {
+    const b = live("b")
+    expect(pickStatusTarget([dead("a"), b], dead("a"))).toBe(b)
+  })
+
+  it("skips destroyed windows entirely", () => {
+    expect(pickStatusTarget([dead("a"), dead("b")], null)).toBeUndefined()
+  })
+
+  it("returns nothing when the app has no windows", () => {
+    expect(pickStatusTarget([], undefined)).toBeUndefined()
   })
 })
 

@@ -32,6 +32,8 @@ export const config = [
       ".next/**",
       // Next.js static-export output (`distDir: "out"` in apps/web).
       "out/**",
+      // electron-builder output (`directories.output` in apps/desktop).
+      "release/**",
       "**/.turbo/**",
       "**/coverage/**",
     ],

@@ -11,4 +11,5 @@ project in
 [our documentation](https://github.com/changesets/changesets/blob/main/docs/common-questions.md).
 
 See `docs/RELEASING.md` for how this repo uses changesets to cut a desktop
-release.
+release. `changeset version` writes `apps/desktop/CHANGELOG.md`; there is no
+changelog at the repo root.
