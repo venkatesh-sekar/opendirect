@@ -5,19 +5,17 @@
  * Kept free of `electron` / `electron-updater` imports so it unit tests in
  * plain Node; `updater.ts` is the thin wiring around it.
  */
-
-/** IPC channel the main process pushes update status over. */
-export const UPDATER_STATUS_CHANNEL = "updater:status"
+import type { IpcEventPayload } from "@opendirect/contract"
 
 /** How often a running app re-checks the GitHub Releases feed. */
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
 
-export type UpdaterStatus =
-  | { state: "available"; version: string }
-  | { state: "not-available" }
-  | { state: "downloading"; percent: number }
-  | { state: "ready"; version: string }
-  | { state: "error"; message: string }
+/**
+ * Derived from the IPC contract rather than redeclared, so the status this
+ * module produces cannot drift from the schema that validates it on the way
+ * out and on the way in.
+ */
+export type UpdaterStatus = IpcEventPayload<"updater:status">
 
 export type UpdaterEvent =
   | { type: "available"; version?: string }

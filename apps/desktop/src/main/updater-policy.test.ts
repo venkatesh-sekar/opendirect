@@ -5,7 +5,6 @@ import {
   shouldEnableUpdater,
   toUpdaterStatus,
   UPDATE_CHECK_INTERVAL_MS,
-  UPDATER_STATUS_CHANNEL,
 } from "./updater-policy"
 
 describe("shouldEnableUpdater", () => {
@@ -146,9 +145,5 @@ describe("pickStatusTarget", () => {
 describe("constants", () => {
   it("polls for updates every six hours", () => {
     expect(UPDATE_CHECK_INTERVAL_MS).toBe(6 * 60 * 60 * 1000)
-  })
-
-  it("uses a namespaced IPC channel", () => {
-    expect(UPDATER_STATUS_CHANNEL).toBe("updater:status")
   })
 })

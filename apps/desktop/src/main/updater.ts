@@ -2,12 +2,12 @@ import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 import { autoUpdater } from "electron-updater"
 
+import { emitIpcEvent } from "./ipc-registry"
 import {
   pickStatusTarget,
   shouldEnableUpdater,
   toUpdaterStatus,
   UPDATE_CHECK_INTERVAL_MS,
-  UPDATER_STATUS_CHANNEL,
   type UpdaterEvent,
 } from "./updater-policy"
 
@@ -20,7 +20,10 @@ function sendStatus(event: UpdaterEvent): void {
     BrowserWindow.getAllWindows(),
     BrowserWindow.getFocusedWindow()
   )
-  target?.webContents.send(UPDATER_STATUS_CHANNEL, toUpdaterStatus(event))
+  if (!target) return
+  // Goes through the contract, not a raw `send`: the channel and the payload
+  // shape are validated here exactly as the renderer validates them on arrival.
+  emitIpcEvent(target.webContents, "updater:status", toUpdaterStatus(event))
 }
 
 /**

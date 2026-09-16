@@ -45,8 +45,8 @@ export function isIpcChannel(value: unknown): value is IpcChannel {
 
 /**
  * Status pushed by the auto-updater (`apps/desktop/src/main/updater.ts`).
- * Mirrors `UpdaterStatus` in `updater-policy.ts`; `ipc.test.ts` on the desktop
- * side asserts the two stay compatible.
+ * `updater-policy.ts` derives its `UpdaterStatus` type from this schema, so
+ * there is exactly one definition of the shape.
  */
 export const updaterStatusSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("available"), version: z.string() }),

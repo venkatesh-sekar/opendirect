@@ -90,6 +90,12 @@ export function subscribe<K extends IpcEventChannel>(
   const schema = ipcEvents[channel].payload
   return bridge().on(channel, (raw) => {
     const parsed = schema.safeParse(raw)
-    if (parsed.success) callback(parsed.data as IpcEventPayload<K>)
+    if (!parsed.success) {
+      console.warn(
+        `Dropped an invalid "${channel}" event payload: ${parsed.error.message}`
+      )
+      return
+    }
+    callback(parsed.data as IpcEventPayload<K>)
   })
 }

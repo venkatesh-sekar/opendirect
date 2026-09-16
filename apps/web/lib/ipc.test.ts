@@ -88,6 +88,7 @@ describe("subscribe", () => {
       }),
     })
 
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const received: unknown[] = []
     const off = subscribe("updater:status", (status) => received.push(status))
 
@@ -95,6 +96,9 @@ describe("subscribe", () => {
     emit?.({ state: "nonsense" })
 
     expect(received).toEqual([{ state: "downloading", percent: 7 }])
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("updater:status"))
+    warn.mockRestore()
+
     off()
     expect(unsubscribe).toHaveBeenCalled()
   })
