@@ -43,6 +43,8 @@ import {
   listTree,
   renameContainer,
   reparentContainer,
+  setContainerDescription,
+  setContainerHandle,
 } from "./repo/containers"
 import { estimateCost } from "./providers/cost"
 import { resolveOpenPath } from "./shell-open"
@@ -144,6 +146,19 @@ export function registerProjectHandlers(
 
   handle("containers:reparent", ({ id, parentId }) =>
     reparentContainer(requireProject().db, id, parentId)
+  )
+
+  /**
+   * ⛔ Main is the last word on a handle: the renderer checks the same
+   * pattern while the user types, but only main can see whether another
+   * container in this project already answers to it.
+   */
+  handle("containers:setHandle", ({ id, handle: value }) =>
+    setContainerHandle(requireProject().db, id, value)
+  )
+
+  handle("containers:setDescription", ({ id, description }) =>
+    setContainerDescription(requireProject().db, id, description)
   )
 
   handle("containers:delete", ({ id }) => {

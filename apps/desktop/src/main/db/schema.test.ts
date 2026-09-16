@@ -350,3 +350,80 @@ describe("lineage", () => {
     handle.close()
   })
 })
+
+describe("container handles", () => {
+  /** A mentionable row, `handle` and all. */
+  function character(
+    handle: DatabaseHandle,
+    id: string,
+    name: string,
+    value: string | null,
+    projectId = "p1"
+  ) {
+    handle.db
+      .insert(containers)
+      .values({
+        id,
+        projectId,
+        parentId: null,
+        kind: "character",
+        name,
+        handle: value,
+        description: null,
+        createdAt: NOW,
+      })
+      .run()
+  }
+
+  it("stores the handle and the description", () => {
+    const handle = freshDatabase()
+    seed(handle)
+    character(handle, "c2", "Venkz", "venkz")
+    handle.db
+      .update(containers)
+      .set({ description: "a tall man in a grey suit" })
+      .where(eq(containers.id, "c2"))
+      .run()
+
+    const row = handle.db
+      .select()
+      .from(containers)
+      .where(eq(containers.id, "c2"))
+      .get()
+    expect(row?.handle).toBe("venkz")
+    expect(row?.description).toBe("a tall man in a grey suit")
+    handle.close()
+  })
+
+  it("refuses two containers answering to the same handle in one project", () => {
+    const handle = freshDatabase()
+    seed(handle)
+    character(handle, "c2", "Venkz", "venkz")
+    expect(() => character(handle, "c3", "Venkz again", "venkz")).toThrow(
+      /unique/i
+    )
+    handle.close()
+  })
+
+  it("lets every unmentionable row keep a null handle", () => {
+    const handle = freshDatabase()
+    seed(handle)
+    // NULLs are distinct in a SQLite unique index, so no backfill is needed.
+    character(handle, "c2", "A", null)
+    character(handle, "c3", "B", null)
+    expect(handle.db.select().from(containers).all()).toHaveLength(3)
+    handle.close()
+  })
+
+  it("scopes uniqueness to the project", () => {
+    const handle = freshDatabase()
+    seed(handle)
+    handle.db
+      .insert(projects)
+      .values({ id: "p2", name: "Other", path: "/tmp/p2", createdAt: NOW })
+      .run()
+    character(handle, "c2", "Venkz", "venkz")
+    expect(() => character(handle, "c3", "Venkz", "venkz", "p2")).not.toThrow()
+    handle.close()
+  })
+})

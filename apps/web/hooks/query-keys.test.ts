@@ -41,3 +41,15 @@ describe("canvas keys", () => {
     expect(queryKeys.canvas.all).not.toEqual(queryKeys.generations.all)
   })
 })
+
+describe("mention keys", () => {
+  it("keeps the subject index under one invalidatable prefix", () => {
+    expect(queryKeys.mentions.subjects[0]).toBe(queryKeys.mentions.all[0])
+    expect(queryKeys.mentions.subjects).toEqual(["mentions", "subjects"])
+  })
+
+  it("does not collide with another domain's key", () => {
+    expect(queryKeys.mentions.all[0]).not.toBe(queryKeys.containers.all[0])
+    expect(queryKeys.mentions.all[0]).not.toBe(queryKeys.assets.all[0])
+  })
+})

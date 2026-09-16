@@ -82,11 +82,16 @@ export function useContainerTree(
   })
 }
 
-/** Every tree mutation refetches the tree; it is one small query. */
+/**
+ * Every tree mutation refetches the tree; it is one small query. The mention
+ * index goes with it: a rename can re-derive a handle, and a new character is
+ * a new `@`-able subject.
+ */
 function useInvalidateTree(): () => void {
   const client = useQueryClient()
   return () => {
     void client.invalidateQueries({ queryKey: queryKeys.containers.all })
+    void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
   }
 }
 
@@ -136,6 +141,39 @@ export function useReparentContainer(): UseMutationResult<
 }
 
 /**
+ * Sets or clears the `@handle` a character or scene answers to.
+ *
+ * Main validates the shape *and* the uniqueness and throws a sentence the
+ * dialog shows as-is, so nothing here second-guesses it.
+ */
+export function useSetContainerHandle(): UseMutationResult<
+  ContainerDto,
+  Error,
+  { id: string; handle: string | null }
+> {
+  const onSuccess = useInvalidateTree()
+  return useMutation({
+    mutationFn: (variables: { id: string; handle: string | null }) =>
+      invoke("containers:setHandle", variables),
+    onSuccess,
+  })
+}
+
+/** The prose a mention becomes on a model that takes no image. */
+export function useSetContainerDescription(): UseMutationResult<
+  ContainerDto,
+  Error,
+  { id: string; description: string | null }
+> {
+  const onSuccess = useInvalidateTree()
+  return useMutation({
+    mutationFn: (variables: { id: string; description: string | null }) =>
+      invoke("containers:setDescription", variables),
+    onSuccess,
+  })
+}
+
+/**
  * Deleting a container unlinks its assets but never deletes them, so the asset
  * queries are invalidated too — a board the user was looking at may have been
  * a child of the container that just went away.
@@ -152,6 +190,7 @@ export function useDeleteContainer(): UseMutationResult<
       void client.invalidateQueries({ queryKey: queryKeys.containers.all })
       void client.invalidateQueries({ queryKey: queryKeys.assets.all })
       void client.invalidateQueries({ queryKey: queryKeys.generations.all })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
     },
   })
 }

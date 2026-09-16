@@ -27,6 +27,8 @@ const node: ContainerNodeDto = {
   kind: "folder",
   parentId: null,
   position: 0,
+  handle: null,
+  description: null,
   createdAt: 1767225600000,
   children: [],
 }

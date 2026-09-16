@@ -27,6 +27,8 @@ function container(
     kind,
     name: id,
     position: 0,
+    handle: null,
+    description: null,
     createdAt: 0,
     children,
   }

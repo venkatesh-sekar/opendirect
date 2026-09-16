@@ -32,6 +32,7 @@ import {
   generationSchema,
   importResultSchema,
   lineageSchema,
+  mentionSubjectSchema,
   projectRefSchema,
   recentProjectSchema,
 } from "./project"
@@ -302,10 +303,38 @@ export const ipcContract = {
     input: z.object({ id: z.string(), parentId: z.string().nullable() }),
     output: containerSchema,
   },
+  /**
+   * Sets (or clears) the `@handle` a character or scene answers to.
+   *
+   * Main is the last word on both the shape and the uniqueness — the renderer
+   * validates with the same `handle.ts` beforehand only so the error arrives
+   * while the user is still typing.
+   */
+  "containers:setHandle": {
+    input: z.object({ id: z.string(), handle: z.string().nullable() }),
+    output: containerSchema,
+  },
+  /** The prose `@venkz` becomes on a model with no image input. */
+  "containers:setDescription": {
+    input: z.object({ id: z.string(), description: z.string().nullable() }),
+    output: containerSchema,
+  },
   /** Removes the sub-tree and its asset *links*; the assets themselves stay. */
   "containers:delete": {
     input: z.object({ id: z.string() }),
     output: okSchema,
+  },
+
+  /**
+   * Every `@`-able character and scene with its ranked reference images.
+   *
+   * ⛔ Read-only, and it never picks: the ranking says which image is most
+   * likely the canonical one, and `resolveMentions` in the renderer decides
+   * how many of them a given model can actually take.
+   */
+  "mentions:subjects": {
+    input: z.void(),
+    output: z.array(mentionSubjectSchema),
   },
 
   "assets:list": {

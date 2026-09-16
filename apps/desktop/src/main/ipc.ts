@@ -10,6 +10,7 @@ import { registerModelHandlers } from "./catalog"
 import { getModelCatalog, invalidateModelCatalog } from "./catalog-service"
 import { registerProjectHandlers } from "./handlers"
 import { createIpcRegistrar } from "./ipc-registry"
+import { registerMentionHandlers } from "./mentions-service"
 import { rendererRefreshAccelerator } from "./menu"
 import { isDevelopment } from "./resolve"
 import { getSettingsService } from "./settings-service"
@@ -94,6 +95,9 @@ export function registerIpcHandlers(): void {
   // Project folder, containers, assets and generations — all scoped to the
   // currently open project (`project-service.ts`).
   registerProjectHandlers(handle, getModelCatalog)
+
+  /** The `@` picker's index — read-only, and scoped to the open project. */
+  registerMentionHandlers(handle)
 
   /**
    * The AI helpers, backed by the user's own locally installed `claude` /

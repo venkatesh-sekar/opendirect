@@ -83,6 +83,9 @@ export function useImportAssets(): UseMutationResult<
           ? ["assets", variables.containerId]
           : queryKeys.assets.all,
       })
+      // An import can give a character its first reference image, which is
+      // the difference between `@venkz` attaching a picture and not.
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
     },
   })
 }
@@ -105,6 +108,7 @@ export function useAddAssetToContainer(): UseMutationResult<
       void client.invalidateQueries({
         queryKey: ["assets", variables.containerId],
       })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
     },
   })
 }
@@ -123,6 +127,7 @@ export function useRemoveAssetFromContainer(): UseMutationResult<
       void client.invalidateQueries({
         queryKey: ["assets", variables.containerId],
       })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
     },
   })
 }

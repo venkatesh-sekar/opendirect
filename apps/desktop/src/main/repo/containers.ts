@@ -13,12 +13,15 @@
  */
 import { randomUUID } from "node:crypto"
 
-import type {
-  ContainerDto,
-  ContainerKind,
-  ContainerNodeDto,
+import {
+  isValidHandle,
+  slugifyHandle,
+  uniqueHandle,
+  type ContainerDto,
+  type ContainerKind,
+  type ContainerNodeDto,
 } from "@opendirect/contract"
-import { and, asc, eq, isNull, max } from "drizzle-orm"
+import { and, asc, eq, isNotNull, isNull, max, ne } from "drizzle-orm"
 
 import type { ProjectDatabase } from "../db/client"
 import { containers, type Container } from "../db/schema"
@@ -35,6 +38,45 @@ export interface CreateContainerInput {
 /** `kind` is a plain text column in SQLite; the contract narrows it. */
 function toDto(row: Container): ContainerDto {
   return { ...row, kind: row.kind as ContainerKind }
+}
+
+/**
+ * The two kinds a prompt can mention. A folder is an organising device and the
+ * project board is the project, so neither is a subject anyone would `@`.
+ */
+const MENTIONABLE_KINDS: readonly ContainerKind[] = ["character", "scene"]
+
+export function isMentionableKind(kind: ContainerKind): boolean {
+  return MENTIONABLE_KINDS.includes(kind)
+}
+
+/**
+ * Every handle a project has already taken, optionally ignoring one container
+ * — so a rename can re-derive without colliding with the row it is renaming.
+ */
+export function existingHandles(
+  db: ProjectDatabase,
+  projectId: string,
+  exceptId?: string
+): Set<string> {
+  const rows = db
+    .select({ handle: containers.handle })
+    .from(containers)
+    .where(
+      and(
+        eq(containers.projectId, projectId),
+        isNotNull(containers.handle),
+        exceptId === undefined ? undefined : ne(containers.id, exceptId)
+      )
+    )
+    .all()
+  return new Set(rows.map((row) => row.handle!).filter(Boolean))
+}
+
+/** `"  venkz  "` → `"venkz"`; blank and null alike mean "no handle". */
+function normalizeHandle(handle: string | null): string | null {
+  const trimmed = handle?.trim() ?? ""
+  return trimmed === "" ? null : trimmed
 }
 
 export function getContainer(
@@ -109,10 +151,45 @@ export function createContainer(
     kind: input.kind,
     name,
     position: nextPosition(db, input.projectId, parentId),
+    // A character and a scene are `@`-able, so they get a handle derived from
+    // the name they were created with. A name with no ASCII left in it yields
+    // null and the container is simply not mentionable until it is renamed.
+    handle: isMentionableKind(input.kind)
+      ? uniqueHandle(slugifyHandle(name), existingHandles(db, input.projectId))
+      : null,
+    description: null,
     createdAt: input.now ?? Date.now(),
   }
   db.insert(containers).values(row).run()
   return row
+}
+
+/**
+ * The handle a rename should leave behind.
+ *
+ * It re-derives **only** when the stored handle is still the one the old name
+ * would produce: a hand-edited `venkz` on "Venkatesh Sekar" is a decision the
+ * user made and a rename must not quietly undo it. No extra column records
+ * "was this edited" — the old name answers that question already.
+ *
+ * A new name that slugifies to nothing leaves the handle alone rather than
+ * clearing it, because losing `@venkz` would silently break every prompt that
+ * already says it.
+ */
+function handleAfterRename(
+  db: ProjectDatabase,
+  row: ContainerDto,
+  nextName: string
+): string | null {
+  if (!isMentionableKind(row.kind)) return row.handle
+  const derived = slugifyHandle(row.name)
+  if (row.handle !== null && row.handle !== derived) return row.handle
+
+  const next = uniqueHandle(
+    slugifyHandle(nextName),
+    existingHandles(db, row.projectId, row.id)
+  )
+  return next ?? row.handle
 }
 
 export function renameContainer(
@@ -120,10 +197,58 @@ export function renameContainer(
   id: string,
   name: string
 ): ContainerDto {
-  requireContainer(db, id)
+  const row = requireContainer(db, id)
   const trimmed = requireName(name)
   db.update(containers)
-    .set({ name: trimmed })
+    .set({ name: trimmed, handle: handleAfterRename(db, row, trimmed) })
+    .where(eq(containers.id, id))
+    .run()
+  return requireContainer(db, id)
+}
+
+/**
+ * Sets (or clears) the handle a container answers to.
+ *
+ * Both failures throw a sentence the renderer shows as-is: the renderer
+ * validates with the same `handle.ts` while the user types, but main is the
+ * last word because only main can see the rest of the project.
+ */
+export function setContainerHandle(
+  db: ProjectDatabase,
+  id: string,
+  handle: string | null
+): ContainerDto {
+  const row = requireContainer(db, id)
+  if (!isMentionableKind(row.kind)) {
+    throw new Error("Only characters and scenes can have a handle")
+  }
+
+  const next = normalizeHandle(handle)
+  if (next !== null) {
+    if (!isValidHandle(next)) {
+      throw new Error(
+        `"${next}" is not a usable handle. Use lowercase letters, digits and single hyphens, up to 32 characters.`
+      )
+    }
+    if (existingHandles(db, row.projectId, row.id).has(next)) {
+      throw new Error(`Another character or scene already answers to @${next}`)
+    }
+  }
+
+  db.update(containers).set({ handle: next }).where(eq(containers.id, id)).run()
+  return requireContainer(db, id)
+}
+
+/** The prose `@venkz` becomes on a model with no image input. */
+export function setContainerDescription(
+  db: ProjectDatabase,
+  id: string,
+  description: string | null
+): ContainerDto {
+  requireContainer(db, id)
+  const trimmed = description?.trim() ?? ""
+  db.update(containers)
+    .set({ description: trimmed === "" ? null : trimmed })
     .where(eq(containers.id, id))
     .run()
   return requireContainer(db, id)

@@ -137,6 +137,8 @@ describe("project channels", () => {
       kind: "folder" as const,
       name: "Scenes",
       position: 0,
+      handle: null,
+      description: null,
       createdAt: 1,
       children: [
         {
@@ -146,6 +148,8 @@ describe("project channels", () => {
           kind: "scene" as const,
           name: "Lobby",
           position: 0,
+          handle: "lobby",
+          description: "a marble lobby at night",
           createdAt: 2,
           children: [],
         },

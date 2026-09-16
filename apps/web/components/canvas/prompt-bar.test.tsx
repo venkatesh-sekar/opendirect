@@ -169,6 +169,8 @@ const container: ContainerNodeDto = {
   kind: "folder",
   name: "Assets",
   position: 0,
+  handle: null,
+  description: null,
   createdAt: 1,
   children: [],
 }

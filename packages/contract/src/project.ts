@@ -63,6 +63,18 @@ export const containerSchema = z.object({
   kind: containerKindSchema,
   name: z.string(),
   position: z.number(),
+  /**
+   * `venkz` — what this container answers to when it is `@`-mentioned in a
+   * prompt. Unique within the project, derived from the name and editable.
+   * Null for `project` and `folder` containers, and for a name that slugifies
+   * to nothing at all (see `handle.ts`).
+   */
+  handle: z.string().nullable(),
+  /**
+   * The user's own words for who or where this is. What `@venkz` becomes in
+   * the prompt when the chosen model takes no image.
+   */
+  description: z.string().nullable(),
   createdAt: z.number(),
 })
 export type ContainerDto = z.output<typeof containerSchema>
@@ -180,3 +192,24 @@ export const lineageSchema = z.object({
   descendants: z.array(generationSchema),
 })
 export type Lineage = z.output<typeof lineageSchema>
+
+/**
+ * One `@`-able thing, flattened for both the picker and the resolver.
+ *
+ * Built by `listMentionSubjects` in one pass over the project rather than by
+ * an `assets:list` per container: the picker wants every subject at once, and
+ * N round trips to open a popover is N too many.
+ */
+export const mentionSubjectSchema = z.object({
+  containerId: z.string(),
+  kind: z.enum(["character", "scene"]),
+  handle: z.string(),
+  name: z.string(),
+  /** The user's prose. What `@venkz` becomes when there is no image slot. */
+  description: z.string().nullable(),
+  /** Reference images, best first — see `rankReferenceImages`. */
+  images: z.array(
+    z.object({ assetId: z.string(), label: z.string().nullable() })
+  ),
+})
+export type MentionSubjectDto = z.output<typeof mentionSubjectSchema>

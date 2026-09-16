@@ -72,6 +72,16 @@ export const queryKeys = {
     all: ["canvas"] as const,
     graph: ["canvas", "graph"] as const,
   },
+  /**
+   * The `@` picker's subject index. One key for the whole list: it is the
+   * project's characters and scenes, it is small, and every mutation that can
+   * change it (a rename, a handle, a new reference image) invalidates the
+   * whole thing anyway.
+   */
+  mentions: {
+    all: ["mentions"] as const,
+    subjects: ["mentions", "subjects"] as const,
+  },
   generations: {
     all: ["generations"] as const,
     byContainer: (containerId: string, options?: PageKey) =>
