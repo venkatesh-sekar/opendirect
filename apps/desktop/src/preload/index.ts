@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron"
+import { contextBridge, ipcRenderer, webUtils } from "electron"
 import { isIpcChannel, isIpcEventChannel } from "@opendirect/contract"
 
 /**
@@ -18,6 +18,19 @@ const bridge = {
       )
     }
     return ipcRenderer.invoke(channel, payload)
+  },
+
+  /**
+   * The absolute path of a `File` the user dropped onto the window.
+   *
+   * `File.path` was removed in Electron 32, so a drop can only be turned into
+   * an import through `webUtils.getPathForFile`, which lives in the preload.
+   * This is deliberately not an IPC channel: it is a synchronous lookup on an
+   * object the renderer already holds, and it reveals nothing the user did not
+   * just hand the app by dropping the file.
+   */
+  pathForFile(file: File): string {
+    return webUtils.getPathForFile(file)
   },
 
   on(channel: string, callback: (payload: unknown) => void): () => void {

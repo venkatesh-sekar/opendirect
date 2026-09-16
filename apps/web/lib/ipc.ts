@@ -15,6 +15,8 @@ import {
 export interface OpenDirectBridge {
   invoke(channel: string, payload?: unknown): Promise<unknown>
   on(channel: string, callback: (payload: unknown) => void): () => void
+  /** Optional so the renderer still runs in a plain browser tab. */
+  pathForFile?(file: File): string
 }
 
 function findBridge(): OpenDirectBridge | undefined {
@@ -98,4 +100,23 @@ export function subscribe<K extends IpcEventChannel>(
     }
     callback(parsed.data as IpcEventPayload<K>)
   })
+}
+
+/**
+ * Absolute paths for files dropped onto the window.
+ *
+ * `File.path` was removed in Electron 32, so the only way back to a path is
+ * `webUtils.getPathForFile` in the preload. Outside Electron — a browser tab, a
+ * test — there is no path to give, so the list comes back empty and the caller
+ * shows "drag files from Finder" rather than throwing.
+ */
+export function pathsForFiles(files: readonly File[]): string[] {
+  const found = findBridge()
+  if (!found?.pathForFile) return []
+  const paths: string[] = []
+  for (const file of files) {
+    const path = found.pathForFile(file)
+    if (path) paths.push(path)
+  }
+  return paths
 }

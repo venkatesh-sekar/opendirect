@@ -257,6 +257,47 @@ in a frame, and `frame-src 'none'` stops the renderer framing anything else.
 > on a production build and confirm the CSP is reported as active and that
 > nothing in the app is blocked by it.
 
+## App shell
+
+`apps/web/app/page.tsx` renders `components/shell/app-shell.tsx`, which is the
+whole window. With no project open it shows `project-launcher.tsx` (create,
+open a folder, or pick a recent one); everything else needs a database, and the
+database lives inside the project.
+
+The four sidebar headings — Characters, Scenes, Assets, Generations — are a
+*view* over `containers:tree`, not rows of their own. `lib/board/sidebar-tree.ts`
+maps a container's `kind` to its heading and treats a `project`-kind container
+as transparent, hoisting its children, so a project that wraps everything in one
+root and a project that files characters at the top level render identically.
+
+The board is `masonic`'s `useMasonry` (not `<Masonry>`), because the grid
+scrolls inside a panel rather than the browser window: the scroll box is
+measured with a `ResizeObserver` and its `scrollTop` is fed to the hook
+directly. An unmeasured box reports `0`, which `boardMetrics` turns into a
+desktop-sized guess so the first paint is a grid instead of nothing.
+
+Board tiles mix assets and generations. A finished run is already on the board
+as its output assets, so its own record is dropped; a queued, running or failed
+run has no asset yet and gets a placeholder tile (`buildBoardItems`).
+
+**Drag and drop.** Dropping a card on a container **adds** it — an asset
+legitimately lives in many containers and a copy is the non-destructive
+default. Starting the drag with Shift held **moves** it: the same add, then an
+unlink from the source board, in that order and only on success. The decision
+is `lib/board/drop-target.ts`; the mutations are `hooks/use-asset-dnd.ts`.
+
+**File import.** `File.path` was removed in Electron 32, so a dropped file is
+resolved through `webUtils.getPathForFile` in the preload, exposed as
+`window.opendirect.pathForFile` and wrapped by `pathsForFiles` in
+`apps/web/lib/ipc.ts`. Outside Electron it returns an empty list rather than
+throwing. The Import button uses the `assets:choose` dialog channel instead.
+
+Component tests run under jsdom via a `// @vitest-environment jsdom` pragma.
+`vitest.config.ts` sets the automatic JSX runtime (the renderer's tsconfig says
+`jsx: "preserve"`, which the transformer cannot emit) and the `@/…` alias;
+`vitest.setup.ts` stubs `ResizeObserver` and `matchMedia`, which jsdom lacks and
+both `masonic` and the shadcn sidebar require.
+
 ## CI
 
 `.github/workflows/ci.yml` runs `typecheck`, `lint`, `test` and `build` on

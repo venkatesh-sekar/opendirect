@@ -3,6 +3,8 @@ import { Geist_Mono, Inter } from "next/font/google"
 import "@workspace/ui/globals.css"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { TooltipProvider } from "@workspace/ui/components/tooltip"
+
 import { RENDERER_CSP } from "@/lib/csp"
 import { Providers } from "@/lib/query"
 
@@ -42,7 +44,9 @@ export default function RootLayout({
       </head>
       <body>
         <Providers>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </ThemeProvider>
         </Providers>
       </body>
     </html>
