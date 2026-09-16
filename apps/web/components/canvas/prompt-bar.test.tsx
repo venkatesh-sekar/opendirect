@@ -19,6 +19,7 @@ import type {
   ContainerNodeDto,
   CostQuote,
   IpcChannel,
+  MentionSubjectDto,
   ModelDescriptor,
 } from "@opendirect/contract"
 import { TooltipProvider } from "@workspace/ui/components/tooltip"
@@ -142,8 +143,30 @@ const framed: ModelDescriptor = {
   },
 } as unknown as ModelDescriptor
 
+/** A model that takes no image at all — where a mention has to be prose. */
+const textOnly: ModelDescriptor = {
+  ...descriptor,
+  inputSchema: {
+    type: "object",
+    required: ["prompt"],
+    properties: { prompt: { type: "string", title: "Prompt" } },
+  },
+  referenceSlots: [],
+} as unknown as ModelDescriptor
+
+/** One `@`-able character, with one reference image and a description. */
+const VENKZ: MentionSubjectDto = {
+  containerId: "c-venkz",
+  kind: "character",
+  handle: "venkz",
+  name: "Venkz",
+  description: "a tired bellhop in a green coat",
+  images: [{ assetId: "a-venkz", label: "Character Sheet" }],
+}
+
 let quote: CostQuote = estimated
 let served: ModelDescriptor = descriptor
+let subjects: MentionSubjectDto[] = []
 
 /** Detection, as `ai:tools` answers it. `null` preferred = no CLI, no menu. */
 function tools(preferred: "claude" | null) {
@@ -273,6 +296,9 @@ const WIRED = canvasWith(
 /** The same graph with the media node's asset row gone — a blocked run. */
 const BROKEN = canvasWith(node({ id: "still", type: "media", assetId: null }))
 
+/** The same node with nothing wired into it — no edge, no prefix, no block. */
+const BARE: CanvasDto = { nodes: [TARGET], edges: [] }
+
 function renderBar(canvas: CanvasDto = WIRED) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -296,6 +322,7 @@ beforeEach(() => {
   quote = estimated
   served = descriptor
   aiTools = tools("claude")
+  subjects = [VENKZ]
   clearPromptDrafts()
   invoke.mockReset()
   invoke.mockImplementation(async (channel: IpcChannel, payload: unknown) => {
@@ -310,6 +337,8 @@ beforeEach(() => {
         return [container]
       case "assets:list":
         return { items: [asset("a1")], total: 1, nextOffset: null }
+      case "mentions:subjects":
+        return subjects
       case "cost:estimate":
         return quote
       case "ai:tools":
@@ -726,6 +755,112 @@ describe("PromptBar", () => {
       controls.compareDocumentPosition(blocked) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+
+  /**
+   * Intelligent substitution, on a model that takes images.
+   *
+   * ⛔ The assertion is the payload handed to the *mocked*
+   * `generations:submitBatch`. Nothing is sent anywhere and nothing is paid.
+   */
+  it("attaches a mentioned character and names its position in the prompt", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.type(await screen.findByLabelText("Prompt"), "a shot of @venkz")
+
+    // The plan is visible before the run, which is the point of resolving here.
+    const thumb = await screen.findByTestId("mention-thumb")
+    expect(thumb.dataset.handle).toBe("venkz")
+
+    await user.click(run)
+
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    expect(submissions()[0]![1]).toMatchObject({
+      request: {
+        prompt:
+          "a bellhop opens the lift\n\na shot of Venkz (the person in reference image 2)",
+        references: [
+          // The edge the user drew keeps position 0; the mention follows it.
+          { slotField: "reference_images", assetId: "a0", position: 0 },
+          { slotField: "reference_images", assetId: "a-venkz", position: 1 },
+        ],
+      },
+    })
+    // ⛔ The raw text is still the user's to edit.
+    expect(screen.getByLabelText("Prompt")).toHaveValue("a shot of @venkz")
+  })
+
+  it("downgrades a mention to its description on a model with no image input", async () => {
+    const user = userEvent.setup()
+    served = textOnly
+    renderBar(BARE)
+
+    await user.type(await screen.findByLabelText("Prompt"), "a shot of @venkz")
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+
+    expect(await screen.findByTestId("mention-note")).toHaveTextContent(
+      "@venkz → text only (this model has no image input)"
+    )
+
+    await user.click(run)
+
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    const request = submissions()[0]![1] as {
+      request: { prompt: string; references: unknown[] }
+    }
+    expect(request.request.prompt).toBe(
+      "a shot of a tired bellhop in a green coat"
+    )
+    expect(request.request.references).toEqual([])
+  })
+
+  it("⛔ leaves a handle nobody claims in the prompt and still runs", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.type(await screen.findByLabelText("Prompt"), "@nobody waits")
+
+    expect(await screen.findByTestId("mention-note")).toHaveTextContent(
+      "@nobody → no character or scene with that handle"
+    )
+    // It is not a reason to refuse: the user may want a literal `@`.
+    expect(run).toBeEnabled()
+
+    await user.click(run)
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    expect(submissions()[0]![1]).toMatchObject({
+      request: {
+        prompt: "a bellhop opens the lift\n\n@nobody waits",
+      },
+    })
+  })
+
+  /**
+   * The picker is a portal anchored to the caret. The bar is anchored to a
+   * node, so its width is its position — a list that lived inside it would
+   * move Run under a pointer already travelling towards it.
+   */
+  it("opens the `@` picker without changing the bar's own size", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const bar = await screen.findByTestId("canvas-prompt-bar")
+    const prompt = await screen.findByLabelText("Prompt")
+    const controls = screen.getByTestId("prompt-bar-controls")
+
+    await user.click(prompt)
+    await user.type(prompt, "@ven")
+
+    const picker = await screen.findByTestId("mention-picker")
+    expect(controls).not.toContainElement(picker)
+    expect(bar).not.toContainElement(picker)
+    expect(picker.parentElement).toBe(document.body)
   })
 
   /**

@@ -41,8 +41,11 @@ import {
   spawnPosition,
   type Box,
 } from "@/lib/canvas/layout"
+import { slotLabel } from "@/lib/canvas/slots"
 import { remainingCapacity, slotCapacity } from "@/lib/create/references"
 import { invoke } from "@/lib/ipc"
+
+import type { MentionOutcome } from "@/lib/mentions/resolve"
 
 import { ReferencePicker } from "@/components/create/reference-picker"
 
@@ -59,6 +62,12 @@ export interface ReferenceTrayProps {
   containerId: string | null
   /** Says something the bar shows — a fetch that failed, a slot that is full. */
   onNotice?: (message: string) => void
+  /**
+   * What the prompt's mentions will contribute to *this* run. Read-only: a
+   * mention is removed by deleting `@venkz` from the prompt, which is where it
+   * came from.
+   */
+  mentions?: readonly MentionOutcome[]
 }
 
 interface Thumb {
@@ -129,12 +138,76 @@ function readTray(node: CanvasNodeDto, canvas: CanvasDto): Thumb[] {
   return out
 }
 
+/** An attached mention, narrowed so its slot and assets are readable. */
+type MentionImage = Extract<MentionOutcome, { kind: "image" }>
+
+function isMentionImage(outcome: MentionOutcome): outcome is MentionImage {
+  return outcome.kind === "image"
+}
+
+/**
+ * Why a mention will be prose rather than a picture, in the user's words.
+ *
+ * Shown *before* the run, because the whole point of resolving in the renderer
+ * is that the plan is visible while it is still free to change.
+ */
+export function mentionNote(outcome: MentionOutcome): string {
+  if (outcome.kind === "unresolved") {
+    return `@${outcome.handle} → no character or scene with that handle`
+  }
+  if (outcome.kind === "image") return ""
+  const because =
+    outcome.reason === "no-image-slot"
+      ? "this model has no image input"
+      : outcome.reason === "slots-full"
+        ? "the image slots are already wired"
+        : "no reference image yet"
+  return `@${outcome.handle} → text only (${because})`
+}
+
+/**
+ * The tray's notes, rendered *below* the bar's control row rather than inside
+ * it.
+ *
+ * The bar is anchored to a node by its top edge, so a line appearing beside
+ * the thumbnails would push every control sideways as the user types. Below
+ * the row the bar grows downward into empty canvas and nothing moves.
+ */
+export function MentionNotes({
+  mentions,
+}: {
+  mentions: readonly MentionOutcome[]
+}) {
+  const notes = mentions.filter((outcome) => outcome.kind !== "image")
+  if (notes.length === 0) return null
+  return (
+    <ul className="px-1">
+      {notes.map((outcome) => (
+        <li
+          key={outcome.handle}
+          data-testid="mention-note"
+          data-handle={outcome.handle}
+          className={cn(
+            "text-xs",
+            outcome.kind === "unresolved"
+              ? "text-destructive"
+              : "text-muted-foreground"
+          )}
+        >
+          {mentionNote(outcome)}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function ReferenceTray({
   node,
   canvas,
   slots,
   containerId,
   onNotice,
+  mentions = [],
 }: ReferenceTrayProps) {
   const client = useQueryClient()
   const deleteEdges = useDeleteCanvasEdges()
@@ -290,6 +363,28 @@ export function ReferenceTray({
             </li>
           )
         })}
+
+        {/*
+          What the prompt is contributing. A dashed ring and an `@handle` badge
+          say it came from the words rather than from a wire, and there is no ✕
+          — it is removed by deleting `@venkz` from the prompt.
+        */}
+        {mentions.filter(isMentionImage).map((outcome) => (
+          <li key={`mention-${outcome.handle}`} className="relative">
+            <span
+              data-testid="mention-thumb"
+              data-handle={outcome.handle}
+              data-slot={outcome.slotField}
+              title={`@${outcome.handle} → ${slotLabel(outcome.slotField, slots)} — ${outcome.substitution}`}
+              className="ring-dashed flex size-10 items-center justify-center overflow-hidden rounded-md bg-muted text-center text-[0.6rem] leading-tight text-muted-foreground ring-1 ring-primary/60"
+            >
+              <span className="line-clamp-3 px-0.5">@{outcome.handle}</span>
+            </span>
+            <span className="mt-0.5 block max-w-10 truncate text-center text-[0.6rem] text-muted-foreground">
+              {slotLabel(outcome.slotField, slots)}
+            </span>
+          </li>
+        ))}
 
         {slots.map((slot) => {
           const chosen = thumbs.filter(

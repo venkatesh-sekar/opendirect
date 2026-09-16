@@ -54,7 +54,6 @@ import {
   type ModelKind,
 } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
-import { Textarea } from "@workspace/ui/components/textarea"
 import {
   Tooltip,
   TooltipContent,
@@ -66,6 +65,7 @@ import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useContainerTree } from "@/hooks/use-containers"
 import { useSubmitBatch, useCostEstimate } from "@/hooks/use-generations"
 import { useUpdateCanvasEdge, useUpdateCanvasNode } from "@/hooks/use-canvas"
+import { useMentionSubjects } from "@/hooks/use-mentions"
 import { useModel } from "@/hooks/use-models"
 import {
   findContainer,
@@ -86,6 +86,11 @@ import {
   costParams,
   missingRequirements,
 } from "@/lib/create/request"
+import {
+  countBySlot,
+  resolveMentions,
+  type MentionSubject,
+} from "@/lib/mentions/resolve"
 import { schemaDefaults, splitSchema } from "@/lib/schema-form/split-schema"
 
 import { HelperMenu } from "@/components/ai/helper-menu"
@@ -95,7 +100,8 @@ import { CostBadge } from "@/components/create/cost-badge"
 import { ModelPicker } from "@/components/models/model-picker"
 
 import { useCanvasSurface } from "./canvas-context"
-import { ReferenceTray } from "./reference-tray"
+import { MentionTextarea } from "./mention-textarea"
+import { MentionNotes, ReferenceTray } from "./reference-tray"
 import { SettingsPopover } from "./settings-popover"
 
 /**
@@ -199,6 +205,9 @@ function useDraft(
   )
   return [draft, update]
 }
+
+/** Frozen: the empty answer must not be a new array on every render. */
+const NO_SUBJECTS: readonly MentionSubject[] = []
 
 /**
  * The modalities a node of this type may run.
@@ -364,22 +373,55 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   )
   const blockedReason = isBlocked(inputs) ? inputs.blocked : null
 
+  /**
+   * Step 2: what `@venkz` means for *this* model.
+   *
+   * It runs between the edges and the request, in the renderer, because the
+   * user must see the plan before they pay for it — the tray's badge, the
+   * downgrade note and the run are all this one computation. ⛔ It is pure and
+   * it submits nothing; main's guards in `generations-submit.ts` are still the
+   * last word on every slot and every asset it names.
+   */
+  const subjects = useMentionSubjects().data ?? NO_SUBJECTS
+  const mentions = useMemo(
+    () =>
+      resolveMentions({
+        prompt: composePrompt(
+          isBlocked(inputs) ? "" : inputs.promptPrefix,
+          draft.prompt
+        ),
+        subjects,
+        slots: descriptor?.referenceSlots ?? [],
+        // The edges the user drew always win: they are an explicit gesture.
+        occupied: countBySlot(isBlocked(inputs) ? [] : inputs.references),
+      }),
+    [descriptor, draft.prompt, inputs, subjects]
+  )
+
   const request = useMemo(() => {
     if (!descriptor || isBlocked(inputs)) return null
     return buildGenerationRequest({
       descriptor,
       containerId,
       values: {
-        prompt: composePrompt(inputs.promptPrefix, draft.prompt),
+        // The *resolved* prompt is what is submitted and what the row records:
+        // it is the text the provider was actually given. The raw `@venkz`
+        // stays in the draft, which is what the user keeps editing.
+        prompt: mentions.prompt,
         common: draft.common,
         advanced: draft.advanced,
-        references: groupReferences(inputs.references),
+        // Appended after the edge references, so the user's own wiring keeps
+        // the earlier positions in every slot.
+        references: groupReferences([
+          ...inputs.references,
+          ...mentions.references,
+        ]),
       },
       // ⛔ Null on purpose: main mints the batch id, so the renderer cannot
       // claim two runs are siblings when the handler decided otherwise.
       batchId: null,
     })
-  }, [containerId, descriptor, draft, inputs])
+  }, [containerId, descriptor, draft, inputs, mentions])
 
   const quoteParams = useMemo(
     () => (descriptor && request ? costParams(descriptor, request) : {}),
@@ -666,6 +708,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           slots={descriptor?.referenceSlots ?? []}
           containerId={containerId}
           onNotice={setNotice}
+          mentions={mentions.outcomes}
         />
 
         {/* ---- the prompt field -------------------------------------------
@@ -675,16 +718,16 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             comes from `flex-1` inside a bar of stated width, so it is the one
             thing that absorbs the remaining space instead of setting it.
             ----------------------------------------------------------------- */}
-        <Textarea
+        <MentionTextarea
           aria-label="Prompt"
           placeholder="Describe what you want…"
           rows={1}
           value={draft.prompt}
-          onChange={(event) => {
-            const prompt = event.target.value
+          onChange={(prompt) =>
             updateDraft((current) => ({ ...current, prompt }))
-          }}
-          className="max-h-32 min-h-9 min-w-48 flex-1 resize-none py-2"
+          }
+          subjects={subjects}
+          className="max-h-32 min-h-9 w-full resize-none py-2"
         />
         {/* ---- end of the prompt field ----------------------------------- */}
 
@@ -799,6 +842,13 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         the bar grows downward into empty canvas and nothing the user is
         aiming at moves. `role` is unchanged: the same text, still announced.
       */}
+      {/*
+        What the prompt's mentions will be — the downgrades and the handles
+        nobody claims. In the reserved area below the controls, so a note
+        arriving while the user types never moves Run.
+      */}
+      <MentionNotes mentions={mentions.outcomes} />
+
       {notice ? (
         <p role="status" className="px-1 text-xs text-muted-foreground">
           {notice}
