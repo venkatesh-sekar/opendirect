@@ -18,6 +18,7 @@ import { dialog } from "electron"
 
 import type { ModelCatalog } from "./catalog"
 import { submitGeneration } from "./generations-submit"
+import { getJobRunner } from "./jobs-service"
 import type { IpcRegistrar } from "./ipc-registry"
 import type { ProjectDatabase } from "./db/client"
 import type { ProjectRef } from "./project"
@@ -50,6 +51,7 @@ import {
   listByContainer as listGenerations,
   listInputs,
   toGenerationDto,
+  updateStatus,
 } from "./repo/generations"
 
 interface OpenContext {
@@ -222,16 +224,52 @@ export function registerProjectHandlers(
   })
 
   /**
-   * ⛔ Queues a run; does not start one. `generations-submit.ts` writes a
-   * `queued` row and stops there — Task 16 adds the runner that calls a
-   * provider.
+   * ⛔ The one channel that leads to a paid call — and only ever because the
+   * user pressed Generate.
+   *
+   * The row is written first (`generations-submit.ts` still calls no provider),
+   * then handed to the runner. Order matters: if the process dies between the
+   * two, SQLite holds a `queued` row that costs nothing and that startup
+   * recovery will pick up, rather than a provider job nothing knows about.
    */
-  handle("generations:submit", (request) => {
+  handle("generations:submit", async (request) => {
     const { db, project } = requireProject()
-    return submitGeneration(
+    const generation = await submitGeneration(
       { db, project },
       { getModel: (key) => catalog().getModel(key) },
       request
     )
+
+    try {
+      getJobRunner().enqueue(generation.id)
+    } catch (error) {
+      // The run is on the board either way, so it must not be left claiming to
+      // be queued when nothing is going to pick it up.
+      const message =
+        error instanceof Error ? error.message : "The job runner is unavailable"
+      return updateStatus(db, generation.id, {
+        status: "failed",
+        error: message,
+      })
+    }
+
+    return generation
+  })
+
+  /** The job list sheet. Reads the `jobs` table, so it survives a restart. */
+  handle("jobs:list", ({ limit }) => {
+    requireProject()
+    return getJobRunner().list(limit)
+  })
+
+  handle("jobs:cancel", ({ id }) => {
+    requireProject()
+    return getJobRunner().cancel(id)
+  })
+
+  /** ⛔ Paid: re-submits the run. Only ever from an explicit Retry click. */
+  handle("jobs:retry", ({ id }) => {
+    requireProject()
+    return getJobRunner().retry(id)
   })
 }

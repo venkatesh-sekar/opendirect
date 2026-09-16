@@ -27,9 +27,10 @@ export interface GenerationsPageOptions {
 /**
  * A container's runs, newest first.
  *
- * Submitting only queues a row (`useSubmitGeneration`); running it belongs to
- * the job runner (Task 16), which owns the queue, the cost confirmation and
- * the polling. Nothing a renderer hook does can start a paid generation.
+ * Submitting queues a row (`useSubmitGeneration`); running it belongs to the
+ * job runner in main, which owns the queue, the polling and the download. A
+ * renderer hook can ask for a run, and watch it in `useJobs`, but it never
+ * talks to a provider itself.
  */
 export function useGenerations(
   containerId: string | null,
@@ -103,9 +104,10 @@ export function useCostEstimate(
 /**
  * Queues a generation.
  *
- * ⛔ This starts nothing. `generations:submit` writes a `queued` row in the
- * main process and returns it; the job runner that calls a provider arrives in
- * Task 16. Until then the board shows the queued tile and nothing is spent.
+ * ⛔ The one renderer call that leads to a paid generation, and only because
+ * the user pressed Generate. `generations:submit` writes a `queued` row in the
+ * main process and hands it to the job runner; the job list is where its
+ * progress and its cost show up.
  */
 export function useSubmitGeneration(): UseMutationResult<
   GenerationDto,

@@ -13,7 +13,8 @@
  * Generate, set in the mono face because it is data, and it says "Cost
  * unknown" rather than a confident zero whenever OpenDirect cannot know.
  *
- * ⛔ Generate queues a row. Task 16 adds the runner that calls a provider.
+ * ⛔ Generate queues a row; the job runner in main is what submits it, and the
+ * job list on the status strip is where it is watched and cancelled.
  */
 import { useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"

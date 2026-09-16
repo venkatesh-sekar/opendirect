@@ -6,7 +6,9 @@
  * with `onUnhandledRequest: "error"` so an escape fails the suite.
  */
 import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { mkdtemp, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join, resolve } from "node:path"
 
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
@@ -477,6 +479,43 @@ describe("createReplicateProvider", () => {
       await provider.cancel({ provider: "replicate", id: "pred-123" })
 
       expect(canceled).toBe(true)
+    })
+
+    it("uploads a local reference file and returns its URL", async () => {
+      const path = join(
+        await mkdtemp(join(tmpdir(), "replicate-ref-")),
+        "ref.png"
+      )
+      await writeFile(path, Buffer.from([137, 80, 78, 71]))
+
+      let uploaded = false
+      server.use(
+        http.post("https://api.replicate.com/v1/files", async ({ request }) => {
+          uploaded = true
+          // Replicate takes multipart form data, not JSON.
+          const form = await request.formData()
+          expect(form.get("content")).toBeInstanceOf(File)
+          return HttpResponse.json({
+            id: "file-1",
+            content_type: "image/png",
+            size: 4,
+            checksums: { sha256: "abc" },
+            metadata: {},
+            created_at: "2026-09-16T00:00:00Z",
+            expires_at: null,
+            urls: { get: "https://api.replicate.com/v1/files/file-1/download" },
+          })
+        })
+      )
+
+      const url = await provider.uploadReference!({
+        path,
+        filename: "ref.png",
+        contentType: "image/png",
+      })
+
+      expect(uploaded).toBe(true)
+      expect(url).toBe("https://api.replicate.com/v1/files/file-1/download")
     })
   })
 })

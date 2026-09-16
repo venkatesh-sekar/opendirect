@@ -2,7 +2,7 @@
  * Generations: one row per model run, its inputs, its outputs and its lineage.
  *
  * A generation is a *record*, not an action — nothing here talks to a provider
- * or submits anything. Task 16's job runner is what calls `updateStatus` and
+ * or submits anything. The job runner is what calls `updateStatus` and
  * `attachOutputs` as a run progresses; keeping those as plain database writes
  * is what lets the runner be tested without a network at all.
  *
@@ -166,6 +166,8 @@ export interface UpdateStatusInput {
   request?: unknown
   response?: unknown
   actualCostUsd?: number | null
+  /** Set to `"exact"` when the provider reported what the run actually cost. */
+  costConfidence?: string | null
   now?: number
 }
 
@@ -203,6 +205,10 @@ export function updateStatus(
         input.actualCostUsd === undefined
           ? current.actualCostUsd
           : input.actualCostUsd,
+      costConfidence:
+        input.costConfidence === undefined
+          ? current.costConfidence
+          : input.costConfidence,
       startedAt: started ? now : current.startedAt,
       completedAt: TERMINAL.has(input.status) ? now : current.completedAt,
     })

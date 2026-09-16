@@ -33,6 +33,7 @@ import { useSettings } from "@/lib/settings"
 import { AssetPreview } from "@/components/board/asset-preview"
 import { Board } from "@/components/board/board"
 import { CreationBar } from "@/components/create/creation-bar"
+import { JobList } from "@/components/jobs/job-list"
 
 import { ProjectLauncher } from "./project-launcher"
 import { ProjectSidebar, type BoardSelection } from "./sidebar"
@@ -214,6 +215,14 @@ export function AppShell() {
               </>
             ) : null}
           </ResizablePanelGroup>
+
+          {/*
+            The status strip: the only permanent sign that work is happening in
+            the background, and the way into the job list.
+          */}
+          <div className="flex items-center justify-end border-t px-2 py-1">
+            <JobList />
+          </div>
 
           {/*
             A `sticky bottom-0` sibling of the panel group, so the bar sits

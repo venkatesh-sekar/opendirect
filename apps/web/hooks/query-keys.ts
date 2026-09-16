@@ -50,6 +50,15 @@ export const queryKeys = {
     estimate: (modelKey: string, params: unknown) =>
       ["cost", modelKey, params] as const,
   },
+  /**
+   * The job runner's queue. One key for the whole list: it is short, it is
+   * pushed to rather than polled, and a per-job key would mean re-fetching the
+   * list to find out which entry changed.
+   */
+  jobs: {
+    all: ["jobs"] as const,
+    list: ["jobs", "list"] as const,
+  },
   generations: {
     all: ["generations"] as const,
     byContainer: (containerId: string, options?: PageKey) =>

@@ -321,7 +321,6 @@ describe("costParams", () => {
     })
 
     expect(costParams(model, request)).toEqual({
-      prompt: "x",
       duration: 5,
       reference_images: ["a", "b"],
       last_frame_image: "z",
@@ -334,7 +333,27 @@ describe("costParams", () => {
       watermark: false,
       duration: 5,
       resolution: "720p",
-      prompt: "a bellhop opens the lift",
     })
+  })
+
+  it("strips the prompt, which no provider prices by", () => {
+    const model = descriptor()
+    const typed = costParams(model, build())
+    const typedMore = costParams(
+      model,
+      build({
+        values: {
+          prompt: "a bellhop opens the lift slowly",
+          common: { duration: 5, resolution: "720p" },
+          advanced: { watermark: false },
+          references: {},
+        },
+      })
+    )
+
+    expect(typed).not.toHaveProperty("prompt")
+    // The params are the `cost:estimate` query key, so an identical quote must
+    // be an identical object — otherwise every keystroke re-queries the price.
+    expect(typedMore).toEqual(typed)
   })
 })

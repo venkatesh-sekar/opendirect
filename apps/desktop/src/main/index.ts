@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron"
 import log from "electron-log/main"
 
 import { disposeIpcHandlers, registerIpcHandlers } from "./ipc"
+import { recoverJobs, stopJobRunner } from "./jobs-service"
 import { prepareMediaProtocol, registerMediaProtocol } from "./media-service"
 import { closeCurrentProject, restoreLastProject } from "./project-service"
 import { loadDevEnv } from "./settings-service"
@@ -34,6 +35,11 @@ void app.whenReady().then(async () => {
   registerMediaProtocol()
 
   await createMainWindow()
+
+  // Crash recovery, after the window exists so its job list sees the updates:
+  // re-attach to provider jobs that outlived the last session, and fail the
+  // ones that were interrupted mid-submit rather than paying for them twice.
+  void recoverJobs()
   // App-scoped, not window-scoped: it must survive the macOS
   // close-all-windows-then-reactivate cycle.
   initAutoUpdater()
@@ -45,6 +51,7 @@ void app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   stopAutoUpdater()
+  stopJobRunner()
   disposeIpcHandlers()
   // Checkpoints the WAL so the project folder is consistent if it is synced.
   closeCurrentProject()

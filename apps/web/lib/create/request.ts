@@ -154,12 +154,18 @@ export function missingRequirements(
  * without this the estimator would quote the cheap tier for a video-to-video
  * run. The placeholder values are asset ids, never URLs: the estimator only
  * ever checks whether a field is populated.
+ *
+ * The prompt is **removed**. No provider prices a media generation by prompt
+ * length, and the params are part of the `cost:estimate` query key — leaving it
+ * in would re-quote the same price on every keystroke.
  */
 export function costParams(
   descriptor: ModelDescriptor,
   request: GenerationRequest
 ): Record<string, unknown> {
   const params: Record<string, unknown> = { ...request.params }
+  const promptField = descriptor.commonControls.prompt
+  if (promptField) delete params[promptField]
   for (const slot of descriptor.referenceSlots) {
     const chosen = request.references
       .filter((reference) => reference.slotField === slot.field)

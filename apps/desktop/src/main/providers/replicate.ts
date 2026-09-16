@@ -18,6 +18,8 @@
  * `msw` handlers backed by recorded fixtures — never the live API. Model and
  * collection reads are free `GET`s.
  */
+import { readFile } from "node:fs/promises"
+
 import {
   modelKey,
   unknownPricing,
@@ -39,6 +41,7 @@ import type {
   ProviderJobRef,
   ProviderJobState,
   ProviderJobStatus,
+  ReferenceUpload,
 } from "./types"
 
 type JsonObject = Record<string, unknown>
@@ -468,6 +471,28 @@ export function createReplicateProvider(
         raw: model,
         fetchedAt: now(),
       }
+    },
+
+    /**
+     * A local reference file, uploaded to Replicate's file store so the model
+     * can fetch it by URL. Files expire on Replicate's own schedule, which is
+     * why this happens per run rather than being cached.
+     *
+     * ⛔ Free: `POST /v1/files` stores bytes, it starts nothing.
+     */
+    async uploadReference(input: ReferenceUpload): Promise<string> {
+      const bytes = await readFile(input.path)
+      const file = await client().files.create(
+        new Blob([new Uint8Array(bytes)], { type: input.contentType }),
+        { filename: input.filename }
+      )
+      const url = file.urls?.get
+      if (!url) {
+        throw new Error(
+          `Replicate accepted "${input.filename}" but returned no URL for it.`
+        )
+      }
+      return url
     },
 
     /**

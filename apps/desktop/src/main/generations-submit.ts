@@ -2,9 +2,10 @@
  * Submitting a generation — the queue half.
  *
  * ⛔ **This calls no provider.** A submission writes one `queued` row, links
- * the chosen reference assets to their slots, and returns. Task 16's job
- * runner is what picks queued rows up, builds the provider payload and makes
- * the HTTP call; until it exists, pressing Generate costs nothing.
+ * the chosen reference assets to their slots, and returns. The job runner
+ * (`jobs/runner.ts`) is what picks queued rows up, builds the provider payload
+ * and makes the HTTP call — the `generations:submit` handler hands it the row
+ * only after it is safely in SQLite.
  *
  * What it *does* do is validate: the model key must resolve in the catalog, a
  * reference must name a slot the model actually declares and an asset that
@@ -83,7 +84,8 @@ export async function submitGeneration(
       slotField: reference.slotField,
       position: reference.position,
     })),
-    // Explicit, because it is the point: the row waits for Task 16's runner.
+    // Explicit, because it is the point: the row exists, and costs nothing,
+    // before the runner is told about it.
     status: "queued",
   })
 }

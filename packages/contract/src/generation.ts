@@ -4,11 +4,11 @@
  * A `GenerationRequest` is deliberately *not* a provider payload: it names a
  * catalog model, carries the schema-driven params verbatim, and refers to
  * references by asset id. Turning asset ids into provider URLs is the job
- * runner's job (Task 16) and happens entirely in the main process, so the
+ * runner's job and happens entirely in the main process, so the
  * renderer never has to know how a provider wants its files.
  *
- * ⛔ Submitting a request records a `queued` row. Nothing in this file, and
- * nothing that consumes it in Task 15, calls a provider.
+ * ⛔ Submitting a request records a `queued` row and hands it to the runner.
+ * Nothing in this file calls a provider.
  */
 import { z } from "zod"
 

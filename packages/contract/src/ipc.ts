@@ -73,6 +73,56 @@ export const settingsDefaults: Settings = {
 export const okSchema = z.object({ ok: z.literal(true) })
 
 /**
+ * Where a run is in the job runner's state machine.
+ *
+ * It is deliberately finer-grained than `generationStatusSchema`: a generation
+ * is `running` from the moment it is submitted until its outputs are on disk,
+ * while the job list wants to say *which* of those the runner is doing —
+ * "submitting" and "downloading" are the two stages where a stalled run looks
+ * identical otherwise.
+ */
+export const jobStateSchema = z.enum([
+  "queued",
+  "submitting",
+  "running",
+  "downloading",
+  "succeeded",
+  "failed",
+  "canceled",
+])
+export type JobState = z.output<typeof jobStateSchema>
+
+/** States the runner will still move out of by itself. */
+export const ACTIVE_JOB_STATES: readonly JobState[] = [
+  "queued",
+  "submitting",
+  "running",
+  "downloading",
+]
+
+export const jobSchema = z.object({
+  id: z.string(),
+  generationId: z.string(),
+  state: jobStateSchema,
+  /** How many times the runner has tried this job, including the current try. */
+  attempts: z.number().int(),
+  error: z.string().nullable(),
+  createdAt: z.number(),
+  lastPolledAt: z.number().nullable(),
+  nextPollAt: z.number().nullable(),
+  /**
+   * 0–1 when the provider reports a percentage. Neither Replicate nor
+   * OpenRouter does today, so the job list shows an indeterminate bar rather
+   * than an invented number — and it is not persisted, so it is null again
+   * after a restart.
+   */
+  progress: z.number().nullable(),
+  /** The run itself: model, container, cost, error — everything the row shows. */
+  generation: generationSchema,
+})
+export type JobDto = z.output<typeof jobSchema>
+
+/**
  * The single source of truth for every main↔renderer message.
  *
  * Each entry pairs a request schema with a response schema. Both sides import
@@ -241,11 +291,12 @@ export const ipcContract = {
   },
 
   /**
-   * Records a generation the creation bar built.
+   * Records a generation the creation bar built and hands it to the job
+   * runner.
    *
-   * ⛔ In Task 15 this is a **stub**: it persists the request as a `queued`
-   * row and returns it. No provider is called; Task 16 adds the runner that
-   * picks queued rows up.
+   * ⛔ This is the one channel that leads to a paid call, and only ever from a
+   * user-initiated Generate: it writes the `queued` row first and enqueues it,
+   * so what the provider is asked for is always what SQLite already says.
    */
   "generations:submit": {
     input: generationRequestSchema,
@@ -254,7 +305,7 @@ export const ipcContract = {
 
   /**
    * Generation *records*. Submitting one only queues a row; running it is the
-   * job runner's job (Task 16).
+   * job runner's job; `jobs:list` is where its progress shows up.
    */
   "generations:list": {
     input: z.object({
@@ -282,6 +333,25 @@ export const ipcContract = {
     input: z.object({ id: z.string() }),
     output: lineageSchema,
   },
+
+  /**
+   * The job runner's queue: active runs first, then recently finished ones.
+   * Every row is a `jobs` row in SQLite, so the list survives a restart.
+   */
+  "jobs:list": {
+    input: z.object({ limit: z.number().int().min(1).max(200).optional() }),
+    output: z.array(jobSchema),
+  },
+  /**
+   * Stops a run: the provider is asked to cancel when it can, and the row is
+   * marked `canceled` either way so nothing keeps polling it.
+   */
+  "jobs:cancel": { input: z.object({ id: z.string() }), output: jobSchema },
+  /**
+   * ⛔ Re-submits a failed or cancelled run — a paid call, and therefore only
+   * ever from an explicit click on Retry in the job list.
+   */
+  "jobs:retry": { input: z.object({ id: z.string() }), output: jobSchema },
 } as const
 
 export type IpcContract = typeof ipcContract
@@ -326,6 +396,13 @@ export const updaterStatusSchema = z.discriminatedUnion("state", [
 /** Main→renderer pushes. Same rule as `ipcContract`: no channel without an entry. */
 export const ipcEvents = {
   "updater:status": { payload: updaterStatusSchema },
+  /**
+   * One push per job state change, from the runner in main. The renderer's
+   * `useJobs` patches its cache with it and invalidates the board's queries
+   * when a run reaches a terminal state, so a finished generation's outputs
+   * appear without polling from the renderer as well.
+   */
+  "jobs:update": { payload: jobSchema },
 } as const
 
 export type IpcEvents = typeof ipcEvents

@@ -22,10 +22,15 @@ export default defineConfig({
   external: ["electron", "better-sqlite3", "sharp"],
   // `electron-serve` v3 is ESM-only; a CommonJS main process cannot `require`
   // it, so it is bundled into the output instead of left as a bare import.
-  // `electron-store` v11 is likewise ESM-only.
+  // `electron-store` v11 and `p-queue` v9 are likewise ESM-only.
   // `@opendirect/contract` is a workspace package published as TypeScript source,
   // so it must be bundled rather than required at runtime.
-  noExternal: ["electron-serve", "electron-store", "@opendirect/contract"],
+  noExternal: [
+    "electron-serve",
+    "electron-store",
+    "p-queue",
+    "@opendirect/contract",
+  ],
   // The generated migration SQL is data, not code: tsup cannot bundle it, and
   // `resolveMigrationsFolder()` looks for it one level above the main bundle.
   // Copying it into `dist` puts it inside app.asar with everything else.

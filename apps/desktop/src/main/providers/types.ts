@@ -5,8 +5,8 @@
  * HTTP. The renderer never sees this interface, only the normalized
  * `ModelDescriptor` / `ModelSummary` it produces.
  *
- * ⛔ `submit` / `poll` / `cancel` are the paid path. They are declared here and
- * implemented in Task 16, and are tested exclusively against `msw` handlers
+ * ⛔ `submit` / `poll` / `cancel` are the paid path, driven only by the job
+ * runner (`jobs/runner.ts`), and tested exclusively against `msw` handlers
  * backed by recorded fixtures — never against a live provider.
  */
 import type {
@@ -59,12 +59,28 @@ export interface ListModelsOptions {
   kinds: ModelKind[]
 }
 
+/** A local file a run wants to hand the model as a reference. */
+export interface ReferenceUpload {
+  /** Absolute path inside the project folder. */
+  path: string
+  filename: string
+  contentType: string
+}
+
 export interface ModelProvider {
   readonly id: ProviderId
   /** False when no API key is configured; the registry filters on this. */
   isConfigured(): boolean
   listModels(opts: ListModelsOptions): Promise<ModelSummary[]>
   getModel(slug: string): Promise<ModelDescriptor>
+  /**
+   * Uploads a local reference file and returns a URL the model can fetch.
+   *
+   * Optional: an adapter that omits it gets a `data:` URL from the job runner
+   * instead, which is what OpenRouter takes. ⛔ Free — it stores a file, it
+   * does not start a generation.
+   */
+  uploadReference?(input: ReferenceUpload): Promise<string>
   submit(req: GenerationRequest): Promise<ProviderJobRef>
   poll(ref: ProviderJobRef): Promise<ProviderJobState>
   cancel(ref: ProviderJobRef): Promise<void>

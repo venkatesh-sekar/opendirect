@@ -341,9 +341,67 @@ on hover — never `$0.00`.
 
 **Submitting.** Generate builds a `GenerationRequest`
 (`lib/create/request.ts`) and calls `generations:submit`, which in the main
-process writes one `queued` row with its reference links and stops
-(`apps/desktop/src/main/generations-submit.ts`). ⛔ No provider is called: the
-job runner arrives in Task 16.
+process writes one `queued` row with its reference links
+(`apps/desktop/src/main/generations-submit.ts`) and then hands it to the job
+runner. The row is always written first, so a crash between the two leaves a
+free `queued` row rather than a provider job nothing knows about.
+
+The prompt is stripped from the params sent to `cost:estimate` (`costParams`):
+no provider prices a media generation by prompt length, and the params are part
+of the query key, so leaving it in would re-quote the same price on every
+keystroke.
+
+## Job runner
+
+`apps/desktop/src/main/jobs/` owns every paid call in the app.
+
+- **`runner.ts`** — one `p-queue` whose concurrency is the `maxConcurrentJobs`
+  setting, over durable `jobs` rows. A run walks
+  `queued → submitting → running → downloading → succeeded | failed | canceled`,
+  and every transition is written to SQLite *before* it is pushed to the
+  renderer as a `jobs:update` event.
+- **`poll.ts`** — the timing and retry arithmetic: the poll interval comes from
+  settings and is jittered; a 5xx, a 429 or a transport failure is retried with
+  exponential backoff up to three attempts; a 4xx, a provider-reported failure
+  and a failed download are all terminal, because by then the request has
+  already been paid for.
+- **`download.ts`** — streams each output into `tmp/` and renames it into
+  `generations/<id>/<index>.<ext>` only once the length checks out, so the
+  project never holds a half-written file. `attachOutputs` then creates the
+  asset rows and files them on the run's board.
+- **Crash recovery** (`recoverJobs()` in `jobs-service.ts`, called once at
+  startup) re-attaches to any run that still has a `provider_job_id` and keeps
+  polling it; a run interrupted mid-submit with no provider job id is marked
+  failed with a message telling the user to check the provider's dashboard
+  before retrying, because re-submitting could pay for the same run twice.
+
+The job list is a Sheet on the status strip (`components/jobs/`): model, state,
+elapsed time, progress, estimated-vs-actual cost, the provider's error inline,
+and Cancel / Retry.
+
+⛔ Every test of this path runs against `msw` handlers; the harness's
+`onUnhandledRequest: "error"` is what guarantees no test can reach a live
+provider. Do not weaken it.
+
+## First real generation — a manual check, for a human
+
+⛔ **This checklist is for the user to run, never for an agent.** It is the only
+step in the project that spends money, and nothing automated may perform it.
+
+1. `pnpm dev:desktop`, and open or create a project.
+2. Settings → paste a Replicate or OpenRouter key and verify it.
+3. Pick a **cheap image model** (not a video model) in the creation bar.
+4. Type a short prompt and read the cost badge. If it says "Cost unknown",
+   stop and find out why before pressing anything.
+5. Press **Generate once**. Do not press it again while the job list shows the
+   run as active.
+6. Watch the job list: `Queued → Submitting → Running → Downloading → Done`.
+7. Confirm the output appears on the board and that the file is on disk under
+   `<project>/generations/<generation-id>/0.<ext>`.
+8. Confirm the recorded cost: OpenRouter reports the exact figure, Replicate
+   leaves the estimate in place (it publishes no per-run cost).
+9. Quit the app mid-run once, restart, and confirm the run re-attaches and
+   finishes rather than being submitted a second time.
 
 ## CI
 
