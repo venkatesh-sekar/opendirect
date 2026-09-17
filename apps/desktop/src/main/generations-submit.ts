@@ -25,6 +25,7 @@ import {
   type ModelDescriptor,
 } from "@opendirect/contract"
 
+import { validateGenerationParams } from "./generation-validation"
 import type { ProjectDatabase } from "./db/client"
 import type { ProjectRef } from "./project"
 import { getAsset } from "./repo/assets"
@@ -38,6 +39,10 @@ export interface SubmitContext {
 /** The catalog, as the one thing submission needs from it. */
 export interface SubmitDeps {
   getModel(key: string): Promise<ModelDescriptor>
+  preflight?(
+    descriptor: ModelDescriptor,
+    requests: GenerationRequest[]
+  ): Promise<GenerationRequest[]>
 }
 
 /**
@@ -74,6 +79,26 @@ async function resolveForSubmission(
     }
   }
 
+  const positions = new Set<string>()
+  for (const slot of descriptor.referenceSlots) {
+    const references = request.references.filter(
+      (ref) => ref.slotField === slot.field
+    )
+    const capacity = slot.multiple ? (slot.max ?? Infinity) : 1
+    if (references.length > capacity)
+      throw new Error(`${slot.label} accepts at most ${capacity} references`)
+    for (const ref of references) {
+      const asset = getAsset(ctx.db, ref.assetId)!
+      if (slot.kind !== "any" && asset.kind !== slot.kind)
+        throw new Error(`${slot.label} requires ${slot.kind} assets`)
+      const key = `${ref.slotField}:${ref.position}`
+      if (positions.has(key))
+        throw new Error("Reference positions must be unique within each input")
+      positions.add(key)
+    }
+  }
+
+  validateGenerationParams(descriptor, request)
   return descriptor
 }
 
@@ -115,7 +140,11 @@ export async function submitGeneration(
   deps: SubmitDeps,
   request: GenerationRequest
 ): Promise<GenerationDto> {
-  return record(ctx, await resolveForSubmission(ctx, deps, request), request)
+  const descriptor = await resolveForSubmission(ctx, deps, request)
+  const checked = deps.preflight
+    ? await deps.preflight(descriptor, [request])
+    : [request]
+  return record(ctx, descriptor, checked[0]!)
 }
 
 export interface BatchSubmission {
@@ -152,8 +181,12 @@ export async function submitBatch(
     batchId: request.batchId ?? undefined,
   })
 
-  return {
+  for (const one of plan.requests) validateGenerationParams(descriptor, one)
+  const checked = deps.preflight
+    ? await deps.preflight(descriptor, plan.requests)
+    : plan.requests
+  return ctx.db.transaction(() => ({
     batchId: plan.batchId,
-    generations: plan.requests.map((one) => record(ctx, descriptor, one)),
-  }
+    generations: checked.map((one) => record(ctx, descriptor, one)),
+  }))
 }

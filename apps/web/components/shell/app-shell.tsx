@@ -35,6 +35,7 @@ import {
 
 import { ProjectLauncher } from "./project-launcher"
 import { ProjectSidebar } from "./sidebar"
+import { SubjectLibrary } from "./subject-library"
 import { StatusBar } from "./status-bar"
 
 /**
@@ -92,6 +93,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const project = useCurrentProject()
   const tree = useContainerTree(project.data != null)
   const dnd = useAssetDnd()
+  const [libraryId, setLibraryId] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
   const [chosen, setChosen] = useState<string | null>(null)
 
@@ -213,10 +215,21 @@ export function AppShell({ children }: { children?: ReactNode }) {
           <ProjectSidebar
             project={project.data}
             selectedContainerId={containerId}
-            onSelectContainer={(node) => setChosen(node.id)}
+            onSelectContainer={(node) => {
+              setChosen(node.id)
+              if (node.kind === "character" || node.kind === "scene")
+                setLibraryId(node.id)
+            }}
             onSwitchProject={() => setSwitching(true)}
           />
 
+          {libraryId && findContainer(nodes, libraryId) && (
+            <SubjectLibrary
+              key={libraryId}
+              node={findContainer(nodes, libraryId)!}
+              onClose={() => setLibraryId(null)}
+            />
+          )}
           <SidebarInset className="flex min-h-svh min-w-0 flex-col">
             {/*
             Whichever route is mounted. The canvas is one of them and Settings

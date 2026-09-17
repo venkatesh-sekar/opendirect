@@ -90,6 +90,7 @@ export function listMentionSubjects(
       handle: containers.handle,
       name: containers.name,
       description: containers.description,
+      referenceAssetIds: containers.referenceAssetIds,
     })
     .from(containers)
     .where(
@@ -140,12 +141,18 @@ export function listMentionSubjects(
     handle: subject.handle!,
     name: subject.name,
     description: subject.description,
-    images: rankReferenceImages(byContainer.get(subject.containerId) ?? []).map(
-      (row) => ({
-        assetId: row.id,
-        label: row.label,
-        thumbnailUrl: previewUrl(row),
-      })
-    ),
+    explicitReferences: subject.referenceAssetIds !== null,
+    images: (subject.referenceAssetIds === null
+      ? rankReferenceImages(byContainer.get(subject.containerId) ?? [])
+      : subject.referenceAssetIds.flatMap((id) =>
+          (byContainer.get(subject.containerId) ?? []).filter(
+            (row) => row.id === id
+          )
+        )
+    ).map((row) => ({
+      assetId: row.id,
+      label: row.label,
+      thumbnailUrl: previewUrl(row),
+    })),
   }))
 }

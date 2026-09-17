@@ -43,6 +43,7 @@ export const canvasNodeSchema = z.object({
   height: z.number(),
   /** The imported asset a media node shows; null for every other type. */
   assetId: z.string().nullable(),
+  containerId: z.string().nullable().optional(),
   /** The single run behind a generate node, when it was not a batch. */
   generationId: z.string().nullable(),
   /** Groups the sibling runs of one batch; null for a single run. */
@@ -99,6 +100,7 @@ export type CanvasDto = z.output<typeof canvasSchema>
  * field is left alone — `null` is a value here, not an absence.
  */
 export const canvasNodePatchSchema = z.object({
+  containerId: z.string().nullable().optional(),
   x: z.number().optional(),
   y: z.number().optional(),
   width: z.number().positive().optional(),

@@ -1,0 +1,1 @@
+ALTER TABLE `containers` ADD `reference_asset_ids` text;

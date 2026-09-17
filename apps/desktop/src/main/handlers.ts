@@ -45,8 +45,10 @@ import {
   renameContainer,
   reparentContainer,
   setContainerDescription,
+  setContainerReferences,
   setContainerHandle,
 } from "./repo/containers"
+import { preflightGeneration } from "./generation-preflight"
 import { estimateCost } from "./providers/cost"
 import { resolveOpenPath } from "./shell-open"
 import {
@@ -156,6 +158,10 @@ export function registerProjectHandlers(
    */
   handle("containers:setHandle", ({ id, handle: value }) =>
     setContainerHandle(requireProject().db, id, value)
+  )
+
+  handle("containers:setReferences", ({ id, assetIds }) =>
+    setContainerReferences(requireProject().db, id, assetIds)
   )
 
   handle("containers:setDescription", ({ id, description }) =>
@@ -286,7 +292,10 @@ export function registerProjectHandlers(
     const { db, project } = requireProject()
     const generation = await submitGeneration(
       { db, project },
-      { getModel: (key) => catalog().getModel(key) },
+      {
+        getModel: (key) => catalog().getModel(key, { refresh: true }),
+        preflight: preflightGeneration,
+      },
       request
     )
 
@@ -320,7 +329,10 @@ export function registerProjectHandlers(
     const { db, project } = requireProject()
     const batch = await submitBatch(
       { db, project },
-      { getModel: (key) => catalog().getModel(key) },
+      {
+        getModel: (key) => catalog().getModel(key, { refresh: true }),
+        preflight: preflightGeneration,
+      },
       request,
       count
     )

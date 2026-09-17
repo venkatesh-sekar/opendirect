@@ -761,3 +761,38 @@ describe("createOpenRouterProvider", () => {
     })
   })
 })
+
+describe("OpenRouter account preflight", () => {
+  it("rejects a batch above the key limit before any generation call", async () => {
+    server.use(
+      http.get("https://openrouter.ai/api/v1/key", () =>
+        HttpResponse.json({ data: { limit_remaining: 2 } })
+      )
+    )
+    const provider = createOpenRouterProvider({ getKey: () => "test-key" })
+    await expect(provider.validateSpend!(3)).rejects.toThrow(
+      "remaining spending limit"
+    )
+    await expect(provider.validateSpend!(1)).resolves.toBeUndefined()
+  })
+  it("rejects exhausted keys even when pricing is unknown", async () => {
+    server.use(
+      http.get("https://openrouter.ai/api/v1/key", () =>
+        HttpResponse.json({ data: { limit_remaining: 0 } })
+      )
+    )
+    const provider = createOpenRouterProvider({ getKey: () => "test-key" })
+    await expect(provider.validateSpend!(null)).rejects.toThrow(
+      "remaining spending limit"
+    )
+  })
+  it("does not invent a balance for an unlimited key", async () => {
+    server.use(
+      http.get("https://openrouter.ai/api/v1/key", () =>
+        HttpResponse.json({ data: { limit_remaining: null } })
+      )
+    )
+    const provider = createOpenRouterProvider({ getKey: () => "test-key" })
+    await expect(provider.validateSpend!(10)).resolves.toBeUndefined()
+  })
+})

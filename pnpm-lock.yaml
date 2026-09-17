@@ -71,6 +71,9 @@ importers:
       '@openrouter/sdk':
         specifier: 1.2.128
         version: 1.2.128
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       better-sqlite3:
         specifier: 13.0.3
         version: 13.0.3

@@ -428,7 +428,11 @@ describe("PromptBar", () => {
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("canvas:node:update", {
         id: "target",
-        patch: { batchId: "batch-1", generationId: "g1" },
+        patch: {
+          batchId: "batch-1",
+          generationId: "g1",
+          containerId: container.id,
+        },
       })
     )
   })
@@ -887,5 +891,49 @@ describe("PromptBar", () => {
         value: wide,
       })
     }
+  })
+})
+
+describe("saved prompts and unknown pricing", () => {
+  it("persists the complete recipe without submitting a paid run", async () => {
+    const user = userEvent.setup()
+    renderBar(BARE)
+    const prompt = await screen.findByRole("combobox", { name: /prompt/i })
+    await user.type(prompt, "A saved composition")
+    await user.click(screen.getByRole("button", { name: "Save prompt" }))
+    await waitFor(() => {
+      const saved = invoke.mock.calls.find(
+        ([channel, payload]) =>
+          channel === "canvas:node:update" &&
+          (payload as { patch: { text?: string } }).patch.text
+      )
+      expect(saved).toBeDefined()
+      const recipe = JSON.parse(
+        (saved![1] as { patch: { text: string } }).patch.text
+      )
+      expect(recipe.prompt).toBe("A saved composition")
+      expect(recipe.modelKey).toBe(MODEL_KEY)
+      expect(recipe.count).toBe(1)
+    })
+    expect(submissions()).toHaveLength(0)
+  })
+
+  it("requires cost acceptance again when the batch size changes", async () => {
+    quote = { ...estimated, confidence: "unknown" }
+    const user = userEvent.setup()
+    renderBar(BARE)
+    await user.type(
+      await screen.findByRole("combobox", { name: /prompt/i }),
+      "A portrait"
+    )
+    const acceptance = await screen.findByRole("checkbox", {
+      name: /pricing is unavailable/i,
+    })
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled()
+    await user.click(acceptance)
+    expect(screen.getByRole("button", { name: "Run" })).toBeEnabled()
+    await user.click(screen.getByRole("button", { name: "One more result" }))
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled()
+    expect(submissions()).toHaveLength(0)
   })
 })

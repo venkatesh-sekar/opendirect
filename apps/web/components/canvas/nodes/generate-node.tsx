@@ -425,7 +425,8 @@ export const DefaultCanvasPick = memo(function DefaultCanvasPick({
   node: CanvasNodeDto
   containerId: string | null
 }) {
-  const container = node.generation?.containerId ?? containerId
+  const container =
+    node.containerId ?? node.generation?.containerId ?? containerId
   const generations = useGenerations(container, { limit: PAGE_SIZE })
   const assets = useAssets(container, { limit: PAGE_SIZE })
   const { mutate } = usePickCanvasNode()
@@ -460,7 +461,10 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
    * batch by `batchTiles`, so a wider page never leaks another run in.
    */
   const containerId =
-    node.generation?.containerId ?? surface?.containerId ?? null
+    node.containerId ??
+    node.generation?.containerId ??
+    surface?.containerId ??
+    null
   const generations = useGenerations(containerId, { limit: PAGE_SIZE })
   const assets = useAssets(containerId, { limit: PAGE_SIZE })
   const runIds = useMemo(

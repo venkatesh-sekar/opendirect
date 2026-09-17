@@ -18,13 +18,8 @@
  * `useSyncExternalStore` — the canvas is free to unmount the bar between
  * selections without losing what was typed.
  *
- * ⛔ The draft is **not** persisted. It is not written to `canvas_nodes.text`,
- * which belongs to a text note, and it is not written on every keystroke:
- * a per-character IPC round trip to record an unsubmitted prompt would be a
- * write per key for a value only this window needs. The prompt reaches SQLite
- * when the run is submitted and it is recorded on the run, which is the row
- * that was actually paid for. A window closed with a draft in it loses the
- * draft, and never loses a run.
+ * Drafts stay in memory while editing. Save prompt explicitly records the
+ * prompt, model, settings and count on the node; workflow exports include them.
  *
  * ⛔ Run is the only thing in this file that spends money, and it spends it
  * once: `useSubmitBatch` is called exactly once per click and the button is
@@ -47,6 +42,8 @@ import {
 } from "@hugeicons/core-free-icons"
 import {
   planBatch,
+  promptRecipeSchema,
+  type PromptRecipe,
   type CanvasDto,
   type CanvasNodeDto,
   type CostQuote,
@@ -188,8 +185,29 @@ export function clearPromptDrafts(): void {
   emit()
 }
 
+export function readPromptRecipe(node: CanvasNodeDto): PromptRecipe {
+  const current = drafts.get(node.id)
+  if (current) return promptRecipeSchema.parse(current)
+  if (node.text) {
+    try {
+      const parsed = promptRecipeSchema.safeParse(JSON.parse(node.text))
+      if (parsed.success) return parsed.data
+    } catch {
+      /* Older nodes can contain plain text. */
+    }
+  }
+  return {
+    prompt: node.generation?.prompt ?? "",
+    modelKey: node.modelKey,
+    common: {},
+    advanced: {},
+    count: 1,
+  }
+}
+
 function useDraft(
-  nodeId: string
+  nodeId: string,
+  initial: PromptDraft = EMPTY_DRAFT
 ): [PromptDraft, (edit: (draft: PromptDraft) => PromptDraft) => void] {
   const draft = useSyncExternalStore(
     subscribe,
@@ -198,10 +216,10 @@ function useDraft(
   )
   const update = useCallback(
     (edit: (current: PromptDraft) => PromptDraft) => {
-      drafts.set(nodeId, edit(drafts.get(nodeId) ?? EMPTY_DRAFT))
+      drafts.set(nodeId, edit(drafts.get(nodeId) ?? initial))
       emit()
     },
-    [nodeId]
+    [nodeId, initial]
   )
   return [draft, update]
 }
@@ -259,7 +277,12 @@ export interface PromptBarProps {
 }
 
 export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
-  const [stored, updateDraft] = useDraft(node.id)
+  const persisted = useMemo(() => {
+    const recipe = readPromptRecipe(node)
+    return { ...recipe, seededFor: node.text ? recipe.modelKey : null }
+  }, [node])
+  const [storedDraft, updateDraft] = useDraft(node.id, persisted)
+  const stored = storedDraft === EMPTY_DRAFT ? persisted : storedDraft
   const draft = useMemo(
     () =>
       stored.modelKey === null && defaultModelKey
@@ -270,6 +293,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   /** Stable by node type: the picker keeps it in a hotkey dependency list. */
   const kinds = useMemo(() => kindsFor(node), [node])
   const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [acceptedCostFor, setAcceptedCostFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const model = useModel(draft.modelKey)
@@ -282,7 +306,11 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
    */
   const tree = useContainerTree()
   const surface = useCanvasSurface()
-  const workspaceContainerId = surface?.containerId ?? null
+  const workspaceContainerId =
+    node.containerId ??
+    node.generation?.containerId ??
+    surface?.containerId ??
+    null
   const container = useMemo(() => {
     const nodes = tree.data ?? []
     // The container the sidebar is pointed at, which is also the one the node
@@ -528,19 +556,40 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         ? "Loading the model's parameters…"
         : !descriptor
           ? "This model's parameters could not be read."
-          : missing.length > 0
-            ? `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} still needed.`
-            : null)
+          : !kinds.includes(descriptor.kind)
+            ? "Choose a model that matches this node’s media type."
+            : missing.length > 0
+              ? `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} still needed.`
+              : null)
 
+  const costIdentity = JSON.stringify([
+    node.id,
+    draft.modelKey,
+    quoteParams,
+    draft.count,
+  ])
+  const unknownCost = !cost.data || cost.data.confidence === "unknown"
+  const acceptsCost = !unknownCost || acceptedCostFor === costIdentity
   const canRun =
-    disabledReason === null && request !== null && !submission.isPending
+    disabledReason === null &&
+    request !== null &&
+    !submission.isPending &&
+    !cost.isFetching &&
+    acceptsCost
 
   const run = useCallback(() => {
     if (!request || !canRun) return
     const count = Math.max(1, Math.min(maxCount, draft.count))
     submission.mutate(
       // The quote is stamped as the user saw it, per run.
-      { request: { ...request, ...quoteOf(cost.data) }, count },
+      {
+        request: {
+          ...request,
+          ...quoteOf(cost.data),
+          acceptUnknownCost: unknownCost && acceptsCost,
+        },
+        count,
+      },
       {
         onSuccess: ({ batchId, generations }) => {
           updateNode.mutate({
@@ -551,6 +600,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
               // gives the node a container to read from and a model to name
               // itself with even when the batch is several jobs.
               batchId,
+              containerId,
               generationId: generations[0]?.id ?? null,
             },
           })
@@ -561,6 +611,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     canRun,
     cost.data,
     draft.count,
+    unknownCost,
+    acceptsCost,
+    containerId,
     maxCount,
     node.id,
     request,
@@ -695,6 +748,46 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       data-node-id={node.id}
       className="pointer-events-auto flex w-[min(52rem,calc(100vw-4rem))] flex-col gap-2 rounded-xl border bg-card/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85"
     >
+      <div className="flex items-center justify-between gap-2 px-1">
+        <span className="text-xs text-muted-foreground">
+          Compose · select references · review cost · run
+        </span>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={updateNode.isPending}
+          onClick={() => {
+            updateNode.mutate(
+              {
+                id: node.id,
+                patch: {
+                  text: JSON.stringify(promptRecipeSchema.parse(draft)),
+                },
+              },
+              {
+                onSuccess: () =>
+                  setNotice("Prompt and settings saved to this project."),
+                onError: (error) => setNotice(error.message),
+              }
+            )
+          }}
+        >
+          Save prompt
+        </Button>
+      </div>
+      {unknownCost && descriptor && !cost.isFetching && (
+        <label className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
+          <input
+            type="checkbox"
+            checked={acceptedCostFor === costIdentity}
+            onChange={(event) =>
+              setAcceptedCostFor(event.target.checked ? costIdentity : null)
+            }
+          />
+          I understand pricing is unavailable for this model. This run may incur
+          charges; the provider determines the final cost.
+        </label>
+      )}
       {/* Wraps rather than overflowing: the bar is anchored to a node and a
           narrow window would otherwise push Run off the viewport. The messages
           are *below* this row — see the end of the bar. */}

@@ -75,6 +75,7 @@ export const containerSchema = z.object({
    * the prompt when the chosen model takes no image.
    */
   description: z.string().nullable(),
+  referenceAssetIds: z.array(z.string()).nullable().optional(),
   createdAt: z.number(),
 })
 export type ContainerDto = z.output<typeof containerSchema>
@@ -207,6 +208,7 @@ export const mentionSubjectSchema = z.object({
   name: z.string(),
   /** The user's prose. What `@venkz` becomes when there is no image slot. */
   description: z.string().nullable(),
+  explicitReferences: z.boolean().optional(),
   /** Reference images, best first — see `rankReferenceImages`. */
   images: z.array(
     z.object({

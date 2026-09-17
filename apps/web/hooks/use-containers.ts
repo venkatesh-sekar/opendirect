@@ -224,3 +224,15 @@ export function useDeleteContainer(): UseMutationResult<
     },
   })
 }
+
+export function useSetContainerReferences() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { id: string; assetIds: string[] | null }) =>
+      invoke("containers:setReferences", variables),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.containers.all })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+    },
+  })
+}

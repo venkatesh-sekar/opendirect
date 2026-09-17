@@ -346,7 +346,7 @@ export function createModelCatalog(deps: ModelCatalogDeps): ModelCatalog {
         )
       }
 
-      const descriptor = await provider.getModel(parsed.slug)
+      const descriptor = await provider.getModel(parsed.slug, options)
       cache = {
         ...file,
         descriptors: { ...file.descriptors, [key]: descriptor },

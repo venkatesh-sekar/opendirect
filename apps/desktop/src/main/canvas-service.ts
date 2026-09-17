@@ -10,6 +10,7 @@
  * and an edge is a reference; the only thing that spends money is still
  * `generations:submit`, and only from a click on Generate.
  */
+import { importWorkflow } from "./repo/workflows"
 import type { CanvasDto } from "@opendirect/contract"
 
 import type { ProjectDatabase } from "./db/client"
@@ -83,6 +84,11 @@ export function registerCanvasHandlers(handle: IpcRegistrar["handle"]): void {
    * user just opened — so an old project comes back here with an empty canvas
    * and stays that way until someone asks. `canvas:migrate` is that asking.
    */
+  handle("canvas:importWorkflow", (workflow) => {
+    const { db, project } = requireProject()
+    return importWorkflow(db, project.id, workflow)
+  })
+
   handle("canvas:get", () => {
     const { db, project } = requireProject()
     return getCanvas(db, project.id)

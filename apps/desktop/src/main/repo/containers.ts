@@ -24,7 +24,12 @@ import {
 import { and, asc, eq, isNotNull, isNull, max, ne } from "drizzle-orm"
 
 import type { ProjectDatabase } from "../db/client"
-import { assets, containers, type Container } from "../db/schema"
+import {
+  assets,
+  containerAssets,
+  containers,
+  type Container,
+} from "../db/schema"
 import { addToContainer } from "./assets"
 
 export interface CreateContainerInput {
@@ -159,6 +164,7 @@ export function createContainer(
       ? uniqueHandle(slugifyHandle(name), existingHandles(db, input.projectId))
       : null,
     description: null,
+    referenceAssetIds: null,
     createdAt: input.now ?? Date.now(),
   }
   db.insert(containers).values(row).run()
@@ -396,4 +402,38 @@ export function listTree(
     else roots.push(node)
   }
   return roots
+}
+
+/** An explicit selection is scoped to this subject, never a global asset pin. */
+export function setContainerReferences(
+  db: ProjectDatabase,
+  id: string,
+  assetIds: string[] | null
+): ContainerDto {
+  return db.transaction(() => {
+    const container = requireContainer(db, id)
+    if (!isMentionableKind(container.kind))
+      throw new Error("Only characters and scenes have references")
+    const ids = assetIds === null ? null : [...new Set(assetIds)]
+    for (const assetId of ids ?? []) {
+      const linked = db
+        .select()
+        .from(containerAssets)
+        .innerJoin(assets, eq(assets.id, containerAssets.assetId))
+        .where(
+          and(
+            eq(containerAssets.containerId, id),
+            eq(containerAssets.assetId, assetId)
+          )
+        )
+        .get()
+      if (!linked || linked.assets.kind !== "image")
+        throw new Error("Select images from this character or scene's library")
+    }
+    db.update(containers)
+      .set({ referenceAssetIds: ids })
+      .where(eq(containers.id, id))
+      .run()
+    return requireContainer(db, id)
+  })
 }

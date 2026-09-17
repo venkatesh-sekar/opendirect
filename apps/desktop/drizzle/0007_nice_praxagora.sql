@@ -1,0 +1,1 @@
+ALTER TABLE `canvas_nodes` ADD `container_id` text REFERENCES containers(id) ON DELETE SET NULL;

@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { workflowSchema } from "./workflow"
 
 import {
   aiProgressSchema,
@@ -315,6 +316,13 @@ export const ipcContract = {
     output: containerSchema,
   },
   /** The prose `@venkz` becomes on a model with no image input. */
+  "containers:setReferences": {
+    input: z.object({
+      id: z.string(),
+      assetIds: z.array(z.string()).max(100).nullable(),
+    }),
+    output: containerSchema,
+  },
   "containers:setDescription": {
     input: z.object({ id: z.string(), description: z.string().nullable() }),
     output: containerSchema,
@@ -483,6 +491,10 @@ export const ipcContract = {
    * and generation, and every edge. One fetch, because the surface is rendered
    * all at once and a per-node round trip would mean a request storm on open.
    */
+  "canvas:importWorkflow": {
+    input: workflowSchema,
+    output: canvasSchema,
+  },
   "canvas:get": { input: z.void(), output: canvasSchema },
 
   /**
@@ -498,6 +510,7 @@ export const ipcContract = {
       width: z.number().positive(),
       height: z.number().positive(),
       assetId: z.string().min(1).nullable().optional(),
+      containerId: z.string().min(1).nullable().optional(),
       text: z.string().nullable().optional(),
       color: z.string().nullable().optional(),
     }),

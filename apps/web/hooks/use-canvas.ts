@@ -105,6 +105,7 @@ export interface CreateCanvasNodeVariables {
   y: number
   width: number
   height: number
+  containerId?: string | null
   assetId?: string | null
   text?: string | null
   color?: string | null

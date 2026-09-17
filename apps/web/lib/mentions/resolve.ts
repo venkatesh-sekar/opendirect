@@ -207,7 +207,11 @@ export function resolveMentions(input: ResolveMentionsInput): ResolvedMentions {
     const remaining = slotCapacity(slot) - filled
     // A scene is one place; a character can be worth several views of itself,
     // but never more than the model said it accepts.
-    const wanted = subject.kind === "scene" ? 1 : perSubject
+    const wanted = subject.explicitReferences
+      ? subject.images.length
+      : subject.kind === "scene"
+        ? 1
+        : perSubject
     const take = Math.min(wanted, remaining, subject.images.length)
 
     const taken = subject.images.slice(0, take)

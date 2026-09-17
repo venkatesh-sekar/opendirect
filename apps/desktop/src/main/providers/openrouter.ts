@@ -373,6 +373,11 @@ export function createOpenRouterProvider(
     const response = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: headers(),
+      signal:
+        init.signal ??
+        (!init.method || init.method === "GET"
+          ? AbortSignal.timeout(20_000)
+          : undefined),
     })
     if (!response.ok) throw await httpError(response)
     return response.json()
@@ -699,8 +704,36 @@ export function createOpenRouterProvider(
       return summaries
     },
 
-    async getModel(slug: string): Promise<ModelDescriptor> {
+    async getModel(
+      slug: string,
+      options?: { refresh?: boolean }
+    ): Promise<ModelDescriptor> {
+      if (options?.refresh) {
+        videoCatalog = null
+        imageCatalog = null
+      }
       return descriptorOf(slug, await findModel(slug))
+    },
+
+    async validateSpend(estimatedTotalUsd: number | null) {
+      // https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key
+      const response = await request("/key")
+      const data =
+        isObject(response) && isObject(response.data) ? response.data : null
+      if (!data)
+        throw new Error(
+          "OpenRouter account limits could not be checked. Try again."
+        )
+      const remaining = data.limit_remaining
+      if (
+        typeof remaining === "number" &&
+        (remaining <= 0 ||
+          (estimatedTotalUsd !== null && estimatedTotalUsd > remaining))
+      ) {
+        throw new Error(
+          "This run exceeds the OpenRouter API key's remaining spending limit. Update the limit or use another key in Settings."
+        )
+      }
     },
 
     /** ⛔ The paid call. */

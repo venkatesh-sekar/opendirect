@@ -7,3 +7,5 @@ export * from "./project"
 export * from "./handle"
 export * from "./canvas"
 export * from "./canvas-batch"
+
+export * from "./workflow"

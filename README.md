@@ -172,3 +172,41 @@ bundled licence file are listed in
 [`apps/desktop/THIRD-PARTY-NOTICES.md`](apps/desktop/THIRD-PARTY-NOTICES.md),
 which is packaged next to the app. Today that is `elkjs` (EPL-2.0), used for
 the canvas migration layout.
+
+### Character and scene libraries
+
+Click a character or scene in the sidebar to open its library. Preview images,
+import additional assets, edit the handle and description, and select which
+images a prompt may use as references. Save the selection to the project.
+Automatic selection preserves the previous ranking behavior; an explicit empty
+selection uses the description instead of an image. Explicit selections retain
+their order and are limited by the chosen model's reference capacity.
+
+“Generate for character/scene” creates and focuses an image composition tied to
+that subject. It does not run a model. Choose a model, edit the prompt, review
+references and cost, then press Run. “Save prompt” persists the prompt, model,
+settings, and output count in the project; unsaved edits remain session drafts.
+
+### Portable workflow templates
+
+Open “Workflow templates” on the canvas to use a starter, save a template on this
+device, download the canvas as JSON, or import someone else's workflow.
+Imports validate the version, size, nodes, model identifiers, counts, and
+connections, then append a copy in one database transaction. They never run
+automatically. Existing canvas nodes are preserved.
+
+Templates include prompts, settings, model choices, notes, layout, and
+connections. Media files, generated outputs, project asset IDs, and configured
+provider credentials are not packaged. Review prompt contents before sharing;
+recipients reconnect their own media and subject handles. Saved template
+libraries use local application browser storage; download files for portable
+backups. Sharing is file-based; there is no hosted marketplace or publication
+service in this implementation.
+
+Before queueing, the desktop refreshes the selected model, validates input
+parameters and reference capacities, checks provider configuration, and
+recalculates batch pricing. Unknown prices require explicit acceptance in the
+composer. OpenRouter's current-key endpoint checks the key's remaining spending
+allowance. This is not a guarantee of account credit availability or the final
+bill: usage can change concurrently, estimates can differ, and the provider
+remains authoritative. See the [OpenRouter current-key API](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-api-key).

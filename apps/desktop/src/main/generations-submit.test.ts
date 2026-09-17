@@ -352,3 +352,52 @@ describe("submitBatch", () => {
     expect(batch.batchId).toBe("batch-from-the-node")
   })
 })
+
+describe("submission validation", () => {
+  it("rejects slot overflow before creating a run", async () => {
+    const limited = deps({
+      referenceSlots: [{ ...descriptor.referenceSlots[0]!, max: 1 }],
+    })
+    await expect(
+      submitGeneration(
+        context(),
+        limited,
+        request({
+          references: [0, 1].map((position) => ({
+            assetId,
+            slotField: "reference_images",
+            position,
+          })),
+        })
+      )
+    ).rejects.toThrow("at most 1")
+    expect(listByContainer(opened.handle.db, { containerId }).total).toBe(0)
+  })
+
+  it("rejects duplicate reference positions", async () => {
+    await expect(
+      submitGeneration(
+        context(),
+        deps(),
+        request({
+          references: [0, 0].map((position) => ({
+            assetId,
+            slotField: "reference_images",
+            position,
+          })),
+        })
+      )
+    ).rejects.toThrow("positions must be unique")
+  })
+
+  it("does not queue any siblings when account preflight fails", async () => {
+    const preflight = vi.fn(async () => {
+      throw new Error("Spending limit exceeded")
+    })
+    await expect(
+      submitBatch(context(), { ...deps(), preflight }, request(), 3)
+    ).rejects.toThrow("Spending limit")
+    expect(preflight).toHaveBeenCalledOnce()
+    expect(listByContainer(opened.handle.db, { containerId }).total).toBe(0)
+  })
+})

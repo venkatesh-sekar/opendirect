@@ -22,6 +22,11 @@
  * *next* run should be given; it never starts one. Submitting is the prompt
  * bar's Generate button and nothing else.
  */
+import {
+  pendingCanvasFocus,
+  subscribeCanvasFocus,
+  clearCanvasFocus,
+} from "@/lib/canvas/focus-request"
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DragEvent } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
@@ -104,6 +109,7 @@ import { MediaNode } from "./nodes/media-node"
 import { isGenerateNode } from "./nodes/node-frame"
 import { TextNode } from "./nodes/text-node"
 import type { CanvasFlowEdge, CanvasFlowNode } from "./nodes/types"
+import { WorkflowLibrary } from "./workflow-library"
 import { PromptBar, seedPromptDraft } from "./prompt-bar"
 
 /**
@@ -284,7 +290,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
   const client = useQueryClient()
   const settings = useSettings()
-  const { screenToFlowPosition } = useReactFlow()
+  const { screenToFlowPosition, setCenter } = useReactFlow()
   const flowStore = useStoreApi<CanvasFlowNode, CanvasFlowEdge>()
 
   const mover = useCanvasNodeMover()
@@ -305,6 +311,22 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   const [selectedEdges, setSelectedEdges] = useState<readonly string[]>([])
   const [fileDropActive, setFileDropActive] = useState(false)
   const [migrationDismissed, setMigrationDismissed] = useState(false)
+  useEffect(() => {
+    const focus = () => {
+      const id = pendingCanvasFocus()
+      if (!id || !canvas.nodes.some((node) => node.id === id)) return
+      setSelectedNodes([id])
+      setSelectedEdges([])
+      const node = canvas.nodes.find((node) => node.id === id)!
+      void setCenter?.(node.x + node.width / 2, node.y + node.height / 2, {
+        zoom: 0.85,
+        duration: 300,
+      })
+      clearCanvasFocus(id)
+    }
+    focus()
+    return subscribeCanvasFocus(focus)
+  }, [canvas.nodes, setCenter])
 
   /* ------------------------------------------------------------------ */
   /* Rows → what React Flow draws                                        */
@@ -1040,6 +1062,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
         }}
         onDrop={onFileDrop}
       >
+        <WorkflowLibrary canvas={canvas} />
         <CanvasRail
           mode={mode}
           onModeChange={setMode}

@@ -67,6 +67,9 @@ export const containers = sqliteTable(
      * image — the user's own words for who or where this is.
      */
     description: text("description"),
+    referenceAssetIds: text("reference_asset_ids", { mode: "json" }).$type<
+      string[] | null
+    >(),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [
@@ -263,6 +266,9 @@ export const canvasNodes = sqliteTable(
     width: real("width").notNull(),
     height: real("height").notNull(),
     /** The asset a media node shows. Gone with the asset. */
+    containerId: text("container_id").references(() => containers.id, {
+      onDelete: "set null",
+    }),
     assetId: text("asset_id").references(() => assets.id, {
       onDelete: "cascade",
     }),

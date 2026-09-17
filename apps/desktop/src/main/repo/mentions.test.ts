@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { createDatabase, type DatabaseHandle } from "../db/client"
 import { resolveMigrationsFolder, runMigrations } from "../db/migrate"
 import { assets, containerAssets, projects } from "../db/schema"
-import { createContainer, setContainerDescription } from "./containers"
+import {
+  createContainer,
+  setContainerDescription,
+  setContainerReferences,
+} from "./containers"
 import { listMentionSubjects, rankReferenceImages } from "./mentions"
 
 const NOW = 1_763_000_000_000
@@ -133,6 +137,7 @@ describe("listMentionSubjects", () => {
     expect(listMentionSubjects(handle.db, PROJECT_ID)).toEqual([
       {
         containerId: venkz.id,
+        explicitReferences: false,
         kind: "character",
         handle: "venkz",
         name: "Venkz",
@@ -226,5 +231,41 @@ describe("listMentionSubjects", () => {
       ["a1"],
       ["a2"],
     ])
+  })
+})
+
+describe("explicit subject references", () => {
+  it("keeps unrelated library images out of mentions and persists the selected order", async () => {
+    const subject = container("character", "Mira")
+    asset(subject.id, { id: "front" })
+    asset(subject.id, { id: "side" })
+    asset(subject.id, { id: "unused", pinned: true })
+    setContainerReferences(handle.db, subject.id, ["side", "front"])
+    expect(
+      listMentionSubjects(handle.db, PROJECT_ID)[0]?.images.map(
+        (image) => image.assetId
+      )
+    ).toEqual(["side", "front"])
+    setContainerReferences(handle.db, subject.id, [])
+    expect(listMentionSubjects(handle.db, PROJECT_ID)[0]?.images).toEqual([])
+    setContainerReferences(handle.db, subject.id, null)
+    expect(listMentionSubjects(handle.db, PROJECT_ID)[0]?.images).toHaveLength(
+      3
+    )
+  })
+
+  it("rejects references outside the subject without changing its selection", async () => {
+    const subject = container("scene", "Forest")
+    asset(subject.id, { id: "forest" })
+    asset(null, { id: "elsewhere" })
+    setContainerReferences(handle.db, subject.id, ["forest"])
+    expect(() =>
+      setContainerReferences(handle.db, subject.id, ["elsewhere"])
+    ).toThrow("Select images")
+    expect(
+      listMentionSubjects(handle.db, PROJECT_ID)[0]?.images.map(
+        (image) => image.assetId
+      )
+    ).toEqual(["forest"])
   })
 })

@@ -189,6 +189,7 @@ export interface CreateNodeInput {
   y: number
   width: number
   height: number
+  containerId?: string | null
   assetId?: string | null
   generationId?: string | null
   batchId?: string | null
@@ -214,6 +215,7 @@ export function createNode(
     width: input.width,
     height: input.height,
     assetId: input.assetId ?? null,
+    containerId: input.containerId ?? null,
     generationId: input.generationId ?? null,
     batchId: input.batchId ?? null,
     pickAssetId: input.pickAssetId ?? null,
@@ -251,6 +253,7 @@ export function updateNode(
     "generationId",
     "batchId",
     "modelKey",
+    "containerId",
   ] as const) {
     if (patch[key] !== undefined) {
       Object.assign(next, { [key]: patch[key] })

@@ -45,7 +45,8 @@ export const generationRequestSchema = z.object({
   params: z.record(z.string(), z.unknown()),
   references: z.array(generationReferenceSchema),
   /** The pre-flight quote shown on the button, recorded with the run. */
-  estimatedCostUsd: z.number().nullable(),
+  estimatedCostUsd: z.number().nonnegative().nullable(),
+  acceptUnknownCost: z.boolean().optional(),
   costConfidence: costConfidenceSchema.nullable(),
   /** Set when the run is a variant of an earlier one. */
   parentGenerationId: z.string().nullable(),

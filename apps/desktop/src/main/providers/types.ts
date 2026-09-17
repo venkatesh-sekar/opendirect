@@ -76,8 +76,13 @@ export interface ModelProvider {
   readonly id: ProviderId
   /** False when no API key is configured; the registry filters on this. */
   isConfigured(): boolean
+  /** Free account check immediately before queueing; null means the cost is unknown. */
+  validateSpend?(estimatedTotalUsd: number | null): Promise<void>
   listModels(opts: ListModelsOptions): Promise<ModelSummary[]>
-  getModel(slug: string): Promise<ModelDescriptor>
+  getModel(
+    slug: string,
+    options?: { refresh?: boolean }
+  ): Promise<ModelDescriptor>
   /**
    * Uploads a local reference file and returns a URL the model can fetch.
    *

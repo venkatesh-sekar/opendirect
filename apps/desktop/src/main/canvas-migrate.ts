@@ -293,6 +293,7 @@ export async function migrateCanvas(
       ...sizeFor(pick),
       assetId: null,
       generationId: generation.id,
+      containerId: generation.containerId,
       // Whatever grouping the row already carries. Legacy rows have none.
       batchId: generation.batchId,
       pickAssetId: pick?.id ?? null,
@@ -328,6 +329,7 @@ export async function migrateCanvas(
       ...sizeFor(asset),
       assetId: asset.id,
       generationId: null,
+      containerId: null,
       batchId: null,
       pickAssetId: null,
       modelKey: null,
