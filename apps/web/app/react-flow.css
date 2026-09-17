@@ -88,3 +88,14 @@
 .react-flow__attribution a {
   color: var(--muted-foreground);
 }
+
+/* Keep pan/zoom on the compositor. Node surfaces stay separate so a large
+   graph does not become one enormous texture that is rasterized every frame.
+   Offscreen nodes are culled by React Flow, bounding the layer count. */
+.react-flow__viewport {
+  will-change: transform;
+}
+
+.react-flow__node {
+  backface-visibility: hidden;
+}

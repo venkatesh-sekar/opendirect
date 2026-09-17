@@ -31,6 +31,7 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 
 import { useUpdateCanvasNode } from "@/hooks/use-canvas"
+import { useCanvasSurface } from "../canvas-context"
 
 import { NodeFrame } from "./node-frame"
 import type { CanvasFlowNode } from "./types"
@@ -62,7 +63,11 @@ export function noteColor(name: string | null): NoteColor {
 
 export function TextNodeBody({ node }: { node: CanvasNodeDto }) {
   const update = useUpdateCanvasNode()
-  const [draft, setDraft] = useState(node.text ?? "")
+  const drafts = useCanvasSurface()?.noteDrafts
+  const [draft, setDraft] = useState(() => {
+    const saved = drafts?.get(node.id)
+    return saved?.base === (node.text ?? "") ? saved.text : (node.text ?? "")
+  })
   // The row is the source of truth; a change that arrives from anywhere else —
   // an undo, another window — has to land in the box the user is not in.
   const committed = useRef(node.text ?? "")
@@ -70,8 +75,9 @@ export function TextNodeBody({ node }: { node: CanvasNodeDto }) {
     const next = node.text ?? ""
     if (next === committed.current) return
     committed.current = next
+    drafts?.delete(node.id)
     setDraft(next)
-  }, [node.text])
+  }, [node.text, node.id, drafts])
 
   const color = noteColor(node.color)
 
@@ -88,7 +94,11 @@ export function TextNodeBody({ node }: { node: CanvasNodeDto }) {
         aria-label="Note text"
         value={draft}
         placeholder="A note. Its text is added to the prompt of whatever it feeds."
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => {
+          const text = event.target.value
+          drafts?.set(node.id, { text, base: committed.current })
+          setDraft(text)
+        }}
         onBlur={commit}
         className="nodrag nowheel h-full w-full resize-none bg-transparent p-2 text-sm outline-none placeholder:text-muted-foreground"
       />

@@ -10,10 +10,10 @@
  *
  * Two writing speeds, and only two:
  *
- * - **Positions are debounced.** A drag produces a position every frame, so
- *   `useCanvasNodeMover` paints the cache immediately and coalesces whatever
- *   happened during a gesture into one `canvas:node:move` after ~400ms of
- *   quiet. Box-select then drag moves many nodes, and they travel together.
+ * - **Settled positions are debounced.** Live drag frames stay in React Flow.
+ *   At gesture end `useCanvasNodeMover` paints the final positions into the
+ *   cache and flushes one `canvas:node:move`. Keyboard nudges are coalesced
+ *   after ~400ms of quiet. Group moves travel together.
  * - **Everything else is written immediately.** Node adds, deletes, edge
  *   changes and pick changes are one call each, the moment they happen.
  *
@@ -115,10 +115,22 @@ export function useCreateCanvasNode(): UseMutationResult<
   Error,
   CreateCanvasNodeVariables
 > {
+  const client = useQueryClient()
   const onSettled = useInvalidateCanvas()
   return useMutation({
     mutationFn: (variables: CreateCanvasNodeVariables) =>
       invoke("canvas:node:create", variables),
+    // The response already carries the authoritative row. Paint it without
+    // waiting for a second IPC round trip, and make it available to spawn's
+    // immediately following connection operation.
+    onSuccess: (node) => {
+      editCanvas(client, (canvas) => ({
+        ...canvas,
+        nodes: canvas.nodes.some((one) => one.id === node.id)
+          ? canvas.nodes.map((one) => (one.id === node.id ? node : one))
+          : [...canvas.nodes, node],
+      }))
+    },
     onSettled,
   })
 }
@@ -340,10 +352,19 @@ export function useCreateCanvasEdge(): UseMutationResult<
   Error,
   CreateCanvasEdgeVariables
 > {
+  const client = useQueryClient()
   const onSettled = useInvalidateCanvas()
   return useMutation({
     mutationFn: (variables: CreateCanvasEdgeVariables) =>
       invoke("canvas:edge:create", variables),
+    onSuccess: (edge) => {
+      editCanvas(client, (canvas) => ({
+        ...canvas,
+        edges: canvas.edges.some((one) => one.id === edge.id)
+          ? canvas.edges.map((one) => (one.id === edge.id ? edge : one))
+          : [...canvas.edges, edge],
+      }))
+    },
     onSettled,
   })
 }

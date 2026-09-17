@@ -54,7 +54,7 @@ function renderTile(asset: AssetDto, className?: string): ReactElement {
         poster={asset.thumbnailUrl ?? undefined}
         aria-label={label}
         className={cn("bg-muted object-cover", className)}
-        preload="metadata"
+        preload={asset.thumbnailUrl ? "none" : "metadata"}
         muted
         playsInline
         loop
@@ -66,8 +66,10 @@ function renderTile(asset: AssetDto, className?: string): ReactElement {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={asset.url}
+        src={asset.thumbnailUrl ?? asset.url}
         alt={label}
+        loading="lazy"
+        decoding="async"
         className={cn("bg-muted object-cover", className)}
       />
     )

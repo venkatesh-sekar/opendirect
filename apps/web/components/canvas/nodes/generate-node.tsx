@@ -23,7 +23,7 @@
  * polls rather than resubmits, which is what makes offering it safe. Choosing
  * a pick costs nothing and re-runs nothing.
  */
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import type { KeyboardEvent } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
@@ -59,6 +59,7 @@ import { useJobs, useRetryJob } from "@/hooks/use-jobs"
 import { useModel } from "@/hooks/use-models"
 import {
   batchProgress,
+  batchGenerations,
   batchTiles,
   heroAndRest,
   stepPick,
@@ -416,6 +417,36 @@ function ThumbTile({
   )
 }
 
+/** Keep data behavior alive independently of virtualized media/UI subtrees. */
+export const DefaultCanvasPick = memo(function DefaultCanvasPick({
+  node,
+  containerId,
+}: {
+  node: CanvasNodeDto
+  containerId: string | null
+}) {
+  const container = node.generation?.containerId ?? containerId
+  const generations = useGenerations(container, { limit: PAGE_SIZE })
+  const assets = useAssets(container, { limit: PAGE_SIZE })
+  const { mutate } = usePickCanvasNode()
+  const firstOutputId = useMemo(
+    () =>
+      batchTiles({
+        node,
+        generations: generations.data?.items ?? NO_GENERATIONS,
+        assets: assets.data?.items ?? NO_ASSETS,
+        jobs: NO_JOBS,
+      }).find((tile) => tile.asset)?.asset?.id ?? null,
+    [node, generations.data?.items, assets.data?.items]
+  )
+  useEffect(() => {
+    if (node.pickAssetId === null && firstOutputId !== null) {
+      mutate({ id: node.id, assetId: firstOutputId })
+    }
+  }, [node.id, node.pickAssetId, firstOutputId, mutate])
+  return null
+})
+
 export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
   const surface = useCanvasSurface()
   /**
@@ -432,7 +463,20 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
     node.generation?.containerId ?? surface?.containerId ?? null
   const generations = useGenerations(containerId, { limit: PAGE_SIZE })
   const assets = useAssets(containerId, { limit: PAGE_SIZE })
-  const jobs = useJobs()
+  const runIds = useMemo(
+    () =>
+      new Set(
+        batchGenerations(node, generations.data?.items ?? NO_GENERATIONS).map(
+          (run) => run.id
+        )
+      ),
+    [node, generations.data?.items]
+  )
+  const selectJobs = useCallback(
+    (jobs: JobDto[]) => jobs.filter((job) => runIds.has(job.generationId)),
+    [runIds]
+  )
+  const jobs = useJobs(selectJobs)
   const pick = usePickCanvasNode()
 
   const generationItems = generations.data?.items
@@ -489,11 +533,19 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
     tiles.find((tile) => tile.state === "succeeded" && tile.asset)?.asset?.id ??
     null
   const pickMutate = pick.mutate
+  const managesDefaultPicks = surface?.managesDefaultPicks === true
   useEffect(() => {
+    if (managesDefaultPicks) return
     if (node.pickAssetId !== null) return
     if (firstOutputId === null) return
     pickMutate({ id: node.id, assetId: firstOutputId })
-  }, [node.id, node.pickAssetId, firstOutputId, pickMutate])
+  }, [
+    node.id,
+    node.pickAssetId,
+    firstOutputId,
+    pickMutate,
+    managesDefaultPicks,
+  ])
 
   const choose = useCallback(
     (assetId: string) => {

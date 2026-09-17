@@ -11,19 +11,18 @@
  *   in flight, the connection line being drawn. It is never persisted and
  *   never goes through IPC.
  * - **The query cache holds the rows.** Nodes and edges handed to React Flow
- *   are *derived* from `useCanvas()` on every render, so the database is the
- *   only place a node's position, pick or slot is remembered.
+ *   are synchronized from `useCanvas()` when persisted rows change.
  *
  * The two meet in exactly two places. Positions are written through
- * `useCanvasNodeMover`, which paints the cache each frame and coalesces the
- * gesture into one `canvas:node:move`. Everything else — adds, deletes, edge
+ * `useCanvasNodeMover` at gesture end, with one `canvas:node:move`.
+ * Everything else — adds, deletes, edge
  * changes, picks — is written the moment it happens.
  *
  * ⛔ Nothing on this surface spends money. Drawing an edge states what the
  * *next* run should be given; it never starts one. Submitting is the prompt
  * bar's Generate button and nothing else.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { DragEvent } from "react"
 import { useHotkeys } from "react-hotkeys-hook"
 import { useDndMonitor, useDroppable } from "@dnd-kit/core"
@@ -37,13 +36,16 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useStoreApi,
   type Connection,
   type EdgeChange,
   type NodeChange,
+  type NodeProps,
   type OnNodeDrag,
 } from "@xyflow/react"
 import type {
   CanvasDto,
+  CanvasEdgeDto,
   CanvasNodeDto,
   CanvasNodeMove,
   CanvasNodeType,
@@ -72,6 +74,7 @@ import {
   useUpdateCanvasNode,
 } from "@/hooks/use-canvas"
 import { useCanvasHistory } from "@/hooks/use-canvas-history"
+import { queryKeys } from "@/hooks/query-keys"
 import { useGenerations } from "@/hooks/use-generations"
 import { modelDescriptorQuery } from "@/hooks/use-models"
 import { isAssetDragData } from "@/lib/board/drop-target"
@@ -89,10 +92,14 @@ import { pathsForFiles } from "@/lib/ipc"
 import { modelKeyOf } from "@/lib/model-key"
 import { useSettings } from "@/lib/settings"
 
-import { CanvasSurfaceProvider, type CanvasSurface } from "./canvas-context"
+import {
+  CanvasSurfaceProvider,
+  createNoteDrafts,
+  type CanvasSurface,
+} from "./canvas-context"
 import { CanvasRail, type CanvasMode } from "./canvas-rail"
 import { ReferenceEdge } from "./edges/reference-edge"
-import { GenerateNode } from "./nodes/generate-node"
+import { DefaultCanvasPick, GenerateNode } from "./nodes/generate-node"
 import { MediaNode } from "./nodes/media-node"
 import { isGenerateNode } from "./nodes/node-frame"
 import { TextNode } from "./nodes/text-node"
@@ -104,14 +111,24 @@ import { PromptBar, seedPromptDraft } from "./prompt-bar"
  * graph when this object's identity changes, so it must never be rebuilt on a
  * render.
  */
+// The wrapper moves; these bodies only read data and selection. In particular,
+// x/y and dragging props must not rerender media, menus and batch joins.
+function sameNodeContent(
+  a: NodeProps<CanvasFlowNode>,
+  b: NodeProps<CanvasFlowNode>
+) {
+  return a.data === b.data && a.selected === b.selected
+}
+const MemoGenerateNode = memo(GenerateNode, sameNodeContent)
 const nodeTypes = {
-  text: TextNode,
-  media: MediaNode,
-  image_gen: GenerateNode,
-  video_gen: GenerateNode,
+  text: memo(TextNode, sameNodeContent),
+  media: memo(MediaNode, sameNodeContent),
+  image_gen: MemoGenerateNode,
+  video_gen: MemoGenerateNode,
 }
 
-const edgeTypes = { reference: ReferenceEdge }
+const edgeTypes = { reference: memo(ReferenceEdge) }
+const INITIAL_NODES: CanvasFlowNode[] = []
 
 /** The droppable id the sidebar's asset drag lands on. */
 export const CANVAS_DROPPABLE_ID = "canvas"
@@ -175,6 +192,35 @@ export function toFlowNodes(
   return next
 }
 
+/** Preserve measurements and unchanged live objects when persisted rows arrive. */
+export function reconcileFlowNodes(
+  rows: CanvasFlowNode[],
+  current: CanvasFlowNode[]
+): CanvasFlowNode[] {
+  const byId = new Map(current.map((node) => [node.id, node]))
+  const next = rows.map((node) => {
+    const live = byId.get(node.id)
+    if (!live) return node
+    const position = live.dragging ? live.position : node.position
+    const data = live.data.node === node.data.node ? live.data : node.data
+    if (
+      live.position.x === position.x &&
+      live.position.y === position.y &&
+      live.data === data &&
+      live.selected === node.selected &&
+      live.type === node.type &&
+      live.width === node.width &&
+      live.height === node.height
+    )
+      return live
+    return { ...live, ...node, position, data, dragging: live.dragging }
+  })
+  return current.length === next.length &&
+    next.every((node, index) => node === current[index])
+    ? current
+    : next
+}
+
 /**
  * The model a node's slots come from.
  *
@@ -186,6 +232,40 @@ export function toFlowNodes(
 export function modelKeyOfNode(node: CanvasNodeDto | undefined): string | null {
   if (!node) return null
   return node.modelKey ?? (node.generation ? modelKeyOf(node.generation) : null)
+}
+
+export function toFlowEdges(
+  rows: readonly CanvasEdgeDto[],
+  nodes: readonly CanvasNodeDto[],
+  selected: ReadonlySet<string>,
+  cache: Map<string, CanvasFlowEdge>
+): CanvasFlowEdge[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const live = new Set<string>()
+  const result = rows.map((edge) => {
+    live.add(edge.id)
+    const chosen = selected.has(edge.id)
+    const targetModelKey = modelKeyOfNode(byId.get(edge.targetNodeId))
+    const previous = cache.get(edge.id)
+    if (
+      previous?.data?.edge === edge &&
+      previous.selected === chosen &&
+      previous.data.targetModelKey === targetModelKey
+    )
+      return previous
+    const next: CanvasFlowEdge = {
+      id: edge.id,
+      source: edge.sourceNodeId,
+      target: edge.targetNodeId,
+      type: "reference",
+      selected: chosen,
+      data: { edge, targetModelKey },
+    }
+    cache.set(edge.id, next)
+    return next
+  })
+  for (const id of cache.keys()) if (!live.has(id)) cache.delete(id)
+  return result
 }
 
 function CanvasSurfaceInner({ containerId }: CanvasProps) {
@@ -205,6 +285,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   const client = useQueryClient()
   const settings = useSettings()
   const { screenToFlowPosition } = useReactFlow()
+  const flowStore = useStoreApi<CanvasFlowNode, CanvasFlowEdge>()
 
   const mover = useCanvasNodeMover()
   const createNode = useCreateCanvasNode()
@@ -237,72 +318,98 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     [canvas.nodes, selectedNodes, flowNodeCache]
   )
 
-  const flowEdges: CanvasFlowEdge[] = useMemo(() => {
-    const chosen = new Set(selectedEdges)
-    const byId = new Map(canvas.nodes.map((node) => [node.id, node]))
-    return canvas.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.sourceNodeId,
-      target: edge.targetNodeId,
-      type: "reference" as const,
-      selected: chosen.has(edge.id),
-      data: {
-        edge,
-        targetModelKey: modelKeyOfNode(byId.get(edge.targetNodeId)),
-      },
-    }))
-  }, [canvas.nodes, canvas.edges, selectedEdges])
+  // React Flow applies pointer movement locally. Only persisted changes and
+  // explicit selection changes cross back into its store. A background query
+  // refresh must not reset a node currently under the pointer.
+  useEffect(() => {
+    const { nodes, setNodes } = flowStore.getState()
+    const next = reconcileFlowNodes(flowNodes, nodes)
+    if (next !== nodes) setNodes(next)
+  }, [flowNodes, flowStore])
+
+  const flowEdgeCache = useMemo(() => new Map<string, CanvasFlowEdge>(), [])
+  const flowEdges = useMemo(
+    () =>
+      toFlowEdges(
+        canvas.edges,
+        canvas.nodes,
+        new Set(selectedEdges),
+        flowEdgeCache
+      ),
+    [canvas.nodes, canvas.edges, selectedEdges, flowEdgeCache]
+  )
 
   /* ------------------------------------------------------------------ */
   /* Moving                                                              */
   /* ------------------------------------------------------------------ */
 
   const dragStart = useRef<CanvasNodeMove[]>([])
+  const liveMoves = useRef(new Map<string, CanvasNodeMove>())
+
+  useEffect(() => {
+    const save = () => {
+      mover.move([...liveMoves.current.values()])
+      liveMoves.current.clear()
+      mover.flush()
+    }
+    window.addEventListener("blur", save)
+    window.addEventListener("pagehide", save)
+    return () => {
+      window.removeEventListener("blur", save)
+      window.removeEventListener("pagehide", save)
+      save()
+    }
+  }, [mover])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<CanvasFlowNode>[]) => {
       const moves: CanvasNodeMove[] = []
-      let selection: string[] | null = null
 
       for (const change of changes) {
         if (change.type === "position" && change.position) {
-          moves.push({
+          const move = {
             id: change.id,
             x: change.position.x,
             y: change.position.y,
-          })
+          }
+          if (change.dragging) liveMoves.current.set(change.id, move)
+          else {
+            liveMoves.current.delete(change.id)
+            moves.push(move)
+          }
           continue
         }
-        if (change.type === "select") {
-          selection ??= [...selectedNodes]
-          selection = change.selected
-            ? [...new Set([...selection, change.id])]
-            : selection.filter((id) => id !== change.id)
-        }
+        if (change.type === "remove") liveMoves.current.delete(change.id)
       }
 
-      // Straight into the debounced writer, which paints the cache now and
-      // writes once the gesture goes quiet. Removals are `onNodesDelete`'s.
+      // Only settled positions (including keyboard nudges) reach the cache.
       if (moves.length > 0) mover.move(moves)
-      if (selection) setSelectedNodes(selection)
+      const selections = changes.filter((change) => change.type === "select")
+      if (selections.length > 0)
+        setSelectedNodes((current) => {
+          const selected = new Set(current)
+          for (const change of selections) {
+            if (change.selected) selected.add(change.id)
+            else selected.delete(change.id)
+          }
+          return [...selected]
+        })
     },
-    [mover, selectedNodes]
+    [mover]
   )
 
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange<CanvasFlowEdge>[]) => {
-      let selection: string[] | null = null
-      for (const change of changes) {
-        if (change.type !== "select") continue
-        selection ??= [...selectedEdges]
-        selection = change.selected
-          ? [...new Set([...selection, change.id])]
-          : selection.filter((id) => id !== change.id)
-      }
-      if (selection) setSelectedEdges(selection)
-    },
-    [selectedEdges]
-  )
+  const onEdgesChange = useCallback((changes: EdgeChange<CanvasFlowEdge>[]) => {
+    const selections = changes.filter((change) => change.type === "select")
+    if (selections.length > 0)
+      setSelectedEdges((current) => {
+        const selected = new Set(current)
+        for (const change of selections) {
+          if (change.selected) selected.add(change.id)
+          else selected.delete(change.id)
+        }
+        return [...selected]
+      })
+  }, [])
 
   const onNodeDragStart: OnNodeDrag<CanvasFlowNode> = useCallback(
     (_event, node, nodes) => {
@@ -316,36 +423,43 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     []
   )
 
-  const onNodeDragStop: OnNodeDrag<CanvasFlowNode> = useCallback(() => {
-    const before = dragStart.current
-    dragStart.current = []
-    // The cache already holds where the nodes were let go; the write is only
-    // waiting for the debounce, so flush it and record the pair.
-    mover.flush()
-    if (before.length === 0) return
-
-    const byId = new Map(latest.current.nodes.map((one) => [one.id, one]))
-    const after = before.flatMap((one) => {
-      const row = byId.get(one.id)
-      return row ? [{ id: row.id, x: row.x, y: row.y }] : []
-    })
-    const moved = after.some((one, index) => {
-      const was = before[index]
-      return was && (was.x !== one.x || was.y !== one.y)
-    })
-    if (!moved) return
-
-    const replay = (moves: CanvasNodeMove[]) => () => {
-      mover.move(moves)
+  const onNodeDragStop: OnNodeDrag<CanvasFlowNode> = useCallback(
+    (_event, node, nodes) => {
+      const before = dragStart.current
+      dragStart.current = []
+      // Read final positions from the gesture, not a query observer's previous
+      // render. Pointer-up can precede the notification for the final move.
+      const moving = new Map(
+        (nodes.length > 0 ? nodes : [node]).map((one) => [one.id, one])
+      )
+      const after = before.flatMap((one) => {
+        const final = moving.get(one.id)
+        return final
+          ? [{ id: one.id, x: final.position.x, y: final.position.y }]
+          : []
+      })
+      mover.move(after)
       mover.flush()
-    }
-    history.push({
-      operation: "node:move",
-      label: before.length > 1 ? `Move ${before.length} nodes` : "Move node",
-      undo: replay(before),
-      redo: replay(after),
-    })
-  }, [history, mover])
+      if (before.length === 0) return
+      const moved = after.some((one, index) => {
+        const was = before[index]
+        return was && (was.x !== one.x || was.y !== one.y)
+      })
+      if (!moved) return
+
+      const replay = (moves: CanvasNodeMove[]) => () => {
+        mover.move(moves)
+        mover.flush()
+      }
+      history.push({
+        operation: "node:move",
+        label: before.length > 1 ? `Move ${before.length} nodes` : "Move node",
+        undo: replay(before),
+        redo: replay(after),
+      })
+    },
+    [history, mover]
+  )
 
   /* ------------------------------------------------------------------ */
   /* Connecting                                                          */
@@ -396,7 +510,9 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
   const connect = useCallback(
     async (sourceNodeId: string, targetNodeId: string) => {
-      const byId = new Map(latest.current.nodes.map((one) => [one.id, one]))
+      const graph =
+        client.getQueryData<CanvasDto>(queryKeys.canvas.graph) ?? latest.current
+      const byId = new Map(graph.nodes.map((one) => [one.id, one]))
       const source = byId.get(sourceNodeId)
       const target = byId.get(targetNodeId)
       if (!source || !target) return
@@ -421,7 +537,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
         },
       })
     },
-    [createEdge, deleteEdges, history, slotFor]
+    [client, createEdge, deleteEdges, history, slotFor]
   )
 
   const onConnect = useCallback(
@@ -852,17 +968,28 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   /* The surface                                                         */
   /* ------------------------------------------------------------------ */
 
+  // Actions need current mutation/history closures, but a changed history
+  // label or unrelated row must not broadcast a render to every node body.
+  const actions = useRef({ spawn, pick, branch, selectGeneration })
+  const noteDrafts = useMemo(() => createNoteDrafts(), [])
+  useEffect(() => {
+    const live = new Set(canvas.nodes.map((node) => node.id))
+    noteDrafts.retain(live)
+  }, [canvas.nodes, noteDrafts])
+  useEffect(() => {
+    actions.current = { spawn, pick, branch, selectGeneration }
+  }, [spawn, pick, branch, selectGeneration])
   const surface: CanvasSurface = useMemo(
     () => ({
-      canvas,
       containerId,
-      history,
-      spawn,
-      pick,
-      branch,
-      selectGeneration,
+      noteDrafts,
+      managesDefaultPicks: true,
+      spawn: (...args) => actions.current.spawn(...args),
+      pick: (...args) => actions.current.pick(...args),
+      branch: (...args) => actions.current.branch(...args),
+      selectGeneration: (...args) => actions.current.selectGeneration(...args),
     }),
-    [canvas, containerId, history, spawn, pick, branch, selectGeneration]
+    [containerId, noteDrafts]
   )
 
   /** The prompt bar belongs to exactly one selected generate node. */
@@ -879,6 +1006,20 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
   return (
     <CanvasSurfaceProvider value={surface}>
+      {canvas.nodes
+        .filter(
+          (node) =>
+            isGenerateNode(node.type) &&
+            node.pickAssetId === null &&
+            (node.generationId !== null || node.batchId !== null)
+        )
+        .map((node) => (
+          <DefaultCanvasPick
+            key={node.id}
+            node={node}
+            containerId={containerId}
+          />
+        ))}
       <section
         ref={(element) => {
           wrapper.current = element
@@ -969,7 +1110,8 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
         ) : null}
 
         <ReactFlow<CanvasFlowNode, CanvasFlowEdge>
-          nodes={flowNodes}
+          defaultNodes={INITIAL_NODES}
+          onlyRenderVisibleElements
           edges={flowEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}

@@ -20,7 +20,11 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { CanvasSurfaceProvider } from "../canvas-context"
-import { DetailsAction, GenerateNodeBody } from "./generate-node"
+import {
+  DefaultCanvasPick,
+  DetailsAction,
+  GenerateNodeBody,
+} from "./generate-node"
 
 /**
  * The bridge is mocked rather than served: every channel here is a contract
@@ -206,6 +210,35 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("GenerateNodeBody", () => {
+  it("maintains default picks without mounting an offscreen node's media body", async () => {
+    invoke.mockImplementation((channel: IpcChannel) => {
+      if (channel === "generations:list")
+        return Promise.resolve({
+          items: [generation()],
+          total: 1,
+          nextOffset: null,
+        })
+      if (channel === "assets:list")
+        return Promise.resolve({ items: [asset()], total: 1, nextOffset: null })
+      return Promise.resolve({ ok: true })
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const { container } = render(
+      <QueryClientProvider client={client}>
+        <DefaultCanvasPick node={node()} containerId="container-1" />
+      </QueryClientProvider>
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:node:pick", {
+        id: "node-1",
+        assetId: "asset-1",
+      })
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
   it("goes from a pushed job's progress, to a hero and a strip, to a new pick", async () => {
     let outputs: AssetDto[] = []
     invoke.mockImplementation((channel: IpcChannel) => {

@@ -87,28 +87,59 @@ export function announceTerminalJob(job: JobDto): void {
   }
 }
 
-export function useJobs(): UseQueryResult<JobDto[]> {
+// A canvas may have hundreds of query observers, but the event patches the
+// shared cache once. Reference counting also supports isolated previews and
+// Strict Mode's subscribe/unsubscribe cycle without a permanent global listener.
+const jobSubscriptions = new WeakMap<
+  QueryClient,
+  { users: number; unsubscribe: () => void }
+>()
+
+export function subscribeToJobs(client: QueryClient): () => void {
+  let subscription = jobSubscriptions.get(client)
+  if (!subscription) {
+    subscription = {
+      users: 0,
+      unsubscribe: subscribe("jobs:update", (job) => {
+        const known = client.getQueryData<JobDto[]>(queryKeys.jobs.list)
+        const previous = known?.find((entry) => entry.id === job.id)
+        client.setQueryData<JobDto[]>(queryKeys.jobs.list, (current) =>
+          applyUpdate(current, job)
+        )
+        if (isJobActive(job)) return
+        invalidateForTerminalJob(client)
+        if (!previous || isJobActive(previous)) announceTerminalJob(job)
+      }),
+    }
+    jobSubscriptions.set(client, subscription)
+  }
+  subscription.users++
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    if (--subscription.users === 0) {
+      subscription.unsubscribe()
+      jobSubscriptions.delete(client)
+    }
+  }
+}
+
+export function useJobs(
+  select?: (jobs: JobDto[]) => JobDto[]
+): UseQueryResult<JobDto[]> {
   const client = useQueryClient()
 
   useEffect(() => {
     if (!isBridgeAvailable()) return
-    return subscribe("jobs:update", (job) => {
-      const known = client.getQueryData<JobDto[]>(queryKeys.jobs.list)
-      const previous = known?.find((entry) => entry.id === job.id)
-      client.setQueryData<JobDto[]>(queryKeys.jobs.list, (current) =>
-        applyUpdate(current, job)
-      )
-      if (isJobActive(job)) return
-      invalidateForTerminalJob(client)
-      // Only on the *transition*: main re-pushes a row whenever it writes one,
-      // and a second push of the same finished job must not toast twice.
-      if (!previous || isJobActive(previous)) announceTerminalJob(job)
-    })
+    return subscribeToJobs(client)
   }, [client])
 
   return useQuery({
     queryKey: queryKeys.jobs.list,
     queryFn: () => invoke("jobs:list", {}),
+    select,
+    staleTime: Infinity,
     // The list is kept current by `jobs:update`; a refetch on every focus
     // would only duplicate what the push already delivered.
     refetchOnWindowFocus: false,

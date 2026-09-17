@@ -6,9 +6,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import type { CanvasNodeDto } from "@opendirect/contract"
+import type { CanvasEdgeDto, CanvasNodeDto } from "@opendirect/contract"
 
-import { Canvas, modelKeyOfNode, toFlowNodes } from "./canvas"
+import {
+  Canvas,
+  modelKeyOfNode,
+  toFlowNodes,
+  toFlowEdges,
+  reconcileFlowNodes,
+} from "./canvas"
 
 /**
  * No bridge, and therefore no project and nothing to draw.
@@ -129,6 +135,100 @@ describe("toFlowNodes", () => {
     expect(second[0]).not.toBe(first[0])
     expect(second[0]!.position).toEqual({ x: 40, y: 0 })
     expect(cache.has("b")).toBe(false)
+  })
+})
+
+describe("toFlowEdges", () => {
+  it("keeps unrelated edges stable on moves and selection, but updates target models and slots", () => {
+    const edges: CanvasEdgeDto[] = [
+      {
+        id: "ab",
+        projectId: "p",
+        sourceNodeId: "a",
+        targetNodeId: "b",
+        slotField: null,
+        createdAt: 1,
+      },
+      {
+        id: "ac",
+        projectId: "p",
+        sourceNodeId: "a",
+        targetNodeId: "c",
+        slotField: null,
+        createdAt: 1,
+      },
+    ]
+    const nodes = [node({ id: "a" }), node({ id: "b" }), node({ id: "c" })]
+    const cache = new Map<string, ReturnType<typeof toFlowEdges>[number]>()
+    const initial = toFlowEdges(edges, nodes, new Set(), cache)
+    const moved = toFlowEdges(
+      edges,
+      nodes.map((node) => ({ ...node, x: 50 })),
+      new Set(),
+      cache
+    )
+    expect(moved[0]).toBe(initial[0])
+    expect(moved[1]).toBe(initial[1])
+    const selected = toFlowEdges(edges, nodes, new Set(["ab"]), cache)
+    expect(selected[1]).toBe(initial[1])
+    expect(selected[0]!.selected).toBe(true)
+    const changed = toFlowEdges(
+      edges,
+      nodes.map((node) =>
+        node.id === "c" ? { ...node, modelKey: "replicate:test" } : node
+      ),
+      new Set(["ab"]),
+      cache
+    )
+    expect(changed[0]).toBe(selected[0])
+    expect(changed[1]!.data?.targetModelKey).toBe("replicate:test")
+    const patched = toFlowEdges(
+      [{ ...edges[0]!, slotField: "image" }],
+      nodes,
+      new Set(),
+      cache
+    )
+    expect(patched[0]!.data?.edge.slotField).toBe("image")
+    expect(cache.has("ac")).toBe(false)
+  })
+})
+
+describe("reconcileFlowNodes", () => {
+  it("reuses already-selected live nodes and preserves their measurements", () => {
+    const rows = [node({ id: "a" }), node({ id: "b" })]
+    const cache = new Map<string, ReturnType<typeof toFlowNodes>[number]>()
+    const persisted = toFlowNodes(rows, new Set(), cache)
+    const current = persisted.map((node) => ({
+      ...node,
+      selected: node.id === "a",
+      measured: { width: 320, height: 320 },
+    }))
+    const selected = toFlowNodes(rows, new Set(["a"]), cache)
+    expect(reconcileFlowNodes(selected, current)).toBe(current)
+  })
+
+  it("merges changed content without snapping a drag or rebuilding unrelated nodes", () => {
+    const rows = [node({ id: "a" }), node({ id: "b" })]
+    const cache = new Map<string, ReturnType<typeof toFlowNodes>[number]>()
+    const persisted = toFlowNodes(rows, new Set(), cache)
+    const current = persisted.map((node) => ({
+      ...node,
+      dragging: node.id === "a",
+      position: { x: 80, y: 90 },
+      measured: { width: 320, height: 320 },
+    }))
+    current[1]!.position = persisted[1]!.position
+    const changed = toFlowNodes(
+      [{ ...rows[0]!, text: "new" }, rows[1]!],
+      new Set(),
+      cache
+    )
+    const next = reconcileFlowNodes(changed, current)
+    expect(next[0]!.position).toBe(current[0]!.position)
+    expect(next[0]!.measured).toBe(current[0]!.measured)
+    expect(next[0]!.data.node.text).toBe("new")
+    expect(next[1]).toBe(current[1])
+    expect(reconcileFlowNodes([], current)).toEqual([])
   })
 })
 

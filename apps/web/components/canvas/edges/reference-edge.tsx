@@ -23,7 +23,7 @@
  *
  * ⛔ Re-labelling an edge writes one row. It never runs anything.
  */
-import { useState } from "react"
+import { memo, useState } from "react"
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -133,6 +133,22 @@ export function EdgeSlotLabel({
   )
 }
 
+const SlotControl = memo(function SlotControl({
+  id,
+  data,
+}: Pick<EdgeProps<CanvasFlowEdge>, "id" | "data">) {
+  const update = useUpdateCanvasEdge()
+  const model = useModel(data?.targetModelKey ?? null)
+  return (
+    <EdgeSlotLabel
+      slotField={data?.edge.slotField ?? null}
+      slots={model.data?.referenceSlots ?? []}
+      loading={model.isPending && (data?.targetModelKey ?? null) !== null}
+      onChange={(slotField) => update.mutate({ id, slotField })}
+    />
+  )
+})
+
 export function ReferenceEdge({
   id,
   data,
@@ -145,8 +161,6 @@ export function ReferenceEdge({
   markerEnd,
   style,
 }: EdgeProps<CanvasFlowEdge>) {
-  const update = useUpdateCanvasEdge()
-  const model = useModel(data?.targetModelKey ?? null)
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
     sourceY,
@@ -166,12 +180,7 @@ export function ReferenceEdge({
           }}
           className="pointer-events-none absolute"
         >
-          <EdgeSlotLabel
-            slotField={data?.edge.slotField ?? null}
-            slots={model.data?.referenceSlots ?? []}
-            loading={model.isPending && (data?.targetModelKey ?? null) !== null}
-            onChange={(slotField) => update.mutate({ id, slotField })}
-          />
+          <SlotControl id={id} data={data} />
         </div>
       </EdgeLabelRenderer>
     </>
