@@ -75,4 +75,15 @@ describe("project workspace keys", () => {
       queryKeys.generations.byContainer("")
     )
   })
+
+  /**
+   * An infinite list caches every page under one key, as an array of pages —
+   * a different shape from a single page, so the two must never share a key.
+   */
+  it("keeps the paged generations list apart from any single page", () => {
+    const pages = queryKeys.generations.projectPages(60)
+    expect(pages[0]).toBe(queryKeys.generations.all[0])
+    expect(pages).not.toEqual(queryKeys.generations.project({ limit: 60 }))
+    expect(pages).not.toEqual(queryKeys.generations.projectPages(30))
+  })
 })

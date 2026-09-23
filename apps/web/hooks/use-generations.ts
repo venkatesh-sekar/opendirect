@@ -1,10 +1,12 @@
 "use client"
 
 import {
-  keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
+  type InfiniteData,
+  type UseInfiniteQueryResult,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query"
@@ -55,9 +57,6 @@ export function useGenerations(
 /**
  * Every run in the open project, newest first, whatever container it was
  * filed under — Home's Continue strip and the generations page.
- *
- * A wider page keeps showing the narrower one until it arrives, so "Show
- * more" grows the list instead of blanking it.
  */
 export function useProjectGenerations(
   options: GenerationsPageOptions = {}
@@ -72,7 +71,26 @@ export function useProjectGenerations(
         limit: options.limit,
         offset: options.offset,
       }),
-    placeholderData: keepPreviousData,
+  })
+}
+
+/**
+ * Every run in the open project, a page at a time, for `/generations/`.
+ *
+ * Paged by `offset` rather than by a growing `limit`: one call returns at
+ * most 500 runs, and a project's history does not stop there. The list is
+ * newest first, so a run submitted while you scroll shifts later pages by
+ * one — the page flattens with a de-duplication for that reason.
+ */
+export function useProjectGenerationPages(
+  pageSize: number
+): UseInfiniteQueryResult<InfiniteData<GenerationPageDto>> {
+  return useInfiniteQuery({
+    queryKey: queryKeys.generations.projectPages(pageSize),
+    queryFn: ({ pageParam }) =>
+      invoke("generations:list", { limit: pageSize, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.nextOffset ?? undefined,
   })
 }
 

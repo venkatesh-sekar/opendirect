@@ -42,11 +42,19 @@ const HOUR = 3_600_000
 function mount(ui: ReactNode, responses: Record<string, unknown>) {
   invoke.mockImplementation((channel: string, input: unknown) => {
     if (channel === "generations:list") {
-      const page = responses[channel] as { items: unknown[] }
-      const { limit } = (input ?? {}) as { limit?: number }
+      // Pages the way main does: `offset` in, `nextOffset` out.
+      const page = responses[channel] as { items: unknown[]; outputs: [] }
+      const { limit = 40, offset = 0 } = (input ?? {}) as {
+        limit?: number
+        offset?: number
+      }
+      const items = page.items.slice(offset, offset + limit)
+      const next = offset + items.length
       return Promise.resolve({
-        ...page,
-        items: limit ? page.items.slice(0, limit) : page.items,
+        items,
+        total: page.items.length,
+        nextOffset: next < page.items.length ? next : null,
+        outputs: page.outputs,
       })
     }
     return channel in responses
@@ -159,9 +167,13 @@ describe("the Generations page", () => {
     expect(within(groups[2]!).getByText("an old take")).toBeVisible()
   })
 
-  it("loads more when there are more runs than the first page", async () => {
+  /**
+   * Paged by offset, not by a growing limit: `generations:list` refuses more
+   * than 500 in one call, and a project's history does not stop there.
+   */
+  it("pages further back by offset, past what one call can return", async () => {
     const user = userEvent.setup()
-    const many = Array.from({ length: 70 }, (_, index) =>
+    const many = Array.from({ length: 560 }, (_, index) =>
       generation({
         id: `g${index}`,
         prompt: `take ${index}`,
@@ -170,19 +182,26 @@ describe("the Generations page", () => {
     )
     mount(<GenerationsScreen />, {
       "jobs:list": [],
-      "generations:list": {
-        items: many,
-        total: 70,
-        nextOffset: 60,
-        outputs: [],
-      },
+      "generations:list": { items: many, outputs: [] },
     })
 
     await screen.findByText("take 0")
     expect(screen.queryByText("take 65")).toBeNull()
     await user.click(screen.getByRole("button", { name: /show more/i }))
     expect(await screen.findByText("take 65")).toBeVisible()
-  })
+    expect(invoke).toHaveBeenCalledWith("generations:list", {
+      limit: 60,
+      offset: 60,
+    })
+
+    for (let page = 2; page < 10; page++) {
+      await user.click(screen.getByRole("button", { name: /show more/i }))
+      await screen.findByText(`take ${page * 60}`)
+    }
+    expect(await screen.findByText("take 559")).toBeVisible()
+    expect(screen.queryByRole("button", { name: /show more/i })).toBeNull()
+    // Ten pages of real tiles in jsdom: slow, not stuck.
+  }, 30_000)
 
   it("says so when the project has no runs yet", async () => {
     mount(<GenerationsScreen />, {

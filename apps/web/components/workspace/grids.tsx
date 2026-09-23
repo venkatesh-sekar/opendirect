@@ -5,7 +5,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import { useContainerSummaries, useContainerTree } from "@/hooks/use-containers"
-import { useProjectGenerations } from "@/hooks/use-generations"
+import { useProjectGenerationPages } from "@/hooks/use-generations"
 import { isJobActive, useJobs } from "@/hooks/use-jobs"
 import {
   containerCards,
@@ -87,8 +87,6 @@ export function ScenesScreen() {
 
 /** How many runs a page of `/generations/` adds. */
 const PAGE = 60
-/** `generations:list` refuses more than this in one call. */
-const MAX_LIMIT = 500
 
 function TileGrid({
   tiles,
@@ -132,13 +130,24 @@ function DayGroup({
  * `/generations/` — every run in the project, newest first, grouped by day,
  * with anything still running on top.
  *
- * "Show more" widens the one query rather than stacking pages: the list is
- * newest first, so a run finishing while you scroll would shift every later
- * page by one and show a tile twice.
+ * "Show more" fetches the next page by offset. Runs are de-duplicated as the
+ * pages are joined: the list is newest first, so a run submitted while you
+ * scroll pushes the last run of one page onto the top of the next.
  */
 export function GenerationsScreen() {
-  const [limit, setLimit] = useState(PAGE)
-  const generations = useProjectGenerations({ limit })
+  const generations = useProjectGenerationPages(PAGE)
+  const pages = generations.data?.pages
+  const joined = useMemo(() => {
+    const seen = new Set<string>()
+    const items = (pages ?? [])
+      .flatMap((page) => page.items)
+      .filter((item) => !seen.has(item.id) && Boolean(seen.add(item.id)))
+    return {
+      items,
+      outputs: (pages ?? []).flatMap((page) => page.outputs),
+      total: pages?.[0]?.total,
+    }
+  }, [pages])
   const jobs = useJobs()
   const details = useRunDetails()
 
@@ -146,10 +155,10 @@ export function GenerationsScreen() {
     () =>
       continueTiles({
         jobs: jobs.data ?? [],
-        generations: generations.data?.items ?? [],
-        outputs: generations.data?.outputs ?? [],
+        generations: joined.items,
+        outputs: joined.outputs,
       }),
-    [jobs.data, generations.data]
+    [jobs.data, joined]
   )
   const running = tiles.filter((tile) => tile.running)
   const days = useMemo(
@@ -162,7 +171,7 @@ export function GenerationsScreen() {
     [tiles]
   )
   const activeCount = (jobs.data ?? []).filter(isJobActive).length
-  const total = generations.data?.total
+  const total = joined.total
 
   return (
     <WorkspacePage
@@ -197,17 +206,15 @@ export function GenerationsScreen() {
               <TileGrid tiles={day.items} onOpen={details.open} />
             </DayGroup>
           ))}
-          {generations.data?.nextOffset != null && limit < MAX_LIMIT ? (
+          {generations.hasNextPage ? (
             <Button
               variant="outline"
               size="sm"
               className="self-center"
-              disabled={generations.isFetching}
-              onClick={() =>
-                setLimit((current) => Math.min(current + PAGE, MAX_LIMIT))
-              }
+              disabled={generations.isFetchingNextPage}
+              onClick={() => void generations.fetchNextPage()}
             >
-              Show more
+              {generations.isFetchingNextPage ? "Loading…" : "Show more"}
             </Button>
           ) : null}
         </div>

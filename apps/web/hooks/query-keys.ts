@@ -95,6 +95,12 @@ export const queryKeys = {
     /** Every run in the open project, whatever it was filed under. */
     project: (options?: PageKey) =>
       ["generations", "project", page(options)] as const,
+    /**
+     * The generations page's infinite list: every page fetched so far, under
+     * one key. A different shape from `project`, so never the same key.
+     */
+    projectPages: (pageSize: number) =>
+      ["generations", "project", "pages", pageSize] as const,
     detail: (id: string) => ["generations", "detail", id] as const,
     lineage: (id: string) => ["generations", "lineage", id] as const,
   },
