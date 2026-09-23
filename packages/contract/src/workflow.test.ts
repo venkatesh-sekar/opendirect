@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { workflowSchema } from "./workflow"
+import { promptRecipeSchema, workflowSchema } from "./workflow"
 
 const workflow = {
   format: "opendirect-workflow",
@@ -58,5 +58,46 @@ describe("portable workflows", () => {
         }).success
       ).toBe(false)
     }
+  })
+  it("parses a recipe without blocks and round trips one with blocks", () => {
+    expect(workflowSchema.safeParse(workflow).success).toBe(true)
+    const withBlocks = {
+      ...workflow,
+      nodes: [
+        {
+          ...workflow.nodes[0],
+          recipe: {
+            prompt: "A forest",
+            modelKey: "openrouter:test/image",
+            blocks: [
+              { kind: "note", nodeId: "n1" },
+              { kind: "text", text: "A forest" },
+            ],
+          },
+        },
+      ],
+    }
+    const parsed = workflowSchema.parse(withBlocks)
+    expect(parsed.nodes[0]!.recipe!.blocks).toEqual(
+      withBlocks.nodes[0]!.recipe.blocks
+    )
+    expect(workflowSchema.parse(JSON.parse(JSON.stringify(parsed)))).toEqual(
+      parsed
+    )
+  })
+  it("strips UI ids from blocks and rejects unknown block kinds", () => {
+    const recipe = promptRecipeSchema.parse({
+      prompt: "",
+      modelKey: null,
+      blocks: [{ id: "t-1", kind: "text", text: "x" }],
+    })
+    expect(recipe.blocks).toEqual([{ kind: "text", text: "x" }])
+    expect(
+      promptRecipeSchema.safeParse({
+        prompt: "",
+        modelKey: null,
+        blocks: [{ kind: "image" }],
+      }).success
+    ).toBe(false)
   })
 })

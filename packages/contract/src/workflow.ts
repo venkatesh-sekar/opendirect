@@ -2,8 +2,21 @@ import { z } from "zod"
 import { canvasNodeTypeSchema } from "./canvas"
 import { parseModelKey } from "./model"
 
+export const promptBlockSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("text"), text: z.string().max(100_000) }),
+  z.object({ kind: z.literal("note"), nodeId: z.string().min(1).max(100) }),
+])
+export type PromptBlock = z.output<typeof promptBlockSchema>
+
 export const promptRecipeSchema = z.object({
   prompt: z.string().max(100_000),
+  /**
+   * Where each connected note sits among the user's own text. Optional so
+   * every recipe saved before it still parses; absent means legacy order
+   * (notes in wire order, then `prompt`). `prompt` is kept, written as the
+   * join of the text blocks only, for readers that have no notes.
+   */
+  blocks: z.array(promptBlockSchema).max(500).optional(),
   modelKey: z
     .string()
     .refine((key) => parseModelKey(key) !== null, "Invalid model key")
