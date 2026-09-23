@@ -191,9 +191,10 @@ export const generations = sqliteTable(
     predictTimeSeconds: real("predict_time_seconds"),
     costConfidence: text("cost_confidence"),
     /**
-     * Groups the sibling runs of one canvas batch. Nullable and indexed:
-     * every existing row and every non-canvas run has none, and the canvas
-     * needs a queryable grouping key rather than a scan of `request_json`.
+     * Groups the sibling runs of one batch — a canvas node's, or a run from a
+     * container page's generate panel, which submits a batch of one. Nullable
+     * and indexed: rows from before batches have none, and the canvas needs a
+     * queryable grouping key rather than a scan of `request_json`.
      */
     batchId: text("batch_id"),
     /**
