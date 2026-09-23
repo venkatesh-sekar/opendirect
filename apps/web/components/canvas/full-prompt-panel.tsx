@@ -116,6 +116,12 @@ export function FullPromptPanel({
   }
 
   const images = inputs.reduce((sum, input) => sum + input.count, 0)
+  const stats = [
+    `${prompt.length} chars`,
+    `${wordCount(prompt)} words`,
+    `${noteCount} notes`,
+    `${images} images`,
+  ]
 
   return (
     // `nokey`: React Flow listens for Space and Backspace on the whole
@@ -124,20 +130,27 @@ export function FullPromptPanel({
       id={id}
       data-testid="full-prompt-panel"
       aria-label="Full prompt"
-      className="nokey flex flex-col gap-2 border-t px-1 pt-2"
+      className="nokey @container flex flex-col gap-2 border-t px-1 pt-2"
     >
-      <div className="flex items-center gap-3">
-        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+      {/* One row at the bar's full width. In a narrow bar (under 32rem of
+          its own width, whatever the window) the title and Copy keep the
+          first line and the counts and the checkbox take the second, the
+          counts wrapping between items rather than inside one. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="text-xs font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase">
           Exactly what gets sent
         </span>
         <span
           data-testid="full-prompt-stats"
-          className="font-mono text-xs text-muted-foreground tabular-nums"
+          className="flex flex-wrap gap-x-1 font-mono text-xs text-muted-foreground tabular-nums @max-lg:order-4 @max-lg:min-w-0 @max-lg:flex-1 @max-lg:basis-0"
         >
-          {prompt.length} chars · {wordCount(prompt)} words · {noteCount} notes
-          · {images} images
+          {stats.map((stat, index) => (
+            <span key={stat} className="whitespace-nowrap">
+              {index > 0 ? ` · ${stat}` : stat}
+            </span>
+          ))}
         </span>
-        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+        <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground @max-lg:order-5">
           <input
             type="checkbox"
             checked={highlight}
@@ -148,11 +161,16 @@ export function FullPromptPanel({
         <Button
           variant="ghost"
           size="sm"
-          className="w-16"
+          className="w-16 @max-lg:order-2 @max-lg:ml-auto"
           onClick={() => void copy()}
         >
           {copied ? "Copied" : "Copy"}
         </Button>
+        {/* The narrow layout's line break. */}
+        <span
+          aria-hidden
+          className="hidden basis-full @max-lg:order-3 @max-lg:block"
+        />
       </div>
 
       <div
