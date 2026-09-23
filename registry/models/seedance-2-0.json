@@ -1,0 +1,103 @@
+{
+  "id": "seedance-2-0",
+  "name": "Seedance 2.0",
+  "kind": "video",
+  "description": "ByteDance's multimodal video generation model with native audio, multimodal reference inputs, and intelligent duration control.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "bytedance/seedance-2.0",
+      "inputs": {
+        "first_frame": {
+          "field": "image",
+          "kind": "image",
+          "label": "First frame (not with reference images)"
+        },
+        "last_frame": {
+          "field": "last_frame_image",
+          "kind": "image",
+          "label": "Last frame (needs a first frame; not with reference images)"
+        },
+        "soundtrack": {
+          "field": "reference_audios",
+          "kind": "audio",
+          "max": 3,
+          "label": "Reference audio (lip-sync; needs a reference image or video)"
+        },
+        "reference": {
+          "field": "reference_images",
+          "kind": "image",
+          "max": 9,
+          "label": "Reference images (character, style, scene; not with frames)"
+        },
+        "reference:2": {
+          "field": "reference_videos",
+          "kind": "video",
+          "max": 3,
+          "label": "Reference videos (motion, style, editing)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        },
+        "generate_audio": {
+          "field": "generate_audio"
+        }
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "bytedance/seedance-2.0",
+      "inputs": {
+        "first_frame": {
+          "field": "first_frame",
+          "kind": "image",
+          "label": "First frame"
+        },
+        "last_frame": {
+          "field": "last_frame",
+          "kind": "image",
+          "label": "Last frame"
+        },
+        "reference": {
+          "field": "input_references",
+          "kind": "any",
+          "label": "Input references"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        },
+        "generate_audio": {
+          "field": "generate_audio"
+        }
+      }
+    }
+  ]
+}

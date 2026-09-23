@@ -1,0 +1,27 @@
+{
+  "id": "flux-schnell",
+  "name": "FLUX Schnell",
+  "kind": "image",
+  "description": "The fastest image generation model tailored for local development and personal use",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "black-forest-labs/flux-schnell",
+      "inputs": {},
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "seed": {
+          "field": "seed"
+        },
+        "count": {
+          "field": "num_outputs"
+        }
+      }
+    }
+  ]
+}

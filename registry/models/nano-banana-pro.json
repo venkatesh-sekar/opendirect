@@ -1,0 +1,56 @@
+{
+  "id": "nano-banana-pro",
+  "name": "Nano Banana Pro",
+  "kind": "image",
+  "description": "Google's state of the art image generation and editing model",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "google/nano-banana-pro",
+      "inputs": {
+        "reference": {
+          "field": "image_input",
+          "kind": "image",
+          "max": 14,
+          "label": "Reference images"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "resolution": {
+          "field": "resolution"
+        }
+      }
+    },
+    {
+      "provider": "openrouter",
+      "model": "google/gemini-3-pro-image",
+      "inputs": {
+        "reference": {
+          "field": "input_references",
+          "kind": "image",
+          "label": "Reference images"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "count": {
+          "field": "n"
+        }
+      }
+    }
+  ]
+}
