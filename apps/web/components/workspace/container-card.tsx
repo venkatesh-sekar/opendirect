@@ -5,7 +5,12 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { PlusSignIcon, StarIcon } from "@hugeicons/core-free-icons"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type { ContainerCard as ContainerCardData } from "@/lib/workspace/home"
+import type { AssetDto } from "@opendirect/contract"
+
+import type {
+  CastMember,
+  ContainerCard as ContainerCardData,
+} from "@/lib/workspace/home"
 import { containerHref } from "@/lib/shell/routes"
 
 import { AssetTile } from "@/components/canvas/nodes/asset-tile"
@@ -91,11 +96,74 @@ export function CharacterCard({ card }: { card: ContainerCardData }) {
 }
 
 /**
- * A 16:9 card: cover with its asset count, and the name.
- *
- * The mockup's stack of cast avatars needs `containers:related`, which comes
- * with the scene page; until then the card leaves that corner empty rather
- * than guessing who is in the scene.
+ * A character's face in a circle: its card's cover, or its initial. The
+ * picture is decorative — whatever sits next to it says who this is.
+ */
+export function Avatar({
+  name,
+  cover,
+  className,
+}: {
+  name: string
+  cover: AssetDto | null
+  className?: string
+}) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "relative inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-[11px] font-medium text-muted-foreground",
+        className
+      )}
+    >
+      {cover ? (
+        <AssetTile asset={cover} className="size-full" />
+      ) : (
+        name.trim().charAt(0).toUpperCase()
+      )}
+    </span>
+  )
+}
+
+/** How many faces a card stacks before it says "+N". */
+const STACKED = 4
+
+/** A scene card's overlapping cast avatars, named for a screen reader. */
+function CastStack({ cast }: { cast: CastMember[] }) {
+  if (cast.length === 0) return null
+  const rest = cast.length - STACKED
+  return (
+    <span className="flex shrink-0 items-center">
+      <span className="sr-only">
+        Cast: {cast.map((member) => member.node.name).join(", ")}
+      </span>
+      {cast.slice(0, STACKED).map((member, index) => (
+        <Avatar
+          key={member.node.id}
+          name={member.node.name}
+          cover={member.cover}
+          className={cn(
+            "size-5.5 text-[10px] ring-2 ring-background",
+            index > 0 && "-ml-1.5"
+          )}
+        />
+      ))}
+      {rest > 0 ? (
+        <span
+          aria-hidden
+          className="-ml-1.5 inline-flex size-5.5 items-center justify-center rounded-full bg-muted text-[10px] text-muted-foreground ring-2 ring-background"
+        >
+          +{rest}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * A 16:9 card: cover with its asset count, then the name and a stack of the
+ * cast's avatars — drawn from the summary's `castIds`, so a grid of cards
+ * costs no call per card.
  */
 export function SceneCard({ card }: { card: ContainerCardData }) {
   const { node, summary } = card
@@ -111,7 +179,10 @@ export function SceneCard({ card }: { card: ContainerCardData }) {
           </CoverBadge>
         ) : null}
       </Cover>
-      <span className="truncate text-sm font-semibold">{node.name}</span>
+      <span className="flex min-w-0 items-center justify-between gap-2">
+        <span className="truncate text-sm font-semibold">{node.name}</span>
+        <CastStack cast={card.cast} />
+      </span>
     </Link>
   )
 }

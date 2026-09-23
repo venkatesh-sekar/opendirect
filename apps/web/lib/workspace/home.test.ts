@@ -215,4 +215,45 @@ describe("containerCards", () => {
     expect(cards[1]!.sheet).toBe(false)
     expect(containerCards(tree, undefined, "scene")[0]!.summary).toBeNull()
   })
+
+  it("gives a scene card its cast, by the summary's ids, with their faces", () => {
+    const face = asset({ id: "mira-sheet" })
+    const summaries: ContainerSummaryDto[] = [
+      {
+        id: "hall",
+        assetCount: 2,
+        generationCount: 5,
+        coverAsset: null,
+        lastActivityAt: NOW,
+        castIds: ["mira", "tao", "gone"],
+      },
+      {
+        id: "mira",
+        assetCount: 1,
+        generationCount: 0,
+        coverAsset: face,
+        lastActivityAt: NOW,
+        castIds: [],
+      },
+    ]
+    const tree = [
+      node({ id: "mira", name: "Mira" }),
+      node({
+        id: "folder",
+        kind: "folder",
+        children: [node({ id: "tao", name: "Old Tao", parentId: "folder" })],
+      }),
+      node({ id: "hall", kind: "scene" }),
+    ]
+
+    const [hall] = containerCards(tree, summaries, "scene")
+    // A cast member deleted since the summary was read is simply left out.
+    expect(hall!.cast.map((member) => member.node.name)).toEqual([
+      "Mira",
+      "Old Tao",
+    ])
+    expect(hall!.cast[0]!.cover?.id).toBe("mira-sheet")
+    expect(hall!.cast[1]!.cover).toBeNull()
+    expect(containerCards(tree, summaries, "character")[0]!.cast).toEqual([])
+  })
 })

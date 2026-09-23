@@ -113,13 +113,19 @@ describe("the Scenes page", () => {
   it("shows every scene and a way to make another", async () => {
     mount(<ScenesScreen />, {
       "containers:tree": TREE,
-      "containers:summaries": [],
+      "containers:summaries": [summary({ id: "hall", castIds: ["mira"] })],
     })
 
     const main = await screen.findByRole("main")
-    expect(
-      await within(main).findByRole("link", { name: /hotel hallway/i })
-    ).toHaveAttribute("href", "/container/?id=hall")
+    const card = await within(main).findByRole("link", {
+      name: /hotel hallway/i,
+    })
+    expect(card).toHaveAttribute("href", "/container/?id=hall")
+    // The stack of cast avatars, from the summary it already has.
+    expect(await within(card).findByText("Cast: Mira")).toBeInTheDocument()
+    expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain(
+      "containers:related"
+    )
     // In the top bar, and as the dashed card at the end of the grid.
     expect(
       within(screen.getByRole("banner")).getByRole("button", {

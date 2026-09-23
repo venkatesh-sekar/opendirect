@@ -67,10 +67,18 @@ function responses(): Record<string, unknown> {
         referenceAssetIds: ["sheet", "side"],
       }),
       container({ id: "moods", name: "Moodboards", kind: "folder" }),
-      container({ id: "hall", name: "Hotel hallway", kind: "scene" }),
+      container({
+        id: "hall",
+        name: "Hotel hallway",
+        kind: "scene",
+        handle: "hallway",
+        description: "Long corridor, flickering sodium light",
+      }),
+      container({ id: "roof", name: "Rooftop", kind: "scene" }),
     ],
     "containers:summaries": [
       summary({ id: "mira", assetCount: 12, generationCount: 38 }),
+      summary({ id: "hall", assetCount: 4, castIds: ["mira"] }),
     ],
     "assets:list": { items: ASSETS, total: ASSETS.length, nextOffset: null },
     "jobs:list": [
@@ -109,9 +117,27 @@ function responses(): Record<string, unknown> {
   }
 }
 
+/** Mira is in the hallway; the rooftop has nobody in it yet. */
+function related(id: string | undefined) {
+  const tree = responses()["containers:tree"] as ReturnType<typeof container>[]
+  const find = (one: string) => tree.find((node) => node.id === one)!
+  switch (id) {
+    case "mira":
+      return { kind: "character", scenes: [find("hall")] }
+    case "hall":
+      return { kind: "scene", characters: [find("mira")] }
+    case "roof":
+      return { kind: "scene", characters: [] }
+    default:
+      return { kind: "character", scenes: [] }
+  }
+}
+
 function mount(id: string | null, tab: string | null = null) {
   const table = responses()
   invoke.mockImplementation((channel: string, payload?: { id?: string }) => {
+    if (channel === "containers:related")
+      return Promise.resolve(related(payload?.id))
     if (channel === "assets:get") {
       const found = ASSETS.find((one) => one.id === payload?.id)
       return found ? Promise.resolve(found) : Promise.reject(new Error("gone"))
@@ -164,8 +190,11 @@ describe("a character's page", () => {
     ).toBeVisible()
     expect(within(main).getByText("@mira")).toBeVisible()
     expect(within(main).getByText("Night-shift concierge")).toBeVisible()
+    // …and the scenes the character has been generated in.
     expect(
-      await within(main).findByText("12 assets · 38 generations")
+      await within(main).findByText(
+        "12 assets · 38 generations · in Hotel hallway"
+      )
     ).toBeVisible()
   })
 
@@ -508,6 +537,25 @@ describe("a character's page", () => {
     )
   })
 
+  it("counts the scenes it appears in on its own tab", async () => {
+    mount("mira")
+    const tabs = await screen.findByRole("navigation", { name: /sections/i })
+    const appears = within(tabs).getByRole("link", { name: /appears in/i })
+    expect(appears).toHaveAttribute(
+      "href",
+      "/container/?id=mira&tab=appears-in"
+    )
+    await waitFor(() => expect(appears).toHaveTextContent("1 scene"))
+  })
+
+  it("shows the scenes it appears in as cards to open", async () => {
+    mount("mira", "appears-in")
+    const card = await screen.findByRole("link", { name: /hotel hallway/i })
+    expect(card).toHaveAttribute("href", "/container/?id=hall")
+    expect(screen.queryByRole("link", { name: /rooftop/i })).toBeNull()
+    expect(calls("containers:related")[0]![1]).toEqual({ id: "mira" })
+  })
+
   it("lists its own runs on the Generations tab, running first", async () => {
     mount("mira", "generations")
 
@@ -546,7 +594,7 @@ describe("a folder's page", () => {
 })
 
 describe("a scene's page", () => {
-  it("generates in the scene and opens on its generations", async () => {
+  it("generates in the scene, opens the canvas and opens on its generations", async () => {
     mount("hall")
 
     await screen.findByRole("heading", { level: 2, name: "Hotel hallway" })
@@ -556,12 +604,44 @@ describe("a scene's page", () => {
       "/scenes/"
     )
     expect(
+      within(bar).getByRole("link", { name: /open canvas/i })
+    ).toHaveAttribute("href", "/canvas/?focus=hall")
+    expect(
       within(bar).getByRole("button", { name: "Generate in scene" })
     ).toBeVisible()
+
+    const main = screen.getByRole("main")
+    expect(within(main).getByText("@hallway")).toBeVisible()
+    expect(
+      within(main).getByText("Long corridor, flickering sodium light")
+    ).toBeVisible()
+    expect(
+      within(main).getByText("Location references, in order")
+    ).toBeVisible()
+
     const tabs = screen.getByRole("navigation", { name: /sections/i })
     expect(
       within(tabs).getByRole("link", { name: /generations/i })
     ).toHaveAttribute("aria-current", "page")
+    expect(within(tabs).queryByRole("link", { name: /appears in/i })).toBeNull()
+  })
+
+  it("names its cast, each a way to the character's page", async () => {
+    mount("hall")
+
+    const cast = await screen.findByRole("list", { name: "Cast" })
+    const mira = await within(cast).findByRole("link", { name: "Mira" })
+    expect(mira).toHaveAttribute("href", "/container/?id=mira")
+    expect(calls("containers:related")[0]![1]).toEqual({ id: "hall" })
+    // §6.3: a cast is derived from the runs; there is no way to add to it.
+    expect(within(cast).queryByRole("button", { name: /add/i })).toBeNull()
+  })
+
+  it("says how someone joins an empty cast", async () => {
+    mount("roof")
+    expect(
+      await screen.findByText(/mention a character in a prompt here/i)
+    ).toBeVisible()
   })
 })
 

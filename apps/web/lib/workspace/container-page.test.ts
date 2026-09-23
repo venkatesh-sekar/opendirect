@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest"
 import { asset, generation, job } from "@/components/workspace/fixtures"
 
 import {
+  appearsInCount,
+  CHARACTER_TABS,
   containerRunTiles,
   filterAssets,
   moveReference,
   parseTab,
   referenceNumbers,
+  SCENE_TABS,
   statsLine,
   toggleReference,
 } from "./container-page"
@@ -23,6 +26,16 @@ describe("the tab in the query string", () => {
     expect(parseTab("")).toBe("assets")
     expect(parseTab("canvas")).toBe("assets")
     expect(parseTab("nonsense")).toBe("assets")
+  })
+
+  it("knows a character's scenes tab", () => {
+    expect(parseTab("appears-in", CHARACTER_TABS)).toBe("appears-in")
+  })
+
+  it("opens a scene on what was made in it, and has no Appears in", () => {
+    expect(parseTab(null, SCENE_TABS)).toBe("generations")
+    expect(parseTab("assets", SCENE_TABS)).toBe("assets")
+    expect(parseTab("appears-in", SCENE_TABS)).toBe("generations")
   })
 })
 
@@ -128,5 +141,21 @@ describe("the stats line", () => {
     expect(statsLine({ assetCount: 1, generationCount: 1 })).toBe(
       "1 asset · 1 generation"
     )
+  })
+
+  it("names the scenes a character is in, and how many more", () => {
+    const counts = { assetCount: 12, generationCount: 38 }
+    expect(statsLine(counts, [])).toBe("12 assets · 38 generations")
+    expect(statsLine(counts, ["Hotel hallway", "Rooftop at dusk"])).toBe(
+      "12 assets · 38 generations · in Hotel hallway, Rooftop at dusk"
+    )
+    expect(statsLine(counts, ["A", "B", "C", "D", "E"])).toBe(
+      "12 assets · 38 generations · in A, B, C and 2 more"
+    )
+  })
+
+  it("counts a character's scenes for its tab", () => {
+    expect(appearsInCount(1)).toBe("1 scene")
+    expect(appearsInCount(3)).toBe("3 scenes")
   })
 })

@@ -161,6 +161,16 @@ export interface ContainerCard {
    * rather than whichever image happens to be newest. Worth a ★ on the card.
    */
   sheet: boolean
+  /**
+   * A scene's cast, from its summary's `castIds`, each with the face its own
+   * card wears. Empty for a character, and until the summaries answer.
+   */
+  cast: CastMember[]
+}
+
+export interface CastMember {
+  node: ContainerNodeDto
+  cover: AssetDto | null
 }
 
 export function containerCards(
@@ -169,6 +179,9 @@ export function containerCards(
   kind: "character" | "scene"
 ): ContainerCard[] {
   const byId = new Map((summaries ?? []).map((entry) => [entry.id, entry]))
+  const characters = new Map(
+    containersOfKind(tree, "character").map((node) => [node.id, node])
+  )
   return containersOfKind(tree, kind).map((node) => {
     const summary = byId.get(node.id) ?? null
     const first = node.referenceAssetIds?.[0]
@@ -176,6 +189,13 @@ export function containerCards(
       node,
       summary,
       sheet: Boolean(first && summary?.coverAsset?.id === first),
+      // A character deleted since the summary was read is left out.
+      cast: (summary?.castIds ?? []).flatMap((id) => {
+        const member = characters.get(id)
+        return member
+          ? [{ node: member, cover: byId.get(id)?.coverAsset ?? null }]
+          : []
+      }),
     }
   })
 }

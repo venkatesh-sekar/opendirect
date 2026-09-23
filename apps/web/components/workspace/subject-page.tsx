@@ -1,19 +1,21 @@
 "use client"
 
 /**
- * A character's page (C1) — and, until the scene page's cast and shots land,
- * a scene's, which the design lays out the same way.
+ * What a character's page (C1) and a scene's (C3) share — the design lays
+ * them out the same way, and `character-page.tsx` and `scene-page.tsx` fill
+ * in what differs.
  *
- * Header: the cover, then the name and `@handle`, the description, the counts
- * and the references sent to the model, all editable here. Tabs below it live
- * in the query string (`&tab=generations`), and Canvas is a link to the canvas
+ * Header: the cover, then the name and `@handle`, the description, whatever
+ * the page adds below it (a character's counts, a scene's cast) and the
+ * references sent to the model, all editable here. Tabs below it live in the
+ * query string (`&tab=generations`), and Canvas is a link to the canvas
  * framed on this container — ⛔ never an embedded canvas.
  *
- * "Generate with @mira" opens the generate panel (C2) at the right of the
- * page. Opening it spends nothing; its own Generate button is the only thing
- * on this page that does, and a queued run then shows on the Generations tab.
+ * The primary button opens the generate panel (C2) at the right of the page.
+ * Opening it spends nothing; its own Generate button is the only thing on
+ * this page that does, and a queued run then shows on the Generations tab.
  */
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -36,7 +38,6 @@ import { useSetContainerReferences } from "@/hooks/use-containers"
 import { canvasHref, containerHref } from "@/lib/shell/routes"
 import {
   parseTab,
-  statsLine,
   toggleReference,
   type PageTab,
 } from "@/lib/workspace/container-page"
@@ -52,31 +53,21 @@ import { WorkspacePage } from "./workspace-page"
 
 type Subject = "character" | "scene"
 
-const COPY: Record<
-  Subject,
-  {
-    section: string
-    href: string
-    references: string
-    placeholder: string
-    firstTab: PageTab
-  }
-> = {
-  character: {
-    section: "Characters",
-    href: "/characters/",
-    references: "References sent to the model, in order",
-    placeholder: "Pick a character sheet",
-    firstTab: "assets",
-  },
-  scene: {
-    section: "Scenes",
-    href: "/scenes/",
-    references: "Location references, in order",
-    placeholder: "Pick a cover for this scene",
-    // Until shots ship, a scene opens on what has been made in it (§5).
-    firstTab: "generations",
-  },
+/** The words a page uses for itself. */
+export interface SubjectCopy {
+  /** The breadcrumb's first half, and where it links. */
+  section: string
+  href: string
+  /** The reference strip's heading. */
+  references: string
+  /** What the cover says when there is no picture yet. */
+  placeholder: string
+}
+
+const TAB_LABELS: Record<PageTab, string> = {
+  assets: "Assets",
+  generations: "Generations",
+  "appears-in": "Appears in",
 }
 
 export function Breadcrumb({
@@ -128,9 +119,11 @@ function useFace(
 function Cover({
   node,
   cover,
+  placeholder,
 }: {
   node: ContainerNodeDto
   cover: AssetDto | null
+  placeholder: string
 }) {
   const kind = node.kind as Subject
   return (
@@ -154,7 +147,7 @@ function Cover({
         </>
       ) : (
         <span className="flex size-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
-          {COPY[kind].placeholder}
+          {placeholder}
         </span>
       )}
     </div>
@@ -164,24 +157,19 @@ function Cover({
 function Tabs({
   node,
   tab,
+  tabs,
   counts,
 }: {
   node: ContainerNodeDto
   tab: PageTab
-  counts: { assets?: number; generations?: number }
+  tabs: readonly PageTab[]
+  counts: Partial<Record<PageTab, ReactNode>>
 }) {
-  const kind = node.kind as Subject
-  const order: PageTab[] =
-    kind === "scene" ? ["generations", "assets"] : ["assets", "generations"]
-  const label: Record<PageTab, string> = {
-    assets: "Assets",
-    generations: "Generations",
-  }
   const item =
     "inline-flex h-10 items-center gap-1.5 border-b-2 text-sm transition-colors"
   return (
     <nav aria-label="Sections" className="flex gap-6 border-b">
-      {order.map((one) => (
+      {tabs.map((one) => (
         <Link
           key={one}
           href={containerHref(node.id, one)}
@@ -195,7 +183,7 @@ function Tabs({
               : "border-transparent text-muted-foreground hover:text-foreground"
           )}
         >
-          {label[one]}
+          {TAB_LABELS[one]}
           {counts[one] !== undefined ? (
             <span className="text-[11px] text-muted-foreground">
               {counts[one]}
@@ -220,19 +208,43 @@ function Tabs({
   )
 }
 
+export interface SubjectPageProps {
+  node: ContainerNodeDto
+  summary: ContainerSummaryDto | null
+  /** `&tab=` as it arrived; anything not in `tabs` opens the first. */
+  tab: string | null
+  /** The page's own tabs, in order. Canvas, a link, always follows them. */
+  tabs: readonly PageTab[]
+  /** What each tab shows dimmed after its label. */
+  counts: Partial<Record<PageTab, ReactNode>>
+  copy: SubjectCopy
+  /** The primary button's words: "Generate with @mira". */
+  generateLabel: string
+  /** Buttons before Edit and the primary one — a scene's Open canvas. */
+  actions?: ReactNode
+  /** Below the description, above the references: counts, a cast. */
+  details?: ReactNode
+  /**
+   * The body of a tab beyond Assets and Generations, which the frame draws
+   * itself — a character's Appears in; a scene's shots, when they land.
+   */
+  renderTab?: (tab: PageTab) => ReactNode
+}
+
 export function SubjectPage({
   node,
   summary,
   tab: rawTab,
-}: {
-  node: ContainerNodeDto
-  summary: ContainerSummaryDto | null
-  tab: string | null
-}) {
-  const kind = node.kind as Subject
-  const copy = COPY[kind]
+  tabs,
+  counts,
+  copy,
+  generateLabel,
+  actions,
+  details,
+  renderTab,
+}: SubjectPageProps) {
   const router = useRouter()
-  const tab = rawTab === null ? copy.firstTab : parseTab(rawTab)
+  const tab = parseTab(rawTab, tabs)
   const [editing, setEditing] = useState(false)
   const [generating, setGenerating] = useState(false)
   const references = useSetContainerReferences()
@@ -246,12 +258,34 @@ export function SubjectPage({
       }
     )
 
-  const generateLabel =
-    kind === "scene"
-      ? "Generate in scene"
-      : node.handle
-        ? `Generate with @${node.handle}`
-        : "Generate"
+  let body: ReactNode
+  switch (tab) {
+    case "generations":
+      body = (
+        <ContainerRuns
+          containerId={node.id}
+          empty={
+            <Button size="sm" onClick={() => setGenerating(true)}>
+              {generateLabel}
+            </Button>
+          }
+        />
+      )
+      break
+    case "assets":
+      body = (
+        <AssetLibrary
+          node={node}
+          saving={references.isPending}
+          onToggleReference={(assetId) =>
+            saveReferences(toggleReference(node.referenceAssetIds, assetId))
+          }
+        />
+      )
+      break
+    default:
+      body = renderTab?.(tab) ?? null
+  }
 
   return (
     <WorkspacePage
@@ -260,6 +294,7 @@ export function SubjectPage({
       }
       actions={
         <>
+          {actions}
           <Button
             size="sm"
             variant="outline"
@@ -296,7 +331,7 @@ export function SubjectPage({
     >
       <div className="flex flex-col gap-7">
         <div className="flex flex-wrap items-start gap-8">
-          <Cover node={node} cover={face} />
+          <Cover node={node} cover={face} placeholder={copy.placeholder} />
           <div className="flex max-w-155 min-w-0 flex-1 flex-col gap-3">
             {editing ? (
               <ContainerDetailsForm
@@ -331,11 +366,7 @@ export function SubjectPage({
                 )}
               </>
             )}
-            {summary ? (
-              <p className="text-xs text-muted-foreground">
-                {statsLine(summary)}
-              </p>
-            ) : null}
+            {details}
             <div className="mt-2">
               <ReferenceStrip
                 node={node}
@@ -347,33 +378,9 @@ export function SubjectPage({
           </div>
         </div>
 
-        <Tabs
-          node={node}
-          tab={tab}
-          counts={{
-            assets: summary?.assetCount,
-            generations: summary?.generationCount,
-          }}
-        />
+        <Tabs node={node} tab={tab} tabs={tabs} counts={counts} />
 
-        {tab === "generations" ? (
-          <ContainerRuns
-            containerId={node.id}
-            empty={
-              <Button size="sm" onClick={() => setGenerating(true)}>
-                {generateLabel}
-              </Button>
-            }
-          />
-        ) : (
-          <AssetLibrary
-            node={node}
-            saving={references.isPending}
-            onToggleReference={(assetId) =>
-              saveReferences(toggleReference(node.referenceAssetIds, assetId))
-            }
-          />
-        )}
+        {body}
       </div>
     </WorkspacePage>
   )

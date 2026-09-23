@@ -140,9 +140,7 @@ export function registerProjectHandlers(
     return listContainerSummaries(db, project.id)
   })
 
-  handle("containers:related", ({ id }) =>
-    listRelated(requireProject().db, id)
-  )
+  handle("containers:related", ({ id }) => listRelated(requireProject().db, id))
 
   handle("containers:create", ({ parentId, kind, name }) => {
     const { db, project } = requireProject()

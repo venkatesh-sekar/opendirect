@@ -8,17 +8,33 @@ import type { AssetDto, GenerationDto, JobDto } from "@opendirect/contract"
 import { continueTiles, type RunTile } from "./home"
 
 /**
- * The tabs that have content on the page. Canvas is not one of them: it is a
+ * The tabs that have content on a page. Canvas is not one of them: it is a
  * link to `/canvas/?focus=`, never an embedded canvas.
  */
-export const PAGE_TABS = ["assets", "generations"] as const
+export const PAGE_TABS = ["assets", "generations", "appears-in"] as const
 export type PageTab = (typeof PAGE_TABS)[number]
 
-/** `&tab=` as the page reads it; anything unknown is the first tab. */
-export function parseTab(raw: string | null): PageTab {
-  return (PAGE_TABS as readonly string[]).includes(raw ?? "")
+/** A character's tabs, in order: what it is made of, then what it made. */
+export const CHARACTER_TABS: readonly PageTab[] = [
+  "assets",
+  "generations",
+  "appears-in",
+]
+
+/**
+ * A scene's tabs. Until shots ship, a scene opens on what has been made in
+ * it (§5); shots will go first.
+ */
+export const SCENE_TABS: readonly PageTab[] = ["generations", "assets"]
+
+/** `&tab=` as the page reads it; anything the page lacks is its first tab. */
+export function parseTab(
+  raw: string | null,
+  tabs: readonly PageTab[] = CHARACTER_TABS
+): PageTab {
+  return (tabs as readonly string[]).includes(raw ?? "")
     ? (raw as PageTab)
-    : "assets"
+    : tabs[0]!
 }
 
 export type AssetFilter = "all" | "references" | "generated" | "uploaded"
@@ -117,10 +133,25 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`
 }
 
-/** "12 assets · 38 generations". */
-export function statsLine(summary: {
-  assetCount: number
-  generationCount: number
-}): string {
-  return `${plural(summary.assetCount, "asset")} · ${plural(summary.generationCount, "generation")}`
+/** How many scene names the stats line spells out before "and N more". */
+const SCENES_NAMED = 3
+
+/**
+ * "12 assets · 38 generations", and for a character in scenes
+ * "· in Hotel hallway, Rooftop at dusk".
+ */
+export function statsLine(
+  summary: { assetCount: number; generationCount: number },
+  scenes: readonly string[] = []
+): string {
+  const counts = `${plural(summary.assetCount, "asset")} · ${plural(summary.generationCount, "generation")}`
+  if (scenes.length === 0) return counts
+  const named = scenes.slice(0, SCENES_NAMED).join(", ")
+  const rest = scenes.length - SCENES_NAMED
+  return `${counts} · in ${named}${rest > 0 ? ` and ${rest} more` : ""}`
+}
+
+/** The Appears in tab's count: "3 scenes". */
+export function appearsInCount(count: number): string {
+  return plural(count, "scene")
 }

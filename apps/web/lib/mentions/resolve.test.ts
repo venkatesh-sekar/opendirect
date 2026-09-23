@@ -12,11 +12,7 @@ import type { MentionSubjectDto, ReferenceSlot } from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
 import { deriveReferenceSlots } from "../../../desktop/src/main/providers/reference-slots"
-import {
-  countBySlot,
-  mentionedContainerIds,
-  resolveMentions,
-} from "./resolve"
+import { countBySlot, mentionedContainerIds, resolveMentions } from "./resolve"
 
 /** A model with a `reference_images` array, up to four. */
 const MULTI_IMAGE: ReferenceSlot[] = deriveReferenceSlots({

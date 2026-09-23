@@ -16,7 +16,9 @@ import { statsLine } from "@/lib/workspace/container-page"
 import { AssetLibrary } from "./asset-library"
 import { EmptySection } from "./container-card"
 import { OpenCanvasButton } from "./home"
-import { Breadcrumb, SubjectPage } from "./subject-page"
+import { CharacterPage } from "./character-page"
+import { ScenePage } from "./scene-page"
+import { Breadcrumb } from "./subject-page"
 import { WorkspacePage } from "./workspace-page"
 
 /**
@@ -57,9 +59,9 @@ function FolderPage({
 }
 
 /**
- * `/container/?id=` — dispatches on the container's kind: a character or a
- * scene gets its own page with the generate panel, a folder a plain asset
- * grid.
+ * `/container/?id=` — dispatches on the container's kind: a character (C1) or
+ * a scene (C3) gets its own page with the generate panel, a folder a plain
+ * asset grid.
  *
  * The page replaces the old library dialog a sidebar row used to open. Its
  * reference picking, importing and "generate with this" now live on the page
@@ -112,14 +114,15 @@ export function ContainerScreen({
     )
   }
 
+  // Keyed, so moving from one character or scene to another starts the page
+  // — an open panel, a half-finished edit — afresh.
   switch (node.kind) {
     case "character":
-    case "scene":
-      // Keyed, so moving from one character to another starts the page —
-      // an open panel, a half-finished edit — afresh.
       return (
-        <SubjectPage key={node.id} node={node} summary={summary} tab={tab} />
+        <CharacterPage key={node.id} node={node} summary={summary} tab={tab} />
       )
+    case "scene":
+      return <ScenePage key={node.id} node={node} summary={summary} tab={tab} />
     default:
       return <FolderPage node={node} summary={summary} />
   }
