@@ -404,15 +404,42 @@ describe("describeModel", () => {
     expect(getModel).not.toHaveBeenCalled()
   })
 
-  it("prefers the choice's message when the chosen endpoint cannot be fetched", async () => {
+  it("keeps the mapping's slots and the choice's message when the chosen endpoint cannot be fetched", async () => {
     const { source, getModel } = fakeSource({ configured: ["replicate"] })
     getModel.mockRejectedValueOnce(new Error("No API key is configured"))
 
+    const result = await describeModel(source, familyKey("seedance-2-5"), {
+      provider: "openrouter",
+    })
+
+    expect(modelDescriptorSchema.parse(result)).toEqual(result)
+    expect(result).toMatchObject({
+      key: "family:seedance-2-5",
+      provider: "openrouter",
+      slug: "bytedance/seedance-2.5",
+      pricing: { basis: "unknown" },
+    })
+    // The node still shows its slots, from the mapping alone.
+    expect(result.referenceSlots.map((slot) => slot.field)).toEqual([
+      "first_frame",
+      "last_frame",
+      "soundtrack",
+      "reference",
+      "reference:2",
+    ])
+    expect(result.commonControls.duration).toBe("duration")
+    expect(result.family?.choice.message).toMatch(
+      /Add an OpenRouter key in Settings/
+    )
+  })
+
+  it("still throws a fetch error when the choice itself was fine", async () => {
+    const { source, getModel } = fakeSource({ configured: ["replicate"] })
+    getModel.mockRejectedValueOnce(new Error("Replicate is down"))
+
     await expect(
-      describeModel(source, familyKey("seedance-2-5"), {
-        provider: "openrouter",
-      })
-    ).rejects.toThrow(/Add an OpenRouter key in Settings/)
+      describeModel(source, familyKey("seedance-2-5"))
+    ).rejects.toThrow("Replicate is down")
   })
 
   it("rejects a key that is neither a model nor a family key", async () => {
@@ -465,6 +492,47 @@ describe("estimateFor", () => {
       confidence: "unknown",
       source: "none",
       note: expect.stringMatching(/duration/),
+    })
+  })
+
+  it("answers filled slots no endpoint takes together as an unknown quote", async () => {
+    const { source } = fakeSource({
+      configured: ["openrouter"],
+      pricing: perSecond,
+    })
+
+    const quote = await estimateFor(
+      source,
+      familyKey("seedance-2-5"),
+      { duration: "5" },
+      { filled: ["soundtrack"] }
+    )
+
+    expect(quote).toMatchObject({
+      amount: 0,
+      confidence: "unknown",
+      note: expect.stringMatching(/has no endpoint on OpenRouter/),
+    })
+  })
+
+  it("answers an override to a provider with no key as an unknown quote", async () => {
+    // The descriptor is fetchable (cached), but the run could not be made.
+    const { source } = fakeSource({
+      configured: ["replicate"],
+      pricing: perSecond,
+    })
+
+    const quote = await estimateFor(
+      source,
+      familyKey("seedance-2-5"),
+      { duration: "5" },
+      { provider: "openrouter" }
+    )
+
+    expect(quote).toMatchObject({
+      amount: 0,
+      confidence: "unknown",
+      note: expect.stringMatching(/Add an OpenRouter key in Settings/),
     })
   })
 

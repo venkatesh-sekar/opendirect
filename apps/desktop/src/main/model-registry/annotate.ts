@@ -80,13 +80,16 @@ export function annotateDescriptor(
 
   // A mapped field the adapter did not see as an asset (its schema does not
   // say "URI") is still an input the mapping says the model takes: without a
-  // slot, nothing could ever be connected to it.
+  // slot, nothing could ever be connected to it. One the schema does not
+  // have at all (renamed upstream, say) gets none: it could not be sent.
   const properties = isObject(descriptor.inputSchema.properties)
     ? descriptor.inputSchema.properties
     : {}
   const present = new Set(descriptor.referenceSlots.map((slot) => slot.field))
   for (const [key, input] of inputs) {
-    if (present.has(input.field)) continue
+    if (present.has(input.field) || !Object.hasOwn(properties, input.field)) {
+      continue
+    }
     const property = properties[input.field]
     const multiple = isObject(property) && property.type === "array"
     referenceSlots.push({

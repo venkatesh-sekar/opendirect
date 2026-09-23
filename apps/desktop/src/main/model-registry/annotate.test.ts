@@ -234,6 +234,28 @@ describe("annotateDescriptor", () => {
     })
   })
 
+  it("adds no slot for a mapped field the schema does not have", () => {
+    const descriptor = seedance()
+    const family: RegistryFamilyEntry = {
+      ...entry("seedance-2-5"),
+      family: {
+        ...entry("seedance-2-5").family,
+        endpoints: [
+          {
+            provider: "replicate",
+            model: "bytedance/seedance-2.5",
+            inputs: { style: { field: "renamed_upstream", kind: "image" } },
+            controls: {},
+          },
+        ],
+      },
+    }
+
+    const result = annotateDescriptor(descriptor, family)
+
+    expect(result.referenceSlots).toEqual(descriptor.referenceSlots)
+  })
+
   it("leaves a descriptor alone when the family has no endpoint for it", () => {
     const descriptor = fixtureDescriptor("openrouter", "bytedance/seedance-2.5")
 

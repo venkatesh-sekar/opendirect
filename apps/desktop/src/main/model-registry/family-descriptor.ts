@@ -29,9 +29,11 @@ import {
   REFERENCE_ROLES,
   RegistryTranslationError,
   translateFamilyParams,
+  unknownPricing,
   type CostQuote,
   type EndpointChoice,
   type FamilyInfo,
+  type MappingEndpoint,
   type ModelDescriptor,
   type ProviderId,
   type ReferenceRole,
@@ -153,6 +155,43 @@ interface ResolvedFamily {
   descriptor: ModelDescriptor
 }
 
+/**
+ * A stand-in for an endpoint whose descriptor cannot be fetched: no schema,
+ * no price, nothing but what the mapping states. Used only for a choice that
+ * already carries an error, so it is never run or priced.
+ */
+function mappingOnlyDescriptor(
+  entry: RegistryFamilyEntry,
+  endpoint: MappingEndpoint
+): ModelDescriptor {
+  return {
+    key: endpointKey(endpoint),
+    provider: endpoint.provider,
+    slug: endpoint.model,
+    name: entry.family.name,
+    description: null,
+    kind: entry.family.kind,
+    versionId: null,
+    coverImageUrl: null,
+    inputSchema: { type: "object", properties: {} },
+    outputSchema: null,
+    referenceSlots: [],
+    commonControls: {
+      prompt: null,
+      aspectRatio: null,
+      duration: null,
+      resolution: null,
+      seed: null,
+      audio: null,
+    },
+    pricing: unknownPricing,
+    raw: null,
+    fetchedAt: 0,
+    family: null,
+    mappedBy: null,
+  }
+}
+
 /** Thrown when no endpoint can be chosen, so a quote can answer it. */
 class NoEndpointError extends Error {}
 
@@ -184,16 +223,18 @@ async function resolveFamily(
   }
 
   const endpoints = entry.family.endpoints
+  const endpoint = endpoints[choice.index]!
   let concrete: ModelDescriptor
   try {
-    concrete = await catalog.getModel(endpointKey(endpoints[choice.index]!), {
+    concrete = await catalog.getModel(endpointKey(endpoint), {
       refresh: options.refresh ?? false,
     })
   } catch (error) {
-    // An override to an unconfigured provider fails to fetch; the choice
-    // already says what to do about it, in better words.
-    if (!choice.ok) throw new NoEndpointError(choice.message)
-    throw error
+    if (choice.ok) throw error
+    // The choice already cannot run (an override to a provider with no key,
+    // say), and its message says what to do. The node keeps its slots from
+    // the mapping alone rather than losing them to a fetch error.
+    concrete = mappingOnlyDescriptor(entry, endpoint)
   }
   const endpointDescriptor = annotateDescriptor(concrete, entry)
 
@@ -288,6 +329,10 @@ export async function estimateFor(
     throw error
   }
   const { entry, choice, endpointDescriptor } = resolved
+  // An endpoint was picked, but the run could not be made (filled slots no
+  // endpoint takes together, an override to a provider with no key): its
+  // price would be a number for a run that will not happen.
+  if (!choice.ok) return unknownQuote(choice.message)
   try {
     const translated = translateFamilyParams({
       family: entry.family,
