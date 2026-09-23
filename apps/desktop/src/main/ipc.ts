@@ -15,6 +15,7 @@ import { registerMentionHandlers } from "./mentions-service"
 import { rendererRefreshAccelerator } from "./menu"
 import {
   getModelRegistry,
+  modelSource,
   registerModelRegistryHandlers,
 } from "./model-registry/registry-service"
 import { isDevelopment } from "./resolve"
@@ -95,13 +96,17 @@ export function registerIpcHandlers(): void {
    * ⛔ Listing endpoints only. The catalog never submits a generation; see
    * `catalog.ts`.
    */
-  registerModelHandlers(handle, getModelCatalog, () => {
-    // The registry must never be the reason the model list fails.
-    try {
-      getModelRegistry().refreshIfStale()
-    } catch (error) {
-      log.warn("Model registry refresh could not start", error)
-    }
+  registerModelHandlers(handle, getModelCatalog, {
+    registry: modelSource.registry,
+    settings: modelSource.settings,
+    onList: () => {
+      // The registry must never be the reason the model list fails.
+      try {
+        getModelRegistry().refreshIfStale()
+      } catch (error) {
+        log.warn("Model registry refresh could not start", error)
+      }
+    },
   })
 
   /**
@@ -113,7 +118,7 @@ export function registerIpcHandlers(): void {
 
   // Project folder, containers, assets and generations — all scoped to the
   // currently open project (`project-service.ts`).
-  registerProjectHandlers(handle, getModelCatalog)
+  registerProjectHandlers(handle)
 
   /** The `@` picker's index — read-only, and scoped to the open project. */
   registerMentionHandlers(handle)

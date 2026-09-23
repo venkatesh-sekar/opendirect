@@ -17,9 +17,10 @@
 import { dialog, shell } from "electron"
 
 import { registerCanvasHandlers } from "./canvas-service"
-import type { ModelCatalog } from "./catalog"
 import { submitBatch, submitGeneration } from "./generations-submit"
 import { getJobRunner } from "./jobs-service"
+import { estimateFor } from "./model-registry/family-descriptor"
+import { annotatedModel, modelSource } from "./model-registry/registry-service"
 import type { IpcRegistrar } from "./ipc-registry"
 import type { ProjectDatabase } from "./db/client"
 import type { ProjectRef } from "./project"
@@ -53,7 +54,6 @@ import {
   setContainerPick,
 } from "./repo/containers"
 import { preflightGeneration } from "./generation-preflight"
-import { estimateCost } from "./providers/cost"
 import { resolveOpenPath } from "./shell-open"
 import {
   getGeneration,
@@ -101,10 +101,7 @@ const IMPORT_FILTERS = [
   { name: "All files", extensions: ["*"] },
 ]
 
-export function registerProjectHandlers(
-  handle: IpcRegistrar["handle"],
-  catalog: () => ModelCatalog
-): void {
+export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
   handle("project:current", () => ({
     project: getCurrentProject()?.project ?? null,
   }))
@@ -288,17 +285,11 @@ export function registerProjectHandlers(
    * rate comes back as `confidence: "unknown"`, which the badge renders as
    * "Cost unknown" rather than as a number nobody can stand behind.
    */
-  handle("cost:estimate", async ({ key, params }) => {
-    const descriptor = await catalog().getModel(key)
-    return estimateCost({
-      provider: descriptor.provider,
-      kind: descriptor.kind,
-      slug: descriptor.slug,
-      pricingSkus: descriptor.pricing.skus,
-      params,
-      inputSchema: descriptor.inputSchema,
-    })
-  })
+  handle("cost:estimate", ({ key, params, provider, filled }) =>
+    // A family key is priced on the endpoint it would run on, in that
+    // endpoint's own field names.
+    estimateFor(modelSource, key, params, { provider, filled })
+  )
 
   /**
    * ⛔ The one channel that leads to a paid call — and only ever because the
@@ -314,7 +305,7 @@ export function registerProjectHandlers(
     const generation = await submitGeneration(
       { db, project },
       {
-        getModel: (key) => catalog().getModel(key, { refresh: true }),
+        getModel: (key) => annotatedModel(key, { refresh: true }),
         preflight: preflightGeneration,
       },
       request
@@ -351,7 +342,7 @@ export function registerProjectHandlers(
     const batch = await submitBatch(
       { db, project },
       {
-        getModel: (key) => catalog().getModel(key, { refresh: true }),
+        getModel: (key) => annotatedModel(key, { refresh: true }),
         preflight: preflightGeneration,
       },
       request,

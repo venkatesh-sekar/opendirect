@@ -23,6 +23,7 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query"
 import type {
+  ReferenceRole,
   RegistryFamilyEntry,
   RegistryIssue,
   RegistryStatus,
@@ -180,5 +181,26 @@ export function useExportOverride(): UseMutationResult<
   return useMutation({
     mutationFn: async (id: string) =>
       (await invoke("registry:overrides:export", { id })).path,
+  })
+}
+
+/**
+ * Under `["models"]`, not `["registry"]`: it is read from the cached
+ * descriptors, so a catalog refresh makes it stale as much as a mapping
+ * change does, and both invalidate `["models"]`.
+ */
+export const capabilitiesQueryKey = ["models", "capabilities"] as const
+
+/**
+ * The picker's capability data for unmapped models: model key → the roles
+ * its slots take, for every descriptor main has cached. A key that is
+ * absent has not been inspected yet. ⛔ Reads main's cache; no network.
+ */
+export function useCapabilities(): UseQueryResult<
+  Record<string, ReferenceRole[]>
+> {
+  return useQuery({
+    queryKey: capabilitiesQueryKey,
+    queryFn: () => invoke("registry:capabilities"),
   })
 }

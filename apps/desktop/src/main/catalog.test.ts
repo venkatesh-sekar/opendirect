@@ -4,11 +4,13 @@
  * `providers/{replicate,openrouter}.test.ts`; the catalog only ever sees the
  * `ModelProvider` interface.
  */
-import type {
-  ModelDescriptor,
-  ModelKind,
-  ModelSummary,
-  ProviderId,
+import {
+  mergeRegistry,
+  modelKey,
+  type ModelDescriptor,
+  type ModelKind,
+  type ModelSummary,
+  type ProviderId,
 } from "@opendirect/contract"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -18,6 +20,7 @@ import {
   registerModelHandlers,
   type CatalogStore,
   type ModelCatalog,
+  type ModelHandlerDeps,
 } from "./catalog"
 import { createIpcRegistrar, type IpcMainLike } from "./ipc-registry"
 import { RECOMMENDED } from "./providers/defaults"
@@ -631,25 +634,82 @@ function fakeIpcMain() {
   }
 }
 
+/** One family on Replicate and OpenRouter, as the registry would serve it. */
+const seedance = {
+  id: "seedance-2-5",
+  name: "Seedance 2.5",
+  kind: "video",
+  endpoints: [
+    {
+      provider: "replicate",
+      model: "bytedance/seedance-2.5",
+      inputs: { first_frame: { field: "image", kind: "image" } },
+      controls: { prompt: { field: "prompt" } },
+    },
+    {
+      provider: "openrouter",
+      model: "bytedance/seedance-2.5",
+      inputs: { first_frame: { field: "first_frame", kind: "image" } },
+      controls: { prompt: { field: "prompt" } },
+    },
+  ],
+}
+
+/** A registry over fixed families; the real one is tested in model-registry/. */
+function fakeRegistry(
+  families: unknown[] = [seedance]
+): ReturnType<ModelHandlerDeps["registry"]> {
+  const merged = mergeRegistry([
+    {
+      source: "bundled",
+      entries: families.map((raw) => ({ origin: "test", raw })),
+    },
+  ])
+  const byId = (id: string | undefined) =>
+    merged.families.find((entry) => entry.family.id === id) ?? null
+  return {
+    merged: () => merged,
+    family: (id) => byId(id),
+    familyForEndpoint: (provider, model) =>
+      byId(merged.endpointIndex.get(modelKey(provider, model))),
+  }
+}
+
+function handlerDeps(
+  overrides: Partial<ModelHandlerDeps> = {}
+): ModelHandlerDeps {
+  const registry = fakeRegistry()
+  return {
+    registry: () => registry,
+    settings: () => ({ providerOrder: ["replicate", "openrouter"] }),
+    ...overrides,
+  }
+}
+
 describe("registerModelHandlers", () => {
-  function wire(provider: ModelProvider) {
+  function wire(provider: ModelProvider | ModelProvider[]) {
     const main = fakeIpcMain()
     const catalog = createModelCatalog({
-      providers: () => [provider],
+      providers: () => [provider].flat(),
       store: memoryStore().store,
       now: () => NOW,
     })
-    registerModelHandlers(createIpcRegistrar(main.ipc).handle, () => catalog)
+    registerModelHandlers(
+      createIpcRegistrar(main.ipc).handle,
+      () => catalog,
+      handlerDeps()
+    )
     return { main, catalog }
   }
 
-  it("registers exactly the three model channels", () => {
+  it("registers exactly the model channels and the capability index", () => {
     const { main } = wire(stubProvider("replicate").provider)
 
     expect([...main.handlers.keys()]).toEqual([
       "models:list",
       "models:get",
       "models:recommended",
+      "registry:capabilities",
     ])
   })
 
@@ -697,7 +757,7 @@ describe("registerModelHandlers", () => {
     registerModelHandlers(
       createIpcRegistrar(main.ipc).handle,
       () => catalog,
-      onList
+      handlerDeps({ onList })
     )
 
     await main.invoke("models:list", {})
@@ -718,7 +778,11 @@ describe("registerModelHandlers", () => {
       store: memoryStore().store,
       now: () => NOW,
     })
-    registerModelHandlers(createIpcRegistrar(main.ipc).handle, () => catalog)
+    registerModelHandlers(
+      createIpcRegistrar(main.ipc).handle,
+      () => catalog,
+      handlerDeps()
+    )
 
     const result = (await main.invoke("models:list", {})) as {
       ok: true
@@ -743,6 +807,92 @@ describe("registerModelHandlers", () => {
 
     expect(result.ok).toBe(true)
     expect(result.data.slug).toBe("bytedance/seedance-2.5")
+  })
+
+  it("annotates a concrete descriptor with its family's roles", async () => {
+    const { main } = wire(stubProvider("replicate").provider)
+
+    const result = (await main.invoke("models:get", {
+      key: "replicate:bytedance/seedance-2.5",
+    })) as { ok: true; data: ModelDescriptor }
+
+    expect(result.data.mappedBy).toEqual({
+      familyId: "seedance-2-5",
+      source: "bundled",
+    })
+    expect(result.data.commonControls.prompt).toBe("prompt")
+  })
+
+  it("serves a family key on OpenRouter when Replicate has no key", async () => {
+    const replicate = stubProvider("replicate", { configured: false })
+    const openrouter = stubProvider("openrouter")
+    const { main } = wire([replicate.provider, openrouter.provider])
+
+    const result = (await main.invoke("models:get", {
+      key: "family:seedance-2-5",
+      filled: ["first_frame"],
+    })) as { ok: true; data: ModelDescriptor }
+
+    expect(result.ok).toBe(true)
+    expect(result.data).toMatchObject({
+      key: "family:seedance-2-5",
+      provider: "openrouter",
+      slug: "bytedance/seedance-2.5",
+      name: "Seedance 2.5",
+    })
+    expect(result.data.referenceSlots.map((slot) => slot.field)).toEqual([
+      "first_frame",
+    ])
+    expect(result.data.family?.configured).toEqual(["openrouter"])
+    expect(replicate.calls.get).toBe(0)
+    expect(openrouter.calls.get).toBe(1)
+  })
+
+  it("says no configured provider can run a family when neither has a key", async () => {
+    const { main } = wire([
+      stubProvider("replicate", { configured: false }).provider,
+      stubProvider("openrouter", { configured: false }).provider,
+    ])
+
+    await expect(
+      main.invoke("models:get", { key: "family:seedance-2-5" })
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        message:
+          "No configured provider can run Seedance 2.5. Add a key for Replicate or OpenRouter in Settings.",
+      },
+    })
+  })
+
+  it("follows the per-node provider override for a family key", async () => {
+    const { main } = wire([
+      stubProvider("replicate").provider,
+      stubProvider("openrouter").provider,
+    ])
+
+    const result = (await main.invoke("models:get", {
+      key: "family:seedance-2-5",
+      provider: "openrouter",
+    })) as { ok: true; data: ModelDescriptor }
+
+    expect(result.data.provider).toBe("openrouter")
+  })
+
+  it("lists the roles of cached, unmapped descriptors without fetching", async () => {
+    const provider = stubProvider("replicate")
+    const { main } = wire(provider.provider)
+    await main.invoke("models:get", { key: "replicate:someone/other" })
+    await main.invoke("models:get", { key: "replicate:bytedance/seedance-2.5" })
+
+    const result = await main.invoke("registry:capabilities")
+
+    // The mapped one is described by its family; the stub has no slots.
+    expect(result).toEqual({
+      ok: true,
+      data: { "replicate:someone/other": [] },
+    })
+    expect(provider.calls.get).toBe(2)
   })
 
   it("reports a bad key as a failed envelope rather than rejecting", async () => {

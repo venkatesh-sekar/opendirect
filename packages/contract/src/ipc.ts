@@ -22,6 +22,7 @@ import {
   modelDescriptorSchema,
   modelKindSchema,
   recommendedModelSchema,
+  referenceRoleSchema,
 } from "./model"
 import {
   assetPageSchema,
@@ -279,9 +280,19 @@ export const ipcContract = {
     }),
     output: catalogListingSchema,
   },
-  /** One full descriptor — schema included — fetched and cached on demand. */
+  /**
+   * One full descriptor — schema included — fetched and cached on demand,
+   * with its registry mapping's roles applied. A `family:<id>` key returns a
+   * family descriptor on the endpoint chosen for `provider` (the node's
+   * override; null = settings order) and `filled` (its filled slot keys);
+   * both are ignored for a `provider:slug` key.
+   */
   "models:get": {
-    input: z.object({ key: z.string() }),
+    input: z.object({
+      key: z.string(),
+      provider: providerIdSchema.nullable().optional(),
+      filled: z.array(z.string()).max(40).optional(),
+    }),
     output: modelDescriptorSchema,
   },
   /** The curated shortlist, annotated with whether the catalog still lists it. */
@@ -318,6 +329,18 @@ export const ipcContract = {
   "registry:families": {
     input: z.void(),
     output: z.array(registryFamilyEntrySchema),
+  },
+  /**
+   * The model picker's capability filter for **unmapped** models: model key →
+   * the distinct roles of its slots, for every descriptor already cached (a
+   * mapped model is described by its family). A key that is absent has not
+   * been inspected yet.
+   *
+   * ⛔ Reads the catalog's cache only; never fetches a descriptor.
+   */
+  "registry:capabilities": {
+    input: z.void(),
+    output: z.record(z.string(), z.array(referenceRoleSchema)),
   },
   /**
    * The user's own mappings, including any that no longer validate (listed
@@ -542,6 +565,9 @@ export const ipcContract = {
     input: z.object({
       key: z.string().min(1),
       params: z.record(z.string(), z.unknown()),
+      /** For a family key: priced on the endpoint these choose, as `models:get`. */
+      provider: providerIdSchema.nullable().optional(),
+      filled: z.array(z.string()).max(40).optional(),
     }),
     output: costQuoteSchema,
   },

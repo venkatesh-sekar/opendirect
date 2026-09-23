@@ -1,16 +1,22 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, cleanup, renderHook } from "@testing-library/react"
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import type { GenerationRequest } from "@opendirect/contract"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { queryKeys } from "./query-keys"
-import { useSubmitBatch, useSubmitGeneration } from "./use-generations"
+import {
+  useCostEstimate,
+  useSubmitBatch,
+  useSubmitGeneration,
+} from "./use-generations"
 
-vi.mock("@/lib/ipc", () => ({
-  invoke: () => Promise.resolve({ batchId: "b1", generations: [] }),
+const { invoke } = vi.hoisted(() => ({
+  invoke: vi.fn(() => Promise.resolve({ batchId: "b1", generations: [] })),
 }))
+
+vi.mock("@/lib/ipc", () => ({ invoke }))
 
 afterEach(() => {
   cleanup()
@@ -51,6 +57,42 @@ describe("submitting and the container cards", () => {
     // The run's mentions may have just put someone in a scene.
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.containers.relatedAll,
+    })
+  })
+})
+
+describe("useCostEstimate", () => {
+  it("prices a family run on the node's provider and filled slots", async () => {
+    const { result } = setup(() =>
+      useCostEstimate(
+        "family:seedance-2-5",
+        { duration: "5" },
+        { provider: "openrouter", filled: ["reference", "first_frame"] }
+      )
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invoke).toHaveBeenCalledWith("cost:estimate", {
+      key: "family:seedance-2-5",
+      params: { duration: "5" },
+      provider: "openrouter",
+      filled: ["first_frame", "reference"],
+    })
+  })
+
+  it("prices a concrete key by key and params alone", async () => {
+    const { result } = setup(() =>
+      useCostEstimate(
+        "replicate:a/b",
+        { duration: 5 },
+        { provider: "openrouter", filled: ["reference"] }
+      )
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(invoke).toHaveBeenCalledWith("cost:estimate", {
+      key: "replicate:a/b",
+      params: { duration: 5 },
     })
   })
 })

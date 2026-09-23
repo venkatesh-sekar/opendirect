@@ -22,6 +22,7 @@ import type {
 import { invoke } from "@/lib/ipc"
 import { queryKeys } from "./query-keys"
 import { invalidateContainerFacts } from "./use-containers"
+import { familyChoice, type ModelQueryOptions } from "./use-models"
 
 export interface GenerationsPageOptions {
   limit?: number
@@ -133,11 +134,17 @@ export function useLineage(id: string | null): UseQueryResult<Lineage> {
  */
 export function useCostEstimate(
   modelKey: string | null,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  /** A family key is priced on the endpoint these choose; see `useModel`. */
+  options: ModelQueryOptions = {}
 ): UseQueryResult<CostQuote> {
+  const choice = familyChoice(modelKey ?? "", options)
   return useQuery({
-    queryKey: queryKeys.cost.estimate(modelKey ?? "", params),
-    queryFn: () => invoke("cost:estimate", { key: modelKey!, params }),
+    queryKey: choice
+      ? [...queryKeys.cost.estimate(modelKey ?? "", params), choice]
+      : queryKeys.cost.estimate(modelKey ?? "", params),
+    queryFn: () =>
+      invoke("cost:estimate", { key: modelKey!, params, ...choice }),
     enabled: modelKey !== null,
     // A quote for one set of values never changes; a new set is a new key.
     staleTime: Infinity,

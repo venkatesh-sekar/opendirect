@@ -7,11 +7,13 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query"
-import type {
-  CatalogListing,
-  ModelDescriptor,
-  ModelKind,
-  RecommendedModel,
+import {
+  parseFamilyKey,
+  type CatalogListing,
+  type ModelDescriptor,
+  type ModelKind,
+  type ProviderId,
+  type RecommendedModel,
 } from "@opendirect/contract"
 
 import { invoke } from "@/lib/ipc"
@@ -26,8 +28,42 @@ export function modelsQueryKey(kinds?: ModelKind[]) {
 
 export const recommendedQueryKey = ["models", "recommended"] as const
 
-export function modelQueryKey(key: string) {
-  return ["models", "descriptor", key] as const
+/**
+ * What a family node adds to its descriptor request: its provider override
+ * and the slot keys it has filled, which choose the endpoint. Ignored for a
+ * `provider:slug` key.
+ */
+export interface ModelQueryOptions {
+  provider?: ProviderId | null
+  filled?: readonly string[]
+}
+
+/**
+ * The provider and slots a family key's request carries — filled slots
+ * distinct and sorted, so the same slots in another order share a cache
+ * entry. Null for a `provider:slug` key, whose descriptor and price never
+ * depend on them.
+ */
+export function familyChoice(
+  key: string,
+  options: ModelQueryOptions = {}
+): { provider: ProviderId | null; filled: string[] } | null {
+  if (parseFamilyKey(key) === null) return null
+  return {
+    provider: options.provider ?? null,
+    filled: [...new Set(options.filled ?? [])].sort(),
+  }
+}
+
+/**
+ * `["models", "descriptor", key]`, plus the provider and sorted filled slots
+ * **only for a family key**: those change which endpoint a family runs on,
+ * while a concrete key keeps one cache entry however its node is wired.
+ */
+export function modelQueryKey(key: string, options: ModelQueryOptions = {}) {
+  const choice = familyChoice(key, options)
+  if (choice === null) return ["models", "descriptor", key] as const
+  return ["models", "descriptor", key, choice.provider, choice.filled] as const
 }
 
 /**
@@ -79,10 +115,14 @@ export function useRecommendedModels(): UseQueryResult<{
  * `queryClient.fetchQuery`, so the two can never drift into fetching the same
  * model under two keys.
  */
-export function modelDescriptorQuery(key: string) {
+export function modelDescriptorQuery(
+  key: string,
+  options: ModelQueryOptions = {}
+) {
+  const choice = familyChoice(key, options)
   return {
-    queryKey: modelQueryKey(key),
-    queryFn: () => invoke("models:get", { key }),
+    queryKey: modelQueryKey(key, options),
+    queryFn: () => invoke("models:get", { key, ...choice }),
     staleTime: Infinity,
   } as const
 }
@@ -90,10 +130,14 @@ export function modelDescriptorQuery(key: string) {
 /**
  * One full descriptor — the model's own input schema included — fetched on
  * demand. `enabled` keeps it from firing until a model is actually picked.
+ * A family key's descriptor follows `options` (see `ModelQueryOptions`).
  */
-export function useModel(key: string | null): UseQueryResult<ModelDescriptor> {
+export function useModel(
+  key: string | null,
+  options: ModelQueryOptions = {}
+): UseQueryResult<ModelDescriptor> {
   return useQuery({
-    ...modelDescriptorQuery(key ?? ""),
+    ...modelDescriptorQuery(key ?? "", options),
     enabled: key !== null,
   })
 }

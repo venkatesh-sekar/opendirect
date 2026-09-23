@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { queryKeys } from "./query-keys"
 import {
   MappingValidationError,
+  capabilitiesQueryKey,
+  useCapabilities,
   useDeleteOverride,
   useExportOverride,
   useImportOverrides,
@@ -200,5 +202,17 @@ describe("override mutations", () => {
       id: "mine",
     })
     expect(path).toBe("/tmp/mine.json")
+  })
+})
+
+describe("useCapabilities", () => {
+  it("reads the cached capability index, stale whenever models are", async () => {
+    const capabilities = { "replicate:a/b": ["character", "reference"] }
+    invoke.mockResolvedValue(capabilities)
+    const { result } = setup(useCapabilities)
+
+    await waitFor(() => expect(result.current.data).toEqual(capabilities))
+    expect(invoke).toHaveBeenCalledWith("registry:capabilities")
+    expect(capabilitiesQueryKey.slice(0, 1)).toEqual(["models"])
   })
 })

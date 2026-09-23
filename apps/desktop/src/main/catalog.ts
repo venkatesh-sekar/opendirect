@@ -39,6 +39,11 @@ import {
 import { z } from "zod"
 
 import type { IpcRegistrar } from "./ipc-registry"
+import {
+  describeModel,
+  registryCapabilities,
+  type ModelSource,
+} from "./model-registry/family-descriptor"
 import { describeRecommended } from "./providers/defaults"
 import type { ModelProvider } from "./providers/types"
 
@@ -113,6 +118,14 @@ export interface ModelCatalog {
     key: string,
     options?: { refresh?: boolean }
   ): Promise<ModelDescriptor>
+  /**
+   * Every descriptor already in the cache, keyed by model key, however old.
+   * ⛔ Never fetches: the registry reads it for data it may not go to the
+   * network for.
+   */
+  cachedDescriptors(): Record<string, ModelDescriptor>
+  /** The providers that currently hold a key, in registration order. */
+  configuredProviders(): ProviderId[]
   /** Epoch ms of the last successful merge, or null when nothing is cached. */
   fetchedAt(): number | null
   /** True when any of the given modalities (default: video+image) is overdue. */
@@ -295,6 +308,10 @@ export function createModelCatalog(deps: ModelCatalogDeps): ModelCatalog {
   }
 
   return {
+    cachedDescriptors: () => load().descriptors,
+
+    configuredProviders: () => configured().map((provider) => provider.id),
+
     fetchedAt() {
       const { fetchedAt } = load()
       return fetchedAt === 0 ? null : fetchedAt
@@ -359,32 +376,55 @@ export function createModelCatalog(deps: ModelCatalogDeps): ModelCatalog {
   }
 }
 
+/** What the model handlers need besides the catalog. */
+export interface ModelHandlerDeps {
+  /** The merged registry: roles for concrete descriptors, families for `family:<id>`. */
+  registry: ModelSource["registry"]
+  /** Read per call, so a changed provider order applies to the next `models:get`. */
+  settings: ModelSource["settings"]
+  /**
+   * Called on every `models:list`, before the catalog answers. Main passes
+   * the registry's `refreshIfStale` — a once-a-day free GET, never awaited.
+   */
+  onList?: () => void
+}
+
 /**
- * Wires the three `models:*` channels onto a registrar.
+ * Wires the three `models:*` channels, and `registry:capabilities` (it reads
+ * this catalog's cache), onto a registrar.
  *
  * The catalog is resolved per call rather than captured, so handlers can be
  * registered before the Electron app is ready (and before `userData` exists),
  * and so a catalog invalidated by a key change is picked up on the next call.
  *
  * ⛔ Read-only: `list` and `get` reach only the providers' free listing
- * endpoints, and `recommended` touches no network beyond what `list` already
- * cached.
+ * endpoints, and `recommended` and `registry:capabilities` touch no network
+ * beyond what `list` and `get` already cached.
  */
 export function registerModelHandlers(
   handle: IpcRegistrar["handle"],
   catalog: () => ModelCatalog,
-  /**
-   * Called on every `models:list`, before the catalog answers. Main passes
-   * the registry's `refreshIfStale` — a once-a-day free GET, never awaited.
-   */
-  onList: () => void = () => {}
+  deps: ModelHandlerDeps
 ): void {
+  const source: ModelSource = {
+    catalog,
+    registry: deps.registry,
+    settings: deps.settings,
+  }
+
   handle("models:list", ({ kinds, refresh }) => {
-    onList()
+    deps.onList?.()
     return catalog().list({ kinds, refresh })
   })
 
-  handle("models:get", ({ key }) => catalog().getModel(key))
+  /**
+   * A concrete key comes back annotated with its mapping's roles; a
+   * `family:<id>` key as a family descriptor on the endpoint that `provider`
+   * and `filled` choose.
+   */
+  handle("models:get", ({ key, provider, filled }) =>
+    describeModel(source, key, { provider, filled })
+  )
 
   handle("models:recommended", async () => {
     // Whatever the catalog can serve without forcing a refresh: a shortlist
@@ -392,4 +432,6 @@ export function registerModelHandlers(
     const { models } = await catalog().list()
     return describeRecommended(models.map((model) => model.key))
   })
+
+  handle("registry:capabilities", () => registryCapabilities(source))
 }

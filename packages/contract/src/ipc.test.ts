@@ -675,6 +675,38 @@ describe("model registry channels", () => {
     })
   })
 
+  it("takes a family key's provider override and filled slots", () => {
+    for (const channel of ["models:get", "cost:estimate"] as const) {
+      const { input } = ipcContract[channel]
+      const base = { key: "family:seedance-2-5", params: {} }
+      expect(
+        input.parse({
+          ...base,
+          provider: "openrouter",
+          filled: ["first_frame"],
+        })
+      ).toMatchObject({ provider: "openrouter", filled: ["first_frame"] })
+      // Both optional: a concrete key sends neither.
+      expect(input.safeParse(base).success).toBe(true)
+      expect(input.safeParse({ ...base, provider: null }).success).toBe(true)
+      expect(input.safeParse({ ...base, provider: "fal" }).success).toBe(false)
+      expect(
+        input.safeParse({ ...base, filled: Array(41).fill("reference") })
+          .success
+      ).toBe(false)
+    }
+  })
+
+  it("maps model keys to the roles their slots take", () => {
+    const { output } = ipcContract["registry:capabilities"]
+    expect(
+      output.parse({ "replicate:a/b": ["character", "reference"], "x:y": [] })
+    ).toEqual({ "replicate:a/b": ["character", "reference"], "x:y": [] })
+    expect(output.safeParse({ "replicate:a/b": ["unknown"] }).success).toBe(
+      false
+    )
+  })
+
   it("parses delete, import and export payloads", () => {
     expect(
       ipcContract["registry:overrides:delete"].input.parse({ key: "k1" })

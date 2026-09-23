@@ -17,10 +17,10 @@ import type { JobDto } from "@opendirect/contract"
 import { BrowserWindow } from "electron"
 import log from "electron-log/main"
 
-import { getModelCatalog } from "./catalog-service"
 import type { ProjectDatabase } from "./db/client"
 import { emitIpcEvent } from "./ipc-registry"
 import { createJobRunner, type JobRunner } from "./jobs/runner"
+import { annotatedModel } from "./model-registry/registry-service"
 import { getCurrentProject } from "./project-service"
 import { requireProvider } from "./providers/registry"
 import { getSettingsService } from "./settings-service"
@@ -61,7 +61,8 @@ export function getJobRunner(): JobRunner {
         pollIntervalMs: settings.pollIntervalMs,
       }
     },
-    getModel: (key) => getModelCatalog().getModel(key),
+    // Annotated, so a mapped slot's shape reaches the runner.
+    getModel: (key) => annotatedModel(key),
     onUpdate: broadcast,
     log: (message, error) => log.warn(message, error),
   })

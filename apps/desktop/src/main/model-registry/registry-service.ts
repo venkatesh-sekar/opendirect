@@ -14,9 +14,17 @@ import { basename, join } from "node:path"
 import { app, dialog } from "electron"
 import log from "electron-log/main"
 
+import type { ModelDescriptor } from "@opendirect/contract"
+
+import { getModelCatalog } from "../catalog-service"
 import type { IpcRegistrar } from "../ipc-registry"
 import { getSettingsService } from "../settings-service"
 import { BUNDLED_FAMILIES, BUNDLED_INDEX } from "./bundled"
+import {
+  describeModel,
+  type DescribeOptions,
+  type ModelSource,
+} from "./family-descriptor"
 import { registerRegistryHandlers, type RegistryFiles } from "./handlers"
 import { createOverrideStore } from "./overrides"
 import { createModelRegistry, type ModelRegistry } from "./registry"
@@ -56,6 +64,29 @@ export function getModelRegistry(): ModelRegistry {
 /** Test/hot-reload seam: drops the cached registry so the next call rebuilds it. */
 export function resetModelRegistry(): void {
   registry = undefined
+}
+
+/**
+ * The live catalog, registry and settings, each resolved per call — so a key
+ * change, a reload or a new provider order applies to the very next lookup.
+ */
+export const modelSource: ModelSource = {
+  catalog: () => getModelCatalog(),
+  registry: () => getModelRegistry(),
+  settings: () => getSettingsService().settings.get(),
+}
+
+/**
+ * The one way main code gets a descriptor for a caller: annotated with its
+ * mapping's roles, or a family descriptor for `family:<id>`. Submit,
+ * preflight and the job runner all go through it, so they see the same
+ * slots (and shapes) the canvas was drawn from.
+ */
+export function annotatedModel(
+  key: string,
+  options: DescribeOptions = {}
+): Promise<ModelDescriptor> {
+  return describeModel(modelSource, key, options)
 }
 
 const JSON_FILTERS = [{ name: "Model mapping", extensions: ["json"] }]
