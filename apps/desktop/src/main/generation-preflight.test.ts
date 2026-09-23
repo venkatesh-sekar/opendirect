@@ -38,6 +38,8 @@ const descriptor: ModelDescriptor = {
   pricing: unknownPricing,
   raw: null,
   fetchedAt: 0,
+  family: null,
+  mappedBy: null,
 }
 const request: GenerationRequest = {
   modelKey: descriptor.key,

@@ -484,6 +484,8 @@ export function createReplicateProvider(
         pricing: pricingFor(slug),
         raw: model,
         fetchedAt: now(),
+        family: null,
+        mappedBy: null,
       }
     },
 

@@ -476,6 +476,8 @@ export function createOpenRouterProvider(
           : pricingFor(null),
       raw: found.model,
       fetchedAt: now(),
+      family: null,
+      mappedBy: null,
     }
   }
 

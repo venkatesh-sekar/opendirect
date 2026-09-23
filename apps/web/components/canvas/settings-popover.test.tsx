@@ -89,6 +89,8 @@ function descriptorOf(overrides: Partial<ModelDescriptor>): ModelDescriptor {
     pricing: null,
     raw: null,
     fetchedAt: 0,
+    family: null,
+    mappedBy: null,
     ...overrides,
   } as ModelDescriptor
 }

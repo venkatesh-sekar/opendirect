@@ -59,6 +59,8 @@ const descriptor: ModelDescriptor = {
   },
   raw: null,
   fetchedAt: 0,
+  family: null,
+  mappedBy: null,
 }
 
 function deps(overrides: Partial<ModelDescriptor> = {}) {

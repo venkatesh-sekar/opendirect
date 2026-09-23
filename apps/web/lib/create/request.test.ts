@@ -79,6 +79,8 @@ function descriptor(overrides: Partial<ModelDescriptor> = {}): ModelDescriptor {
     },
     raw: null,
     fetchedAt: 0,
+    family: null,
+    mappedBy: null,
     ...overrides,
   }
 }

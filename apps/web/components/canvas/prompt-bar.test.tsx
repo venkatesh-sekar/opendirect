@@ -117,6 +117,8 @@ const descriptor: ModelDescriptor = {
   },
   raw: null,
   fetchedAt: 0,
+  family: null,
+  mappedBy: null,
 } as unknown as ModelDescriptor
 
 const estimated: CostQuote = {

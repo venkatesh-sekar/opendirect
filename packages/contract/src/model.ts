@@ -10,6 +10,12 @@
 import { z } from "zod"
 
 import { providerIdSchema } from "./provider"
+import {
+  familyIdSchema,
+  familyInfoSchema,
+  registrySourceSchema,
+} from "./registry/schema"
+import { referenceRoleSchema } from "./roles"
 
 /** Coarse output modality, used for filtering and for picking a cost basis. */
 export const modelKindSchema = z.enum([
@@ -21,32 +27,11 @@ export const modelKindSchema = z.enum([
 ])
 export type ModelKind = z.output<typeof modelKindSchema>
 
-/**
- * What an input controls in the output. ONE closed list. Rules (design §2,
- * docs/plans/2026-09-24-model-registry-design.md, and CONTRIBUTING.md):
- *  1. A role never encodes the media kind (`soundtrack`, not `audio`).
- *  2. Detail goes in the slot label, never a new role (no `face`).
- *  3. A new role must pass all three tests — controls something no other
- *     role does; ≥2 models from different vendors have it; the UX would
- *     filter or route it differently — otherwise it is `reference`.
- *  4. When unsure, `reference`.
- *  5. Changing this list is a contract change: bump REGISTRY_FORMAT and
- *     cite these rules in the PR.
- */
-export const referenceRoleSchema = z.enum([
-  "source",
-  "mask",
-  "first_frame",
-  "last_frame",
-  "character",
-  "style",
-  "structure",
-  "motion",
-  "soundtrack",
-  "reference",
-])
-export type ReferenceRole = z.output<typeof referenceRoleSchema>
-export const REFERENCE_ROLES = referenceRoleSchema.options
+export {
+  REFERENCE_ROLES,
+  referenceRoleSchema,
+  type ReferenceRole,
+} from "./roles"
 
 /** Pre-registry caches said "unknown"; it now reads as unverified `reference`. */
 const legacyRole = (value: unknown) =>
@@ -224,6 +209,13 @@ export const modelDescriptorSchema = z.object({
   raw: z.unknown(),
   /** Epoch ms the descriptor was fetched, for cache staleness. */
   fetchedAt: z.number(),
+  /** Set on `family:<id>` descriptors only. */
+  family: familyInfoSchema.nullable().default(null),
+  /** Set on a concrete descriptor whose endpoint a registry family maps. */
+  mappedBy: z
+    .object({ familyId: z.string(), source: registrySourceSchema })
+    .nullable()
+    .default(null),
 })
 export type ModelDescriptor = z.output<typeof modelDescriptorSchema>
 
@@ -257,11 +249,11 @@ export function familyKey(id: string): string {
   return `${FAMILY_KEY_PREFIX}${id}`
 }
 
-/** `"family:x"` → `"x"`; null for a provider key or an empty id. */
+/** `"family:x"` → `"x"`; null for a provider key or an id that is not a valid family id. */
 export function parseFamilyKey(key: string): string | null {
   if (!key.startsWith(FAMILY_KEY_PREFIX)) return null
   const id = key.slice(FAMILY_KEY_PREFIX.length)
-  return id.length > 0 ? id : null
+  return familyIdSchema.safeParse(id).success ? id : null
 }
 
 /** A key a node can run: a `provider:slug` or a family key. */

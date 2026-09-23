@@ -8,5 +8,11 @@
     "types": []
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    // Imports the desktop Replicate adapter (Node APIs), so the root
+    // tsconfig, which has Node types, checks it instead.
+    "src/registry/check.test.ts"
+  ]
 }

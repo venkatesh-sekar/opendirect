@@ -73,6 +73,8 @@ function descriptor(provider: ProviderId, slug: string): ModelDescriptor {
     },
     raw: null,
     fetchedAt: NOW,
+    family: null,
+    mappedBy: null,
   }
 }
 
