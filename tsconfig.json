@@ -5,8 +5,12 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["vitest.config.ts", "vitest.setup.ts", "test/**/*.ts"],
-  // Imports the desktop Replicate adapter, so it needs this config's Node
-  // types; `files` is not subject to `exclude`.
-  "files": ["packages/contract/src/registry/check.test.ts"],
+  // These import the desktop provider adapters, so they need this config's
+  // Node types; `files` is not subject to `exclude`.
+  "files": [
+    "packages/contract/src/registry/check.test.ts",
+    "packages/contract/src/registry/family-schema.test.ts",
+    "packages/contract/src/registry/suggest.test.ts"
+  ],
   "exclude": ["node_modules", "apps", "packages"]
 }

@@ -11,8 +11,10 @@
   "exclude": [
     "node_modules",
     "dist",
-    // Imports the desktop Replicate adapter (Node APIs), so the root
-    // tsconfig, which has Node types, checks it instead.
-    "src/registry/check.test.ts"
+    // These import the desktop provider adapters (Node APIs), so the root
+    // tsconfig, which has Node types, checks them instead.
+    "src/registry/check.test.ts",
+    "src/registry/family-schema.test.ts",
+    "src/registry/suggest.test.ts"
   ]
 }
