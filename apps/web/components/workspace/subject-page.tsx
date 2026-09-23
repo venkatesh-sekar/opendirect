@@ -24,6 +24,7 @@ import {
   StarIcon,
 } from "@hugeicons/core-free-icons"
 import type {
+  AssetDto,
   ContainerNodeDto,
   ContainerSummaryDto,
 } from "@opendirect/contract"
@@ -108,22 +109,30 @@ export function Breadcrumb({
 }
 
 /**
- * The picture at the top left: the first reference — the character sheet —
- * for a character; the card's cover for a scene.
+ * The container's face: the first reference — the character sheet — for a
+ * character; the card's cover for a scene. The header and the generate
+ * panel's identity row both wear this one picture.
  */
+function useFace(
+  node: ContainerNodeDto,
+  summary: ContainerSummaryDto | null
+): AssetDto | null {
+  const character = node.kind === "character"
+  const sheet = useAsset(
+    character ? (node.referenceAssetIds?.[0] ?? null) : null
+  )
+  return character ? (sheet.data ?? null) : (summary?.coverAsset ?? null)
+}
+
+/** The picture at the top left. */
 function Cover({
   node,
-  summary,
+  cover,
 }: {
   node: ContainerNodeDto
-  summary: ContainerSummaryDto | null
+  cover: AssetDto | null
 }) {
   const kind = node.kind as Subject
-  const sheetId =
-    kind === "character" ? (node.referenceAssetIds?.[0] ?? null) : null
-  const sheet = useAsset(sheetId)
-  const cover =
-    kind === "character" ? (sheet.data ?? null) : summary?.coverAsset
   return (
     <div
       className={cn(
@@ -227,6 +236,7 @@ export function SubjectPage({
   const [editing, setEditing] = useState(false)
   const [generating, setGenerating] = useState(false)
   const references = useSetContainerReferences()
+  const face = useFace(node, summary)
 
   const saveReferences = (assetIds: string[] | null) =>
     references.mutate(
@@ -273,7 +283,7 @@ export function SubjectPage({
         generating ? (
           <GeneratePanel
             node={node}
-            cover={summary?.coverAsset ?? null}
+            cover={face}
             onClose={() => setGenerating(false)}
             onSubmitted={() =>
               router.replace(containerHref(node.id, "generations"), {
@@ -286,7 +296,7 @@ export function SubjectPage({
     >
       <div className="flex flex-col gap-7">
         <div className="flex flex-wrap items-start gap-8">
-          <Cover node={node} summary={summary} />
+          <Cover node={node} cover={face} />
           <div className="flex max-w-155 min-w-0 flex-1 flex-col gap-3">
             {editing ? (
               <ContainerDetailsForm

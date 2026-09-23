@@ -46,7 +46,11 @@ const { ContainerScreen } = await import("./container-screen")
 const { forgetFilingContainer, lastFilingContainer } =
   await import("@/lib/canvas/filing")
 
-const SHEET = asset({ id: "sheet", label: "Sheet" })
+const SHEET = asset({
+  id: "sheet",
+  label: "Sheet",
+  url: "asset://media/sheet.png",
+})
 const SIDE = asset({ id: "side", label: "Side view" })
 const MADE = asset({ id: "made", label: "Rooftop", generationId: "g-done" })
 const UPLOAD = asset({ id: "upload", label: "Upload" })
@@ -472,6 +476,36 @@ describe("a character's page", () => {
     expect(screen.getByLabelText("Prompt")).toHaveValue("@mira ")
     expect(calls("generations:submitBatch")).toHaveLength(0)
     expect(calls("generations:submit")).toHaveLength(0)
+  })
+
+  it("wears the character sheet in the panel, as in the header", async () => {
+    const user = userEvent.setup()
+    mount("mira")
+    // The card's cover is some other image; the sheet is the first reference.
+    const answer = invoke.getMockImplementation()!
+    invoke.mockImplementation((channel: string, payload?: unknown) =>
+      channel === "containers:summaries"
+        ? Promise.resolve([
+            summary({
+              id: "mira",
+              coverAsset: asset({ id: "other", url: "asset://media/o.png" }),
+            }),
+          ])
+        : answer(channel, payload)
+    )
+
+    await user.click(
+      await screen.findByRole("button", { name: "Generate with @mira" })
+    )
+    const panel = await screen.findByRole("complementary", {
+      name: "Generate with @mira",
+    })
+    await waitFor(() =>
+      expect(panel.querySelector("img")).toHaveAttribute(
+        "src",
+        "asset://media/sheet.png"
+      )
+    )
   })
 
   it("lists its own runs on the Generations tab, running first", async () => {
