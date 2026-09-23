@@ -205,6 +205,12 @@ export const generationPageSchema = z.object({
   items: z.array(generationSchema),
   total: z.number(),
   nextOffset: z.number().nullable(),
+  /**
+   * The assets the runs on this page produced, oldest first. A run's tile needs
+   * its picture, and the project-wide list spans containers — so there is no
+   * one `assets:list` the renderer could join it against.
+   */
+  outputs: z.array(assetSchema).default([]),
 })
 export type GenerationPageDto = z.output<typeof generationPageSchema>
 

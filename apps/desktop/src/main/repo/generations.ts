@@ -313,6 +313,8 @@ export interface GenerationPage {
   items: GenerationDto[]
   total: number
   nextOffset: number | null
+  /** The files the runs on this page produced — see `generationPageSchema`. */
+  outputs: AssetDto[]
 }
 
 export const DEFAULT_PAGE_SIZE = 40
@@ -346,11 +348,30 @@ export function listByContainer(
     .offset(offset)
     .all()
 
+  // One query for the page's outputs rather than one per run: the project-wide
+  // list has no container whose assets could be joined in the renderer.
+  const outputs =
+    rows.length === 0
+      ? []
+      : db
+          .select()
+          .from(assets)
+          .where(
+            inArray(
+              assets.generationId,
+              rows.map((row) => row.id)
+            )
+          )
+          .orderBy(asc(assets.createdAt), asc(assets.id))
+          .all()
+          .map(toAssetDto)
+
   const nextOffset = offset + rows.length
   return {
     items: rows.map(toGenerationDto),
     total,
     nextOffset: nextOffset < total ? nextOffset : null,
+    outputs,
   }
 }
 

@@ -249,6 +249,41 @@ describe("listByContainer", () => {
     expect(firstPage.items.map((item) => item.id)).toEqual([elsewhere, unfiled])
     expect(firstPage.nextOffset).toBe(2)
   })
+
+  it("carries the output assets of the runs on the page, and only those", async () => {
+    const older = make({ now: 1_000 })
+    const newer = make({ now: 2_000 })
+    const pending = make({ now: 3_000 })
+    for (const run of [older, newer]) {
+      const relPath = assetRelPath({
+        source: "generation",
+        generationId: run.id,
+        index: 0,
+        ext: "txt",
+      })
+      const target = join(opened.project.path, relPath)
+      await mkdir(dirname(target), { recursive: true })
+      await writeFile(target, run.id)
+      await attachOutputs(
+        { db: opened.handle.db, project: opened.project },
+        {
+          generationId: run.id,
+          outputs: [{ relPath, kind: "image" }],
+          thumbnailer: async () => ({
+            relPath: null,
+            width: null,
+            height: null,
+          }),
+        }
+      )
+    }
+
+    const page = listByContainer(opened.handle.db, { limit: 2 })
+    expect(page.items.map((item) => item.id)).toEqual([pending.id, newer.id])
+    // The older run fell off the page, so its output is not carried either.
+    expect(page.outputs.map((asset) => asset.generationId)).toEqual([newer.id])
+    expect(page.outputs[0]!.url).toMatch(/^asset:\/\//)
+  })
 })
 
 describe("lineage", () => {
