@@ -190,6 +190,12 @@ describe("chooseEndpoint", () => {
     )
   })
 
+  it("does not read an inherited property as an input", () => {
+    const choice = chooseEndpoint(seedance, input({ filled: ["constructor"] }))
+    expect(choice.ok).toBe(false)
+    if (!choice.ok) expect(choice.unsupported).toEqual(["constructor"])
+  })
+
   it("prefers an endpoint whose required inputs are filled", () => {
     // A requires first_frame; B requires nothing — with nothing filled, B.
     const choice = chooseEndpoint(twoEndpoints, input())

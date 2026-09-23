@@ -120,7 +120,7 @@ function candidateEndpoints(
 }
 
 function covers(endpoint: MappingEndpoint, keys: readonly string[]): boolean {
-  return keys.every((key) => key in endpoint.inputs)
+  return keys.every((key) => Object.hasOwn(endpoint.inputs, key))
 }
 
 function missingRequired(
@@ -202,6 +202,10 @@ export function chooseEndpoint(
     }
   }
 
+  // An endpoint with every required input filled can run now, so it wins
+  // across providers — even over an earlier provider's endpoint that would
+  // still need an input. Only when none is complete does the first covering
+  // endpoint win, and the choice reports what it is missing.
   const covering = candidates.filter(({ endpoint }) => covers(endpoint, filled))
   const complete = covering.find(
     ({ endpoint }) => missingRequired(endpoint, filled).length === 0
@@ -219,7 +223,8 @@ export function chooseEndpoint(
   // No endpoint takes them together. Name the keys none takes at all, or —
   // when each fits somewhere but not together — every filled key.
   const alone = filled.filter(
-    (key) => !candidates.some(({ endpoint }) => key in endpoint.inputs)
+    (key) =>
+      !candidates.some(({ endpoint }) => Object.hasOwn(endpoint.inputs, key))
   )
   const unsupported = alone.length > 0 ? alone : filled
   const labels = listOf(unsupported.map((key) => slotLabel(family, key)))
@@ -318,7 +323,9 @@ export function slotAvailability(
       result[key] = { available: true, reason: null }
       continue
     }
-    if (!candidates.some(({ endpoint }) => key in endpoint.inputs)) {
+    if (
+      !candidates.some(({ endpoint }) => Object.hasOwn(endpoint.inputs, key))
+    ) {
       result[key] = { available: false, reason: `Not available on ${where}` }
       continue
     }

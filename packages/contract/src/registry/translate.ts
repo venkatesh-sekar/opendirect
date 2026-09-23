@@ -19,6 +19,7 @@
  * only to price a run.
  */
 import type { GenerationReference } from "../generation"
+import { coerceToSchemaType } from "./coerce"
 import { PROVIDER_NAMES, slotLabel } from "./resolve"
 import {
   CONTROL_NAMES,
@@ -71,49 +72,6 @@ function isControlName(key: string): key is ControlName {
   return (CONTROL_NAMES as readonly string[]).includes(key)
 }
 
-function typesOf(property: unknown): string[] {
-  if (!isObject(property)) return []
-  const type = property.type
-  if (typeof type === "string") return [type]
-  return Array.isArray(type) ? type.filter((t) => typeof t === "string") : []
-}
-
-/**
- * Canonical values travel as the UI holds them (`"5"`, `"true"`); the
- * provider wants its schema's type. Anything that does not convert cleanly
- * is left as it is, for the provider to judge.
- */
-function coerce(value: unknown, property: unknown): unknown {
-  const types = typesOf(property)
-  if (types.length === 0 || types.includes(typeof value)) return value
-  if (typeof value === "number" && Number.isInteger(value)) {
-    if (types.includes("integer")) return value
-  }
-  if (typeof value === "string") {
-    const trimmed = value.trim()
-    if (types.includes("integer") && /^-?\d+$/.test(trimmed)) {
-      return Number(trimmed)
-    }
-    if (types.includes("number") && trimmed !== "") {
-      const number = Number(trimmed)
-      if (Number.isFinite(number)) return number
-    }
-    if (
-      types.includes("boolean") &&
-      (trimmed === "true" || trimmed === "false")
-    ) {
-      return trimmed === "true"
-    }
-  }
-  if (
-    types.includes("string") &&
-    (typeof value === "number" || typeof value === "boolean")
-  ) {
-    return String(value)
-  }
-  return value
-}
-
 function controlLabel(name: string): string {
   return name.replaceAll("_", " ")
 }
@@ -135,6 +93,9 @@ function translateParams(
   const countField = endpoint.controls.count?.field
 
   const out: Record<string, unknown> = {}
+  // Unmapped canonical controls sent under their own field name; a raw
+  // field may not overwrite one either.
+  const passedThrough = new Set<string>()
   const raw: Array<[string, unknown]> = []
 
   for (const [key, value] of Object.entries(input.params)) {
@@ -157,8 +118,9 @@ function translateParams(
       if (name === "prompt" && (value === "" || value === null)) continue
       // Unmapped here, but the endpoint has a field of that very name: the
       // family schema showed it under Advanced as itself.
-      if (key in properties && !mappedFields.has(key)) {
-        out[key] = coerce(value, properties[key])
+      if (Object.hasOwn(properties, key) && !mappedFields.has(key)) {
+        out[key] = coerceToSchemaType(value, properties[key])
+        passedThrough.add(key)
         continue
       }
       throw new RegistryTranslationError(
@@ -173,9 +135,12 @@ function translateParams(
           `${where}: ${canonical} is not a ${controlLabel(name)} this endpoint takes (${Object.keys(control.values).join(", ")})`
         )
       }
-      out[control.field] = control.values[canonical]
+      out[control.field] = coerceToSchemaType(
+        control.values[canonical],
+        properties[control.field]
+      )
     } else {
-      out[control.field] = coerce(value, properties[control.field])
+      out[control.field] = coerceToSchemaType(value, properties[control.field])
     }
   }
 
@@ -186,7 +151,12 @@ function translateParams(
         `${where} may not overwrite the mapped field ${field}`
       )
     }
-    if (!(field in properties)) {
+    if (passedThrough.has(field)) {
+      throw new RegistryTranslationError(
+        `${where} may not overwrite the field ${field}`
+      )
+    }
+    if (!Object.hasOwn(properties, field)) {
       throw new RegistryTranslationError(`${where} has no ${field} field`)
     }
     out[field] = value

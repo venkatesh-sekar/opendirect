@@ -132,7 +132,10 @@ describe("checkEndpointAgainstSchema", () => {
     expect(
       checkEndpointAgainstSchema(
         map({
-          duration: { field: "duration", values: { "7": "7", five: "five" } },
+          duration: {
+            field: "duration",
+            values: { "7": "7", five: "five", hex: "0x5", float: "5.0" },
+          },
           resolution: { field: "resolution", values: { hd: 720 } },
           generate_audio: { field: "generate_audio", values: { off: "false" } },
         }),
@@ -141,6 +144,8 @@ describe("checkEndpointAgainstSchema", () => {
     ).toEqual([
       "controls.duration.values.7",
       "controls.duration.values.five",
+      "controls.duration.values.hex",
+      "controls.duration.values.float",
       "controls.resolution.values.hd",
       "controls.generate_audio.values.off",
     ])

@@ -6,6 +6,7 @@
  * mapping editor, so a typo is caught the same way everywhere. Pure; never
  * fetches.
  */
+import { coerceToSchemaType } from "./coerce"
 import type { MappingEndpoint } from "./schema"
 
 export interface SchemaIssue {
@@ -31,26 +32,6 @@ function isArray(schema: unknown): boolean {
 
 function isUriArray(schema: unknown): boolean {
   return isArray(schema) && isUriString((schema as JsonObject).items)
-}
-
-/**
- * The value translation actually sends: a string is coerced to the
- * property's JSON-Schema type (`"5"` → 5 for integer/number when numeric,
- * `"true"`/`"false"` → boolean); anything else is left untouched. The check
- * compares after this, so `"5"` fits an enum of `[5]` exactly when
- * translation would send 5.
- */
-function coerceToSchemaType(value: unknown, property: JsonObject): unknown {
-  if (typeof value !== "string") return value
-  const type = property.type
-  if ((type === "integer" || type === "number") && value.trim() !== "") {
-    const number = Number(value)
-    if (Number.isFinite(number)) return number
-  }
-  if (type === "boolean" && (value === "true" || value === "false")) {
-    return value === "true"
-  }
-  return value
 }
 
 export function checkEndpointAgainstSchema(
@@ -120,6 +101,9 @@ export function checkEndpointAgainstSchema(
     if (!isObject(property)) continue
     const allowed = property.enum
     if (!Array.isArray(allowed) || control.values === undefined) continue
+    // Translation sends a mapped value through `coerceToSchemaType`, so the
+    // check compares the same coerced value: `"5"` fits an enum of `[5]`
+    // exactly when translation would send 5.
     for (const [canonical, value] of Object.entries(control.values)) {
       if (!allowed.includes(coerceToSchemaType(value, property))) {
         issues.push({

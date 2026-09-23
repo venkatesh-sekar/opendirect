@@ -859,17 +859,24 @@ export function translateFamilyParams(input: Omit<TranslateInput, "references">)
 Translation rules, each with a test:
 - A canonical control with a mapping becomes `field`. With `values`, the
   value is looked up. A miss throws `"<Family> on <Provider>: <value> is not
-  a <control> this endpoint takes (<allowed>)"`. Without `values`, the value
-  is coerced to the property's JSON-Schema `type` (`"5"` → 5 for
-  integer/number when numeric, `"true"`/`"false"` → boolean). Otherwise it is
-  left untouched.
-- A canonical control this endpoint does not map throws
+  a <control> this endpoint takes (<allowed>)"`. The value sent — looked up
+  or not — is coerced to the property's JSON-Schema `type` by the one shared
+  helper (`registry/coerce.ts`, also used by `check.ts`): a strict decimal
+  integer/number string → number, `"true"`/`"false"` → boolean, a
+  number/boolean → string for a string field. Otherwise it is left
+  untouched, for the provider to reject.
+- A canonical control this endpoint does not map passes through when the
+  endpoint schema has a field of that same name that nothing maps (the
+  family schema keeps it under Advanced under its own name); it is coerced
+  the same way. Otherwise it throws
   `"<Family> on <Provider> has no <control> control"`. Exception: `prompt`
   with an empty string is dropped (an empty prompt is "unset").
 - `raw:<name>` → `<name>`. A bare key that is neither a control nor a mapped
   field passes through. A raw key must exist in the schema properties. A raw
   key equal to a mapped input or control field throws "…may not overwrite
-  the mapped field <f>" (design §5.4). Raw values merge **last**.
+  the mapped field <f>" (design §5.4); one equal to a passed-through
+  canonical control throws "…may not overwrite the field <f>". Raw values
+  merge **last**.
 - A reference whose slot key is not in `endpoint.inputs` throws
   `"<Family> on <Provider> cannot take a <Role label> input"` (design §5.5).
   More references than `max` throws. A missing required input throws.

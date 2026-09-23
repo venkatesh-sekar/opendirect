@@ -144,6 +144,31 @@ describe("translateFamilyRequest — controls", () => {
     expect(out.params).toEqual({ seed: "abc" })
   })
 
+  it("coerces a `values`-mapped value to the schema's type", () => {
+    const withValues = {
+      ...replicate,
+      controls: {
+        ...replicate.controls,
+        duration: { field: "duration", values: { "5": "5" } },
+      },
+    }
+    const schema = {
+      ...replicateSchema,
+      properties: {
+        ...replicateSchema.properties,
+        duration: { type: "integer", enum: [5] },
+      },
+    }
+    const out = translateFamilyRequest(
+      onReplicate({
+        endpoint: withValues,
+        endpointSchema: schema,
+        params: { duration: "5" },
+      })
+    )
+    expect(out.params).toEqual({ duration: 5 })
+  })
+
   it("accepts the count under its provider field name, as planBatch sets it", () => {
     const out = translateFamilyRequest(
       onReplicate({ params: { num_outputs: 3 } })
@@ -174,6 +199,19 @@ describe("translateFamilyRequest — controls", () => {
       })
     )
     expect(out.params).toEqual({ seed: 7 })
+  })
+
+  it("rejects a raw field that would overwrite a passed-through control", () => {
+    expect(() =>
+      translateFamilyRequest(
+        onReplicate({
+          endpoint: openrouter,
+          endpointSchema: openrouterSchema,
+          params: { seed: 7, "raw:seed": 8 },
+          references: [asset("first_frame")],
+        })
+      )
+    ).toThrow("Seedance 2.5 on OpenRouter may not overwrite the field seed")
   })
 
   it("drops an empty prompt on an endpoint with no prompt, which means unset", () => {

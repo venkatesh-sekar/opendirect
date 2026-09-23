@@ -94,6 +94,29 @@ describe("bundled registry", () => {
     }
   })
 
+  it.each(files)("%s bounds no input above the schema's maxItems", (file) => {
+    const { family } = readFamily(file)
+    const over: string[] = []
+    for (const endpoint of family.endpoints) {
+      const schema = fixtureInputSchema(endpoint.provider, endpoint.model)
+      const properties = (schema?.properties ?? {}) as Record<
+        string,
+        { maxItems?: unknown } | undefined
+      >
+      for (const [key, input] of Object.entries(endpoint.inputs)) {
+        if (input.max === undefined) continue
+        const property = properties[input.field]
+        const maxItems = property?.maxItems
+        if (typeof maxItems === "number" && input.max > maxItems) {
+          over.push(
+            `${endpoint.provider}:${endpoint.model} inputs.${key}.max is ${input.max}, but "${input.field}" takes at most ${maxItems}`
+          )
+        }
+      }
+    }
+    expect(over).toEqual([])
+  })
+
   it("index, files on disk and bundled.ts list the same families", () => {
     const index = registryIndexSchema.parse(
       JSON.parse(readFileSync(resolve(REGISTRY, "index.json"), "utf8"))
