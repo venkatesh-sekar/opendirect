@@ -88,7 +88,8 @@ export function ScenesScreen() {
 /** How many runs a page of `/generations/` adds. */
 const PAGE = 60
 
-function TileGrid({
+/** Runs as a fluid grid of 4:5 tiles. */
+export function TileGrid({
   tiles,
   onOpen,
 }: {
@@ -109,7 +110,8 @@ function TileGrid({
   )
 }
 
-function DayGroup({
+/** One day's runs, or the running ones, under a small caps label. */
+export function DayGroup({
   label,
   children,
 }: {

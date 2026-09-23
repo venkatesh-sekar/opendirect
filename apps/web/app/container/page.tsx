@@ -5,9 +5,13 @@ import { useSearchParams } from "next/navigation"
 
 import { ContainerScreen } from "@/components/workspace/container-screen"
 
-/** `/container/?id=` — the static export has no `[id]` segments. */
+/**
+ * `/container/?id=&tab=` — the static export has no `[id]` segments, so the
+ * container and its open tab both travel in the query string.
+ */
 function Screen() {
-  return <ContainerScreen id={useSearchParams().get("id")} />
+  const params = useSearchParams()
+  return <ContainerScreen id={params.get("id")} tab={params.get("tab")} />
 }
 
 /**

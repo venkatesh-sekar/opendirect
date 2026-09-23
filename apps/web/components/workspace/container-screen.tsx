@@ -1,45 +1,80 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo } from "react"
 import Link from "next/link"
-import { Button } from "@workspace/ui/components/button"
+import type {
+  ContainerNodeDto,
+  ContainerSummaryDto,
+} from "@opendirect/contract"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import { useContainerSummaries, useContainerTree } from "@/hooks/use-containers"
 import { findContainer } from "@/lib/board/sidebar-tree"
 import { rememberFilingContainer } from "@/lib/canvas/filing"
+import { statsLine } from "@/lib/workspace/container-page"
 
-import { AssetTile } from "@/components/canvas/nodes/asset-tile"
-import { SubjectLibrary } from "@/components/shell/subject-library"
-
+import { AssetLibrary } from "./asset-library"
 import { EmptySection } from "./container-card"
 import { OpenCanvasButton } from "./home"
+import { Breadcrumb, SubjectPage } from "./subject-page"
 import { WorkspacePage } from "./workspace-page"
 
-const SECTION = {
-  character: { label: "Characters", href: "/characters/" },
-  scene: { label: "Scenes", href: "/scenes/" },
-  folder: { label: "Folders", href: null },
-  project: { label: "Project", href: null },
-} as const
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`
+/**
+ * A folder's page: its name, its counts and its assets. Folders have no
+ * handle, no references and nothing to generate with — they are where things
+ * are filed — so the canvas is the one place to go from here.
+ */
+function FolderPage({
+  node,
+  summary,
+}: {
+  node: ContainerNodeDto
+  summary: ContainerSummaryDto | null
+}) {
+  return (
+    <WorkspacePage
+      title={<Breadcrumb section="Folders" href={null} name={node.name} />}
+      actions={<OpenCanvasButton focus={node.id} />}
+    >
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-2xl font-semibold tracking-tight">{node.name}</h2>
+          {node.description ? (
+            <p className="max-w-prose text-sm text-muted-foreground">
+              {node.description}
+            </p>
+          ) : null}
+          {summary ? (
+            <p className="text-xs text-muted-foreground">
+              {statsLine(summary)}
+            </p>
+          ) : null}
+        </div>
+        <AssetLibrary node={node} />
+      </div>
+    </WorkspacePage>
+  )
 }
 
 /**
- * `/container/?id=` — interim.
+ * `/container/?id=` — dispatches on the container's kind: a character or a
+ * scene gets its own page with the generate panel, a folder a plain asset
+ * grid.
  *
- * The character, scene and folder pages are the next phase of the workspace
- * design. Until they land, a sidebar row or a card still has somewhere real to
- * go: the container's name, handle, description and counts, a way onto the
- * canvas framed on it, and the reference library that used to open straight
- * from the row — now behind a button, because a click on a row is navigation.
+ * The page replaces the old library dialog a sidebar row used to open. Its
+ * reference picking, importing and "generate with this" now live on the page
+ * itself, and none of it spends money without the panel's Generate click.
  */
-export function ContainerScreen({ id }: { id: string | null }) {
+export function ContainerScreen({
+  id,
+  tab = null,
+}: {
+  id: string | null
+  /** `&tab=` — the character or scene page's open tab. */
+  tab?: string | null
+}) {
   const tree = useContainerTree()
   const summaries = useContainerSummaries()
-  const [library, setLibrary] = useState(false)
 
   const node = useMemo(
     () => (id && tree.data ? findContainer(tree.data, id) : null),
@@ -77,77 +112,15 @@ export function ContainerScreen({ id }: { id: string | null }) {
     )
   }
 
-  const section = SECTION[node.kind]
-  const mentionable = node.kind === "character" || node.kind === "scene"
-  const cover = summary?.coverAsset ?? null
-
-  return (
-    <WorkspacePage
-      title={
-        <span className="flex items-center gap-1.5">
-          {section.href ? (
-            <Link
-              href={section.href}
-              className="font-normal text-muted-foreground hover:text-foreground"
-            >
-              {section.label}
-            </Link>
-          ) : (
-            <span className="font-normal text-muted-foreground">
-              {section.label}
-            </span>
-          )}
-          <span aria-hidden className="text-muted-foreground">
-            /
-          </span>
-          <span>{node.name}</span>
-        </span>
-      }
-      actions={
-        <>
-          <OpenCanvasButton focus={node.id} />
-          {mentionable ? (
-            <Button size="sm" onClick={() => setLibrary(true)}>
-              Open library
-            </Button>
-          ) : null}
-        </>
-      }
-    >
-      <div className="flex flex-wrap items-start gap-8">
-        <div
-          aria-hidden
-          className="w-72 shrink-0 overflow-hidden rounded-lg bg-muted"
-          style={{
-            aspectRatio: node.kind === "character" ? "3 / 4" : "16 / 9",
-          }}
-        >
-          {cover ? <AssetTile asset={cover} className="size-full" /> : null}
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-3">
-          <h2 className="text-2xl font-semibold tracking-tight">{node.name}</h2>
-          {node.handle ? (
-            <span className="self-start rounded-md bg-muted px-2 py-0.5 font-mono text-sm">
-              @{node.handle}
-            </span>
-          ) : null}
-          {node.description ? (
-            <p className="max-w-prose text-sm text-muted-foreground">
-              {node.description}
-            </p>
-          ) : null}
-          {summary ? (
-            <p className="text-sm text-muted-foreground">
-              {plural(summary.assetCount, "asset")} ·{" "}
-              {plural(summary.generationCount, "generation")}
-            </p>
-          ) : null}
-        </div>
-      </div>
-
-      {library ? (
-        <SubjectLibrary node={node} onClose={() => setLibrary(false)} />
-      ) : null}
-    </WorkspacePage>
-  )
+  switch (node.kind) {
+    case "character":
+    case "scene":
+      // Keyed, so moving from one character to another starts the page —
+      // an open panel, a half-finished edit — afresh.
+      return (
+        <SubjectPage key={node.id} node={node} summary={summary} tab={tab} />
+      )
+    default:
+      return <FolderPage node={node} summary={summary} />
+  }
 }
