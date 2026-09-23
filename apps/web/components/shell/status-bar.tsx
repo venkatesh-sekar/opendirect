@@ -36,12 +36,20 @@ export function updaterLabel(status: UpdaterStatus | null): string | null {
       return `Downloading update — ${status.percent}%`
     case "ready":
       return `Update ${status.version} ready`
+    // The message goes in a tooltip, never the strip: electron-updater's can
+    // carry a whole HTTP response and would wrap over the window.
     case "error":
-      return `Update check failed: ${status.message}`
+      return "Couldn't check for updates"
     // "Up to date" is not news; a strip that says it forever is noise.
     case "not-available":
       return null
   }
+}
+
+/** An updater error's first line, short enough for a tooltip. */
+export function updaterErrorDetail(message: string): string {
+  const firstLine = message.split("\n")[0]?.trim() ?? ""
+  return firstLine.length > 200 ? `${firstLine.slice(0, 199)}…` : firstLine
 }
 
 /** The installed CLIs, named — or nothing at all when there are none. */
@@ -98,7 +106,24 @@ export function StatusBar() {
         </Tooltip>
       ) : null}
 
-      {update ? (
+      {update && updater.status?.state === "error" ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="inline-flex items-center gap-1.5">
+                <HugeiconsIcon
+                  icon={DownloadCircle01Icon}
+                  className="size-3.5"
+                />
+                {update}
+              </span>
+            }
+          />
+          <TooltipContent className="max-w-sm">
+            {updaterErrorDetail(updater.status.message)}
+          </TooltipContent>
+        </Tooltip>
+      ) : update ? (
         <span className="inline-flex items-center gap-1.5">
           <HugeiconsIcon icon={DownloadCircle01Icon} className="size-3.5" />
           {update}
