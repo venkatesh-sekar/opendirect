@@ -1038,18 +1038,27 @@ describe("the full prompt panel", () => {
     expect(screen.getByTestId("full-prompt").textContent).toBe(sent)
   })
 
-  it("shows a mention substituted, and the note still marked", async () => {
+  it("shows a mention substituted, and the note after it still marked", async () => {
     const user = userEvent.setup()
-    renderBar()
-
-    await user.type(await screen.findByLabelText("Prompt"), "a shot of @venkz")
+    // The mention comes *before* the note, so the note's range has to move by
+    // however much longer the substitution is than `@venkz`.
+    renderBar(WIRED, {
+      ...TARGET,
+      text: JSON.stringify({
+        prompt: "a shot of @venkz",
+        modelKey: MODEL_KEY,
+        common: { resolution: "720p", duration: 5 },
+        advanced: {},
+        count: 1,
+        blocks: [
+          { kind: "text", text: "a shot of @venkz" },
+          { kind: "note", nodeId: "note" },
+        ],
+      }),
+    })
 
     const box = screen.getByTestId("full-prompt")
-    await waitFor(() =>
-      expect(box.textContent).toBe(
-        "a bellhop opens the lift\n\na shot of Venkz (the person in reference image 2)"
-      )
-    )
+    await waitFor(() => expect(box.textContent).toContain("Venkz ("))
     expect(box.textContent).not.toContain("@venkz")
     const fromNote = box.querySelectorAll("[data-from-note]")
     expect([...fromNote].map((piece) => piece.textContent)).toEqual([
@@ -1059,6 +1068,17 @@ describe("the full prompt panel", () => {
     expect(screen.getByTestId("full-prompt-stats")).toHaveTextContent(
       "1 notes · 2 images"
     )
+
+    const run = screen.getByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.click(run)
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    const sent = (submissions()[0]![1] as { request: { prompt: string } })
+      .request.prompt
+    expect(sent).toBe(
+      "a shot of Venkz (the person in reference image 2)\n\na bellhop opens the lift"
+    )
+    expect(box.textContent).toBe(sent)
   })
 
   it("opens an input's gallery from its chip", async () => {
@@ -1079,6 +1099,8 @@ describe("the full prompt panel", () => {
 
     const toggle = await screen.findByRole("button", { name: "Full prompt" })
     expect(toggle).toHaveAttribute("aria-pressed", "false")
+    // It controls nothing while there is nothing to control.
+    expect(toggle).not.toHaveAttribute("aria-controls")
     expect(screen.queryByTestId("full-prompt-panel")).not.toBeInTheDocument()
   })
 

@@ -6,7 +6,14 @@ import "@testing-library/jest-dom/vitest"
  * cut where the blocks were, with nothing of its own added or taken away.
  * ⛔ Nothing in this file submits or spends.
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -31,7 +38,17 @@ function renderPanel(over: Partial<FullPromptPanelProps> = {}) {
   return render(<FullPromptPanel {...PROPS} {...over} />)
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
+
+function stubClipboard(writeText: (text: string) => Promise<void>) {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  })
+}
 
 describe("FullPromptPanel", () => {
   it("counts characters, words, notes and images", () => {
@@ -110,6 +127,39 @@ describe("FullPromptPanel", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Copied" })).toBeVisible()
     )
+  })
+
+  it("says Copy again 1.4s after Copied", async () => {
+    vi.useFakeTimers()
+    stubClipboard(async () => {})
+    renderPanel()
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await act(async () => {})
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(1399))
+    expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+  })
+
+  it("starts no timer when it is closed before the copy settles", async () => {
+    vi.useFakeTimers()
+    let settle = () => {}
+    stubClipboard(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve
+        })
+    )
+    const { unmount } = renderPanel()
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    unmount()
+    await act(async () => settle())
+
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it("opens an input's gallery from its chip", async () => {

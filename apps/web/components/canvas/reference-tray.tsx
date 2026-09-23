@@ -94,6 +94,11 @@ export interface CanvasReferenceStripProps {
    */
   galleryFor: string | null
   onGalleryChange: (field: string | null) => void
+  /**
+   * `groupStrip` of the props above, when the caller has already computed it
+   * — the bar does, for the Full prompt panel's chips. Computed here if not.
+   */
+  groups?: StripGroup[]
 }
 
 /** One wire into this node, as a thumbnail. */
@@ -363,6 +368,7 @@ export function CanvasReferenceStrip({
   mentions = [],
   galleryFor,
   onGalleryChange,
+  groups: given,
 }: CanvasReferenceStripProps) {
   const client = useQueryClient()
   const surface = useCanvasSurface()
@@ -375,7 +381,7 @@ export function CanvasReferenceStrip({
     capacity: number | null
   } | null>(null)
 
-  const groups = groupStrip(node, canvas, slots, mentions)
+  const groups = given ?? groupStrip(node, canvas, slots, mentions)
   const total = groups.reduce((sum, group) => sum + group.items.length, 0)
   const headed = slots.length > 1 || groups.some((group) => !group.slot)
   const gallery = groups.find((group) => groupKey(group) === galleryFor)

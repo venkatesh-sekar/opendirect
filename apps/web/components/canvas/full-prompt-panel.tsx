@@ -93,12 +93,15 @@ export function FullPromptPanel({
   const [highlight, setHighlight] = useState(true)
   const [copied, setCopied] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(
-    () => () => {
+  /** False once unmounted: a clipboard write can settle after the panel closes. */
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
       if (timer.current) clearTimeout(timer.current)
-    },
-    []
-  )
+    }
+  }, [])
 
   const copy = async () => {
     try {
@@ -106,6 +109,7 @@ export function FullPromptPanel({
     } catch {
       /* A refused clipboard is not worth an error on a read-out. */
     }
+    if (!mounted.current) return
     setCopied(true)
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => setCopied(false), COPIED_FOR_MS)

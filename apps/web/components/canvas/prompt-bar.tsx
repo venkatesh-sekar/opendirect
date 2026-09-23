@@ -544,14 +544,20 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       })),
     [blocks, mentions.outcomes, rendered]
   )
-  const imageInputs = useMemo<FullPromptPanelProps["inputs"]>(
+  /** The strip's groups, computed once for the strip and the panel's chips. */
+  const stripGroups = useMemo(
     () =>
       groupStrip(
         node,
         canvas,
         descriptor?.referenceSlots ?? [],
         mentions.outcomes
-      ).flatMap((group) =>
+      ),
+    [canvas, descriptor, mentions.outcomes, node]
+  )
+  const imageInputs = useMemo<FullPromptPanelProps["inputs"]>(
+    () =>
+      stripGroups.flatMap((group) =>
         group.slot && group.items.length > 0
           ? [
               {
@@ -562,7 +568,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             ]
           : []
       ),
-    [canvas, descriptor, mentions.outcomes, node]
+    [stripGroups]
   )
 
   /**
@@ -826,6 +832,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           mentions={mentions.outcomes}
           galleryFor={galleryFor}
           onGalleryChange={setGalleryFor}
+          groups={stripGroups}
         />
 
         {/* ---- the prompt ------------------------------------------------
@@ -932,7 +939,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           variant="ghost"
           size="sm"
           aria-pressed={fullPromptOpen}
-          aria-controls={fullPromptId}
+          aria-controls={fullPromptOpen ? fullPromptId : undefined}
           onClick={toggleFullPrompt}
           className="nokey shrink-0 text-muted-foreground aria-pressed:text-foreground"
         >
