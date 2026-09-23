@@ -191,6 +191,7 @@ describe("containerCards", () => {
         generationCount: 3,
         coverAsset: cover,
         lastActivityAt: NOW,
+        castIds: [],
       },
       {
         id: "ruiz",
@@ -198,6 +199,7 @@ describe("containerCards", () => {
         generationCount: 0,
         coverAsset: asset({ id: "newest" }),
         lastActivityAt: NOW,
+        castIds: [],
       },
     ]
     const tree = [

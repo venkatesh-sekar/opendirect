@@ -112,6 +112,7 @@ export function summary(
     generationCount: 0,
     coverAsset: null,
     lastActivityAt: Date.now(),
+    castIds: [],
     ...over,
   }
 }

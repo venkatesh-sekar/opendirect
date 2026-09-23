@@ -145,8 +145,30 @@ export const containerSummarySchema = z.object({
    * creation, a run's submission or a run's completion.
    */
   lastActivityAt: z.number(),
+  /**
+   * A scene's cast — the characters its runs mentioned, by id, in tree order
+   * (see `containers:related`). Empty for every other kind. On the summary so
+   * a grid of scene cards draws its avatars from the one query it already
+   * makes, rather than one `containers:related` per card.
+   */
+  castIds: z.array(z.string()),
 })
 export type ContainerSummaryDto = z.output<typeof containerSummarySchema>
+
+/**
+ * Who is in a scene, or which scenes a character is in — the arm follows the
+ * kind of the container asked about.
+ *
+ * Derived, never stored: a character is in a scene when a run filed under the
+ * scene mentioned it (`mentionedContainerIds`), or — for a run from before
+ * mentions were recorded — was sent one of the character's assets as an
+ * input. Both lists are in tree order.
+ */
+export const relatedContainersSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("scene"), characters: z.array(containerSchema) }),
+  z.object({ kind: z.literal("character"), scenes: z.array(containerSchema) }),
+])
+export type RelatedContainersDto = z.output<typeof relatedContainersSchema>
 
 export const assetPageSchema = z.object({
   items: z.array(assetSchema),

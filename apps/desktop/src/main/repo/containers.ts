@@ -21,6 +21,7 @@ import {
   type ContainerKind,
   type ContainerNodeDto,
   type ContainerSummaryDto,
+  type RelatedContainersDto,
 } from "@opendirect/contract"
 import {
   and,
@@ -40,6 +41,7 @@ import {
   assets,
   containerAssets,
   containers,
+  generationInputs,
   generations,
   type Container,
 } from "../db/schema"
@@ -418,6 +420,111 @@ export function listTree(
 }
 
 /**
+ * Every scene's cast, as character ids in `rows` order (tree order).
+ *
+ * A character is in a scene when a run filed under the scene mentioned it.
+ * The stored prompt cannot say so — its `@mira` is already prose — which is
+ * why submission records `mentionedContainerIds`. A run from before that
+ * column (null) falls back to its inputs: a character is in the scene when
+ * one of the character's assets was sent to the model. A recorded list, even
+ * an empty one, is trusted over the inputs.
+ *
+ * Two queries for the whole project, for the same reason as `listTree`.
+ * Scenes with nobody in them are absent from the map.
+ */
+function castByScene(
+  db: ProjectDatabase,
+  projectId: string,
+  rows: readonly ContainerDto[]
+): Map<string, string[]> {
+  const kindOf = new Map(rows.map((row) => [row.id, row.kind]))
+  const found = new Map<string, Set<string>>()
+  const add = (sceneId: string | null, characterId: string) => {
+    if (sceneId === null || kindOf.get(sceneId) !== "scene") return
+    // A deleted container, a scene or a folder is nobody's cast.
+    if (kindOf.get(characterId) !== "character") return
+    const cast = found.get(sceneId) ?? new Set<string>()
+    cast.add(characterId)
+    found.set(sceneId, cast)
+  }
+
+  for (const run of db
+    .select({
+      containerId: generations.containerId,
+      mentioned: generations.mentionedContainerIds,
+    })
+    .from(generations)
+    .where(
+      and(
+        eq(generations.projectId, projectId),
+        isNotNull(generations.containerId),
+        isNotNull(generations.mentionedContainerIds)
+      )
+    )
+    .all()) {
+    for (const id of run.mentioned ?? []) add(run.containerId, id)
+  }
+
+  for (const input of db
+    .select({
+      sceneId: generations.containerId,
+      characterId: containerAssets.containerId,
+    })
+    .from(generationInputs)
+    .innerJoin(generations, eq(generations.id, generationInputs.generationId))
+    .innerJoin(
+      containerAssets,
+      eq(containerAssets.assetId, generationInputs.assetId)
+    )
+    .where(
+      and(
+        eq(generations.projectId, projectId),
+        isNotNull(generations.containerId),
+        isNull(generations.mentionedContainerIds)
+      )
+    )
+    .all()) {
+    add(input.sceneId, input.characterId)
+  }
+
+  const ordered = new Map<string, string[]>()
+  for (const [sceneId, cast] of found) {
+    ordered.set(
+      sceneId,
+      rows.filter((row) => cast.has(row.id)).map((row) => row.id)
+    )
+  }
+  return ordered
+}
+
+/**
+ * A scene's cast, or the scenes a character appears in (`castByScene`), as
+ * containers in tree order.
+ */
+export function listRelated(
+  db: ProjectDatabase,
+  id: string
+): RelatedContainersDto {
+  const container = requireContainer(db, id)
+  if (!isMentionableKind(container.kind))
+    throw new Error("Only characters and scenes have a cast or scenes")
+  const rows = listContainers(db, container.projectId)
+  const casts = castByScene(db, container.projectId, rows)
+
+  if (container.kind === "scene") {
+    const cast = new Set(casts.get(id) ?? [])
+    return {
+      kind: "scene",
+      characters: rows.filter((row) => cast.has(row.id)),
+    }
+  }
+  return {
+    kind: "character",
+    scenes: rows.filter((row) => casts.get(row.id)?.includes(id)),
+  }
+}
+
+/**
  * Counts, cover and last activity for every container in the project, in
  * `listContainers` order.
  *
@@ -497,6 +604,7 @@ export function listContainerSummaries(
       row.referenceAssetIds?.find((ref) => linked.includes(ref)) ?? linked[0]
     if (id !== undefined) coverIds.set(row.id, id)
   }
+  const casts = castByScene(db, projectId, rows)
   const candidates = [...new Set(coverIds.values())]
   const coverRows = new Map(
     (candidates.length === 0
@@ -520,6 +628,7 @@ export function listContainerSummaries(
         runs?.latestCreated ?? 0,
         runs?.latestCompleted ?? 0
       ),
+      castIds: casts.get(row.id) ?? [],
     }
   })
 }

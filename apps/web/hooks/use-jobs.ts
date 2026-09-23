@@ -29,6 +29,7 @@ import type { JobDto, JobState } from "@opendirect/contract"
 
 import { invoke, isBridgeAvailable, subscribe } from "@/lib/ipc"
 import { queryKeys } from "./query-keys"
+import { invalidateContainerFacts } from "./use-containers"
 
 /** States the runner will still move out of by itself. */
 const ACTIVE: ReadonlySet<JobState> = new Set([
@@ -64,7 +65,7 @@ function applyUpdate(current: JobDto[] | undefined, job: JobDto): JobDto[] {
 function invalidateForTerminalJob(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: queryKeys.generations.all })
   void client.invalidateQueries({ queryKey: queryKeys.assets.all })
-  void client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
+  invalidateContainerFacts(client)
 }
 
 /**

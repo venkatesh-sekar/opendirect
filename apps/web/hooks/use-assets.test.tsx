@@ -55,6 +55,11 @@ describe("asset mutations and the container cards", () => {
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: queryKeys.containers.summaries,
       })
+      // A run from before mentions were recorded is cast by its inputs'
+      // links, so a (un)link can change who is in a scene.
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: queryKeys.containers.relatedAll,
+      })
     }
   })
 })

@@ -36,6 +36,10 @@ describe("submitting and the container cards", () => {
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.containers.summaries,
     })
+    // The run's mentions may have just put someone in a scene.
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.containers.relatedAll,
+    })
   })
 
   it("refreshes the summaries after a batch submit", async () => {
@@ -43,6 +47,10 @@ describe("submitting and the container cards", () => {
     await act(() => result.current.mutateAsync({ request, count: 2 }))
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.containers.summaries,
+    })
+    // The run's mentions may have just put someone in a scene.
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.containers.relatedAll,
     })
   })
 })

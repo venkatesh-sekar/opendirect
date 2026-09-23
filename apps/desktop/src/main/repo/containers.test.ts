@@ -11,6 +11,7 @@ import {
   existingHandles,
   getContainer,
   listContainerSummaries,
+  listRelated,
   listTree,
   renameContainer,
   reparentContainer,
@@ -514,6 +515,7 @@ describe("listContainerSummaries", () => {
       generationCount: 0,
       coverAsset: null,
       lastActivityAt: NOW,
+      castIds: [],
     })
   })
 
@@ -602,5 +604,133 @@ describe("listContainerSummaries", () => {
 
     updateStatus(handle.db, run.id, { status: "succeeded", now: NOW + 30 })
     expect(summaryOf(scene.id)?.lastActivityAt).toBe(NOW + 30)
+  })
+})
+
+describe("listRelated", () => {
+  function kind(name: string, value: "character" | "scene" | "folder") {
+    return createContainer(handle.db, {
+      projectId: PROJECT_ID,
+      kind: value,
+      name,
+      now: NOW,
+    })
+  }
+
+  function run(
+    containerId: string | null,
+    options: { mentioned?: string[] | null; inputs?: string[] } = {}
+  ) {
+    return createGeneration(handle.db, {
+      projectId: PROJECT_ID,
+      containerId,
+      provider: "replicate",
+      modelSlug: "bytedance/seedance-2.5",
+      kind: "video",
+      params: {},
+      mentionedContainerIds: options.mentioned ?? null,
+      inputs: (options.inputs ?? []).map((assetId) => ({
+        assetId,
+        slotField: "reference_images",
+      })),
+      now: NOW,
+    })
+  }
+
+  function linkedAsset(id: string, containerId: string) {
+    handle.db
+      .insert(assets)
+      .values({ id, projectId: PROJECT_ID, kind: "image", createdAt: NOW })
+      .run()
+    handle.db.insert(containerAssets).values({ containerId, assetId: id }).run()
+    return id
+  }
+
+  function names(list: { name: string }[]) {
+    return list.map((one) => one.name)
+  }
+
+  function cast(sceneId: string) {
+    const related = listRelated(handle.db, sceneId)
+    if (related.kind !== "scene") throw new Error("expected a scene's cast")
+    return names(related.characters)
+  }
+
+  function scenes(characterId: string) {
+    const related = listRelated(handle.db, characterId)
+    if (related.kind !== "character") throw new Error("expected scenes")
+    return names(related.scenes)
+  }
+
+  it("puts a character in a scene when a run filed there mentioned it", () => {
+    const mira = kind("Mira", "character")
+    const ruiz = kind("Ruiz", "character")
+    const hall = kind("Hotel hallway", "scene")
+    const roof = kind("Rooftop", "scene")
+    run(hall.id, { mentioned: [ruiz.id, mira.id, hall.id] })
+    run(roof.id, { mentioned: [mira.id] })
+
+    // Tree order, not mention order — and the scene itself is not its cast.
+    expect(cast(hall.id)).toEqual(["Mira", "Ruiz"])
+    expect(cast(roof.id)).toEqual(["Mira"])
+    expect(scenes(mira.id)).toEqual(["Hotel hallway", "Rooftop"])
+    expect(scenes(ruiz.id)).toEqual(["Hotel hallway"])
+  })
+
+  it("does not count a mention in a run filed anywhere but the scene", () => {
+    const mira = kind("Mira", "character")
+    const hall = kind("Hotel hallway", "scene")
+    run(mira.id, { mentioned: [mira.id, hall.id] })
+    run(null, { mentioned: [mira.id] })
+    expect(cast(hall.id)).toEqual([])
+    expect(scenes(mira.id)).toEqual([])
+  })
+
+  it("reads a run from before mentions were recorded by its input assets", () => {
+    const mira = kind("Mira", "character")
+    const ruiz = kind("Ruiz", "character")
+    const hall = kind("Hotel hallway", "scene")
+    const sheet = linkedAsset("sheet", mira.id)
+    const plate = linkedAsset("plate", hall.id)
+    run(hall.id, { inputs: [sheet, plate] })
+
+    expect(cast(hall.id)).toEqual(["Mira"])
+    expect(scenes(mira.id)).toEqual(["Hotel hallway"])
+    expect(scenes(ruiz.id)).toEqual([])
+  })
+
+  it("trusts a recorded list over the inputs, even an empty one", () => {
+    const mira = kind("Mira", "character")
+    const hall = kind("Hotel hallway", "scene")
+    const sheet = linkedAsset("sheet", mira.id)
+    // Mira's sheet was wired in by hand, but the prompt mentioned nobody.
+    run(hall.id, { mentioned: [], inputs: [sheet] })
+    expect(cast(hall.id)).toEqual([])
+  })
+
+  it("ignores a mention of a container that has since been deleted", () => {
+    const mira = kind("Mira", "character")
+    const hall = kind("Hotel hallway", "scene")
+    run(hall.id, { mentioned: ["gone", mira.id] })
+    expect(cast(hall.id)).toEqual(["Mira"])
+  })
+
+  it("refuses a container that is neither a character nor a scene", () => {
+    const folder = kind("Uploads", "folder")
+    expect(() => listRelated(handle.db, folder.id)).toThrow(
+      /characters and scenes/i
+    )
+    expect(() => listRelated(handle.db, "missing")).toThrow(/not found/i)
+  })
+
+  it("gives each scene card its cast in the summaries", () => {
+    const mira = kind("Mira", "character")
+    const hall = kind("Hotel hallway", "scene")
+    run(hall.id, { mentioned: [mira.id] })
+    const summaries = listContainerSummaries(handle.db, PROJECT_ID)
+    expect(summaries.find((one) => one.id === hall.id)?.castIds).toEqual([
+      mira.id,
+    ])
+    expect(summaries.find((one) => one.id === mira.id)?.castIds).toEqual([])
   })
 })

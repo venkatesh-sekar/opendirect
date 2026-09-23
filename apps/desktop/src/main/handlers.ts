@@ -42,6 +42,7 @@ import {
   createContainerFromAsset,
   deleteContainer,
   listContainerSummaries,
+  listRelated,
   listTree,
   renameContainer,
   reparentContainer,
@@ -138,6 +139,10 @@ export function registerProjectHandlers(
     const { db, project } = requireProject()
     return listContainerSummaries(db, project.id)
   })
+
+  handle("containers:related", ({ id }) =>
+    listRelated(requireProject().db, id)
+  )
 
   handle("containers:create", ({ parentId, kind, name }) => {
     const { db, project } = requireProject()

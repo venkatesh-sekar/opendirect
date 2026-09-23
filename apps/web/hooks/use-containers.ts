@@ -14,7 +14,9 @@ import type {
   ContainerSummaryDto,
   ProjectRefDto,
   RecentProjectDto,
+  RelatedContainersDto,
 } from "@opendirect/contract"
+import type { QueryClient } from "@tanstack/react-query"
 
 import { invoke } from "@/lib/ipc"
 import { queryKeys } from "./query-keys"
@@ -99,6 +101,31 @@ export function useContainerSummaries(
     queryFn: () => invoke("containers:summaries"),
     enabled,
   })
+}
+
+/**
+ * A scene's cast, or the scenes a character appears in. Null `id` — or a
+ * container that is neither — asks nothing.
+ */
+export function useRelatedContainers(
+  id: string | null
+): UseQueryResult<RelatedContainersDto> {
+  return useQuery({
+    queryKey: queryKeys.containers.related(id ?? ""),
+    queryFn: () => invoke("containers:related", { id: id! }),
+    enabled: id !== null,
+  })
+}
+
+/**
+ * What a card or a page says *about* containers — counts, covers, who is in
+ * which scene — as opposed to the containers themselves. All of it is derived
+ * from runs and asset links, so a submit, a finished job or an (un)link
+ * refreshes it; the tree's own mutations sweep it via `containers.all`.
+ */
+export function invalidateContainerFacts(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
+  void client.invalidateQueries({ queryKey: queryKeys.containers.relatedAll })
 }
 
 /**

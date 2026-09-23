@@ -48,10 +48,13 @@ describe("shared job subscription", () => {
     expect(bridge.subscribe).toHaveBeenCalledTimes(1)
     bridge.listener!({ ...job("a"), state: "succeeded" })
     expect(patch).toHaveBeenCalledTimes(1)
-    expect(invalidate).toHaveBeenCalledTimes(3)
+    expect(invalidate).toHaveBeenCalledTimes(4)
     // A finished run changes a container's counts, cover and last activity.
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: queryKeys.containers.summaries,
+    })
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.containers.relatedAll,
     })
     releases.slice(1).forEach((release) => release())
     expect(bridge.unsubscribe).not.toHaveBeenCalled()

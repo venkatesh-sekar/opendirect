@@ -21,6 +21,7 @@ import type {
 
 import { invoke } from "@/lib/ipc"
 import { queryKeys } from "./query-keys"
+import { invalidateContainerFacts } from "./use-containers"
 
 export interface GenerationsPageOptions {
   limit?: number
@@ -164,8 +165,9 @@ export function useSubmitGeneration(): UseMutationResult<
     onSuccess: () => {
       // The queued run appears on the board immediately, ahead of any output.
       client.invalidateQueries({ queryKey: queryKeys.generations.all })
-      // …and on its container's card, as one more run and fresh activity.
-      client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
+      // …and on its container's card, as one more run and fresh activity,
+      // and its mentions may have just put someone in a scene.
+      invalidateContainerFacts(client)
     },
   })
 }
@@ -204,7 +206,7 @@ export function useSubmitBatch(): UseMutationResult<
       invoke("generations:submitBatch", { request, count }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: queryKeys.generations.all })
-      client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
+      invalidateContainerFacts(client)
       // The node that asked stores the ids it got back, so the surface is
       // re-read rather than patched in place.
       client.invalidateQueries({ queryKey: queryKeys.canvas.all })

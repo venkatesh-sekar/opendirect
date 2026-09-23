@@ -39,6 +39,13 @@ export const queryKeys = {
      * card as surely as it changes the tree.
      */
     summaries: ["containers", "summaries"] as const,
+    /**
+     * A scene's cast or a character's scenes. Derived from runs and their
+     * inputs, so it goes stale exactly when the summaries do (a scene card's
+     * avatars are the same cast) — and, under `containers`, with the tree.
+     */
+    relatedAll: ["containers", "related"] as const,
+    related: (id: string) => ["containers", "related", id] as const,
   },
   assets: {
     all: ["assets"] as const,

@@ -55,6 +55,7 @@ describe("project channels", () => {
       "project:choose",
       "containers:tree",
       "containers:summaries",
+      "containers:related",
       "containers:create",
       "containers:rename",
       "containers:reparent",
@@ -150,6 +151,7 @@ describe("project channels", () => {
         generationCount: 0,
         coverAsset: null,
         lastActivityAt: 1,
+        castIds: [],
       },
     ])
     expect(parsed[0]?.coverAsset).toBeNull()
@@ -158,6 +160,34 @@ describe("project channels", () => {
         { id: "c1", assetCount: 0, generationCount: 0, lastActivityAt: 1 },
       ]).success
     ).toBe(false)
+  })
+
+  it("names a scene's cast, or a character's scenes, as the id's kind", () => {
+    const { input, output } = ipcContract["containers:related"]
+    expect(input.safeParse({ id: "c1" }).success).toBe(true)
+    expect(input.safeParse({}).success).toBe(false)
+    const container = {
+      id: "c2",
+      projectId: "p1",
+      parentId: null,
+      kind: "character",
+      name: "Mira",
+      position: 0,
+      handle: "mira",
+      description: null,
+      createdAt: 1,
+    }
+    const cast = output.parse({ kind: "scene", characters: [container] })
+    expect(cast.kind === "scene" && cast.characters[0]?.name).toBe("Mira")
+    expect(output.parse({ kind: "character", scenes: [] })).toEqual({
+      kind: "character",
+      scenes: [],
+    })
+    // The arm follows the kind: a scene's answer never carries scenes.
+    expect(output.safeParse({ kind: "scene", scenes: [] }).success).toBe(false)
+    expect(output.safeParse({ kind: "folder", characters: [] }).success).toBe(
+      false
+    )
   })
 
   it("parses a container tree recursively", () => {
@@ -341,6 +371,24 @@ describe("generation submission", () => {
     expect(
       ipcContract["generations:submit"].input.safeParse(request).success
     ).toBe(true)
+  })
+
+  it("records which containers the prompt mentioned, unknown by default", () => {
+    const { input } = ipcContract["generations:submit"]
+    // Left out — a caller that knows nothing of mentions — is "not recorded",
+    // which is not the same as "mentioned nobody".
+    expect(input.parse(request).mentionedContainerIds).toBeNull()
+    expect(
+      input.parse({ ...request, mentionedContainerIds: [] })
+        .mentionedContainerIds
+    ).toEqual([])
+    expect(
+      input.parse({ ...request, mentionedContainerIds: ["c2", "c3"] })
+        .mentionedContainerIds
+    ).toEqual(["c2", "c3"])
+    expect(
+      input.safeParse({ ...request, mentionedContainerIds: [""] }).success
+    ).toBe(false)
   })
 
   it("rejects a request with no model", () => {

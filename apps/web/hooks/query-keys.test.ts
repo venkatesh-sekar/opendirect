@@ -64,6 +64,16 @@ describe("project workspace keys", () => {
     )
   })
 
+  it("files a container's cast under the tree's prefix, one key per id", () => {
+    expect(queryKeys.containers.related("c1").slice(0, 2)).toEqual(
+      queryKeys.containers.relatedAll
+    )
+    expect(queryKeys.containers.relatedAll[0]).toBe(queryKeys.containers.all[0])
+    expect(queryKeys.containers.related("c1")).not.toEqual(
+      queryKeys.containers.related("c2")
+    )
+  })
+
   it("keeps project-wide generation pages apart from any container's", () => {
     expect(queryKeys.generations.project({ limit: 12 })[0]).toBe(
       queryKeys.generations.all[0]

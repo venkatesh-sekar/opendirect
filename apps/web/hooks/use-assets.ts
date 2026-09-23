@@ -11,6 +11,7 @@ import type { AssetDto, AssetPage, ImportResult } from "@opendirect/contract"
 
 import { invoke } from "@/lib/ipc"
 import { queryKeys } from "./query-keys"
+import { invalidateContainerFacts } from "./use-containers"
 
 export interface AssetsPageOptions {
   limit?: number
@@ -87,9 +88,7 @@ export function useImportAssets(): UseMutationResult<
       // the difference between `@venkz` attaching a picture and not.
       void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
       // A card's asset count and cover follow the container's library.
-      void client.invalidateQueries({
-        queryKey: queryKeys.containers.summaries,
-      })
+      invalidateContainerFacts(client)
     },
   })
 }
@@ -113,9 +112,7 @@ export function useAddAssetToContainer(): UseMutationResult<
         queryKey: ["assets", variables.containerId],
       })
       void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
-      void client.invalidateQueries({
-        queryKey: queryKeys.containers.summaries,
-      })
+      invalidateContainerFacts(client)
     },
   })
 }
@@ -135,9 +132,7 @@ export function useRemoveAssetFromContainer(): UseMutationResult<
         queryKey: ["assets", variables.containerId],
       })
       void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
-      void client.invalidateQueries({
-        queryKey: queryKeys.containers.summaries,
-      })
+      invalidateContainerFacts(client)
     },
   })
 }

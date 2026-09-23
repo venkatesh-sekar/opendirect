@@ -37,6 +37,7 @@ import {
   mentionSubjectSchema,
   projectRefSchema,
   recentProjectSchema,
+  relatedContainersSchema,
 } from "./project"
 import { providerIdSchema } from "./provider"
 
@@ -296,6 +297,14 @@ export const ipcContract = {
   "containers:summaries": {
     input: z.void(),
     output: z.array(containerSummarySchema),
+  },
+  /**
+   * A scene's cast, or the scenes a character appears in. Derived from the
+   * runs filed under scenes; only a character or a scene can be asked.
+   */
+  "containers:related": {
+    input: z.object({ id: z.string() }),
+    output: relatedContainersSchema,
   },
   "containers:create": {
     input: z.object({
