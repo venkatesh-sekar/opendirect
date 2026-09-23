@@ -17,6 +17,7 @@ import {
   setContainerDescription,
   setContainerHandle,
 } from "./containers"
+import { removeFromContainer } from "./assets"
 import { createGeneration, updateStatus } from "./generations"
 
 const NOW = 1_763_000_000_000
@@ -564,6 +565,31 @@ describe("listContainerSummaries", () => {
       .where(eq(containers.id, character.id))
       .run()
     expect(summaryOf(character.id)?.coverAsset?.id).toBe("kept")
+  })
+
+  it("skips a reference that has been unlinked from the container", () => {
+    const character = make("Venkz")
+    seedAsset("first", character.id, { createdAt: NOW })
+    seedAsset("second", character.id, { createdAt: NOW + 1 })
+    seedAsset("newest", character.id, { createdAt: NOW + 10 })
+    handle.db
+      .update(containers)
+      .set({ referenceAssetIds: ["first", "second"] })
+      .where(eq(containers.id, character.id))
+      .run()
+
+    // Unlinking leaves `referenceAssetIds` alone, so the summary must check.
+    removeFromContainer(handle.db, {
+      containerId: character.id,
+      assetId: "first",
+    })
+    expect(summaryOf(character.id)?.coverAsset?.id).toBe("second")
+
+    removeFromContainer(handle.db, {
+      containerId: character.id,
+      assetId: "second",
+    })
+    expect(summaryOf(character.id)?.coverAsset?.id).toBe("newest")
   })
 
   it("dates activity by the latest asset, run or completion", () => {

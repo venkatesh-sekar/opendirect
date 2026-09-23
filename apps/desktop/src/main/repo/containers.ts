@@ -468,9 +468,9 @@ export function listContainerSummaries(
       .map((row) => [row.containerId!, row])
   )
 
-  // Newest image per container. Only ids here — the full rows are fetched
-  // once, below, for the few that end up on a card.
-  const newestImage = new Map<string, string>()
+  // Every linked image per container, newest first. Only ids here — the full
+  // rows are fetched once, below, for the one per card that becomes its cover.
+  const linkedImages = new Map<string, string[]>()
   for (const row of db
     .select({
       containerId: containerAssets.containerId,
@@ -482,15 +482,22 @@ export function listContainerSummaries(
     .where(and(inProject, eq(assets.kind, "image")))
     .orderBy(desc(assets.createdAt), desc(assets.id))
     .all()) {
-    if (!newestImage.has(row.containerId)) {
-      newestImage.set(row.containerId, row.assetId)
-    }
+    const list = linkedImages.get(row.containerId) ?? []
+    list.push(row.assetId)
+    linkedImages.set(row.containerId, list)
   }
 
-  const referenced = rows
-    .map((row) => row.referenceAssetIds?.[0])
-    .filter((id): id is string => id !== undefined)
-  const candidates = [...new Set([...referenced, ...newestImage.values()])]
+  // The first reference still linked here, else the newest image. Unlinking an
+  // asset leaves `referenceAssetIds` alone, so a stale or deleted reference is
+  // skipped the same way `listMentionSubjects` skips it.
+  const coverIds = new Map<string, string>()
+  for (const row of rows) {
+    const linked = linkedImages.get(row.id) ?? []
+    const id =
+      row.referenceAssetIds?.find((ref) => linked.includes(ref)) ?? linked[0]
+    if (id !== undefined) coverIds.set(row.id, id)
+  }
+  const candidates = [...new Set(coverIds.values())]
   const coverRows = new Map(
     (candidates.length === 0
       ? []
@@ -501,11 +508,7 @@ export function listContainerSummaries(
   return rows.map((row) => {
     const own = assetStats.get(row.id)
     const runs = runStats.get(row.id)
-    // A reference that has since been deleted must not leave a blank card
-    // when the container still has other pictures.
-    const cover =
-      coverRows.get(row.referenceAssetIds?.[0] ?? "") ??
-      coverRows.get(newestImage.get(row.id) ?? "")
+    const cover = coverRows.get(coverIds.get(row.id) ?? "")
     return {
       id: row.id,
       assetCount: own?.total ?? 0,

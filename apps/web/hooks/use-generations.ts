@@ -141,6 +141,8 @@ export function useSubmitGeneration(): UseMutationResult<
     onSuccess: () => {
       // The queued run appears on the board immediately, ahead of any output.
       client.invalidateQueries({ queryKey: queryKeys.generations.all })
+      // …and on its container's card, as one more run and fresh activity.
+      client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
     },
   })
 }
@@ -179,6 +181,7 @@ export function useSubmitBatch(): UseMutationResult<
       invoke("generations:submitBatch", { request, count }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: queryKeys.generations.all })
+      client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
       // The node that asked stores the ids it got back, so the surface is
       // re-read rather than patched in place.
       client.invalidateQueries({ queryKey: queryKeys.canvas.all })
