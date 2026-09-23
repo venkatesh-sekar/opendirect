@@ -19,11 +19,24 @@ import { describe, expect, it } from "vitest"
 
 import { deriveReferenceSlots } from "../../../desktop/src/main/providers/reference-slots"
 import {
-  composePrompt,
   edgesToInputs,
   isBlocked,
+  type CanvasInputs,
 } from "../canvas/edges-to-inputs"
+import { reconcileBlocks, renderPromptBlocks } from "../canvas/prompt-blocks"
 import { countBySlot, resolveMentions } from "./resolve"
+
+/** What the prompt bar sends for a legacy recipe: its notes, then `prompt`. */
+function composed(inputs: CanvasInputs, prompt: string): string {
+  return renderPromptBlocks(
+    reconcileBlocks({
+      blocks: undefined,
+      prompt,
+      noteIds: inputs.notes.map((note) => note.nodeId),
+    }),
+    new Map(inputs.notes.map((note) => [note.nodeId, note]))
+  ).prompt
+}
 
 const MULTI_IMAGE: ReferenceSlot[] = deriveReferenceSlots({
   type: "object",
@@ -111,7 +124,7 @@ describe("edges and mentions together", () => {
     if (isBlocked(inputs)) return
 
     const resolved = resolveMentions({
-      prompt: composePrompt(inputs.promptPrefix, "a shot of @venkz"),
+      prompt: composed(inputs, "a shot of @venkz"),
       subjects: [VENKZ],
       slots: MULTI_IMAGE,
       occupied: countBySlot(inputs.references),
@@ -171,7 +184,7 @@ describe("edges and mentions together", () => {
     if (isBlocked(inputs)) throw new Error(inputs.blocked)
 
     const resolved = resolveMentions({
-      prompt: composePrompt(inputs.promptPrefix, "@venkz waits"),
+      prompt: composed(inputs, "@venkz waits"),
       subjects: [VENKZ],
       slots: SINGLE_IMAGE,
       occupied: countBySlot(inputs.references),

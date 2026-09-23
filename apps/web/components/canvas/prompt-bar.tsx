@@ -47,6 +47,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import {
   promptRecipeSchema,
+  type PromptBlock,
   type PromptRecipe,
   type CanvasDto,
   type CanvasNodeDto,
@@ -69,7 +70,16 @@ import {
   findContainer,
   firstSelectableContainer,
 } from "@/lib/board/sidebar-tree"
-import { edgesToInputs, incomingEdges } from "@/lib/canvas/edges-to-inputs"
+import {
+  edgesToInputs,
+  incomingEdges,
+  incomingNotes,
+} from "@/lib/canvas/edges-to-inputs"
+import {
+  reconcileBlocks,
+  renderPromptBlocks,
+  replaceText,
+} from "@/lib/canvas/prompt-blocks"
 import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
 import type { IconGrid } from "@/lib/canvas/icon-grid"
 import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
@@ -98,7 +108,15 @@ export { MAX_BATCH }
 
 /** One node's unsubmitted composition. */
 interface PromptDraft {
+  /** The user's own words: the text blocks joined, never the notes. */
   prompt: string
+  /**
+   * Where the notes sit among the text. Undefined for a recipe saved before
+   * blocks existed, which reads as its notes in wire order and then `prompt`.
+   * A block loaded from a saved recipe has no id until `reconcileBlocks`
+   * gives it one.
+   */
+  blocks?: (PromptBlock & { id?: string })[]
   modelKey: string | null
   /** Promoted controls and the icon grid's fields, by the model's own names. */
   common: Record<string, unknown>
@@ -111,6 +129,7 @@ interface PromptDraft {
 
 const EMPTY_DRAFT: PromptDraft = {
   prompt: "",
+  blocks: undefined,
   modelKey: null,
   common: {},
   advanced: {},
@@ -155,6 +174,8 @@ export function seedPromptDraft(
   drafts.set(nodeId, {
     ...EMPTY_DRAFT,
     prompt: seed.prompt,
+    // The branch starts in the legacy order: its notes, then this prompt.
+    blocks: undefined,
     modelKey: seed.modelKey,
   })
   emit()
@@ -326,8 +347,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   }, [descriptor, seededFor, updateDraft])
 
   /**
-   * Step 1 of the run flow: the node's incoming edges become references and a
-   * prompt prefix, or a sentence saying why they cannot.
+   * Step 1 of the run flow: the node's incoming edges become references and
+   * notes, or a sentence saying why they cannot.
    */
   const inputs = useMemo(
     () =>
@@ -338,6 +359,39 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         slots: descriptor?.referenceSlots ?? [],
       }),
     [canvas.edges, canvas.nodes, descriptor, node.id]
+  )
+
+  /**
+   * The prompt that is sent: the notes wired in and the user's text, in the
+   * order the blocks give them. Read from the wires directly rather than from
+   * `inputs`, so the notes still show while an upstream node blocks the run.
+   */
+  const notes = useMemo(
+    () =>
+      incomingNotes({
+        targetNodeId: node.id,
+        nodes: canvas.nodes,
+        edges: canvas.edges,
+      }),
+    [canvas.edges, canvas.nodes, node.id]
+  )
+  const noteIds = useMemo(() => notes.map((note) => note.nodeId), [notes])
+  const notesById = useMemo(
+    () => new Map(notes.map((note) => [note.nodeId, note])),
+    [notes]
+  )
+  const blocks = useMemo(
+    () =>
+      reconcileBlocks({
+        blocks: draft.blocks,
+        prompt: draft.prompt,
+        noteIds,
+      }),
+    [draft.blocks, draft.prompt, noteIds]
+  )
+  const rendered = useMemo(
+    () => renderPromptBlocks(blocks, notesById),
+    [blocks, notesById]
   )
 
   /**
@@ -366,6 +420,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     kinds,
     containerId,
     inputs,
+    prompt: rendered.prompt,
     scope: node.id,
   })
 
@@ -420,7 +475,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     for (const edge of incomingEdges(canvas.edges, node.id)) {
       if (edge.slotField !== null) continue
       const source = byId.get(edge.sourceNodeId)
-      // A text edge has no slot by design: it prepends to the prompt.
+      // A text edge has no slot by design: it is a note in the prompt.
       if (!source || source.type === "text") continue
       const slotField = firstFreeSlot({
         slots,
@@ -582,7 +637,14 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
               {
                 id: node.id,
                 patch: {
-                  text: JSON.stringify(promptRecipeSchema.parse(draft)),
+                  // A legacy draft stays legacy until the user rearranges
+                  // something, so saving alone never pins its note order.
+                  text: JSON.stringify(
+                    promptRecipeSchema.parse({
+                      ...draft,
+                      blocks: draft.blocks ? blocks : undefined,
+                    })
+                  ),
                 },
               },
               {
@@ -635,9 +697,29 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           placeholder="Describe what you want…"
           rows={1}
           value={draft.prompt}
-          onChange={(prompt) =>
-            updateDraft((current) => ({ ...current, prompt }))
-          }
+          onChange={(prompt) => {
+            if (draft.blocks === undefined) {
+              updateDraft((current) => ({ ...current, prompt }))
+              return
+            }
+            // A recipe that already orders its notes (an imported workflow)
+            // must send what is typed here too. This one field shows every
+            // text block joined, so it writes them back as one, after the
+            // notes — and keeps `prompt` exactly as typed, trailing space and
+            // all, since it is this field's value.
+            updateDraft((current) => ({
+              ...current,
+              prompt,
+              blocks: replaceText(
+                reconcileBlocks({
+                  blocks: current.blocks,
+                  prompt: current.prompt,
+                  noteIds,
+                }),
+                prompt
+              ),
+            }))
+          }}
           subjects={subjects}
           className="max-h-32 min-h-9 w-full resize-none py-2"
         />

@@ -301,14 +301,14 @@ const BROKEN = canvasWith(node({ id: "still", type: "media", assetId: null }))
 /** The same node with nothing wired into it — no edge, no prefix, no block. */
 const BARE: CanvasDto = { nodes: [TARGET], edges: [] }
 
-function renderBar(canvas: CanvasDto = WIRED) {
+function renderBar(canvas: CanvasDto = WIRED, target: CanvasNodeDto = TARGET) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <PromptBar node={TARGET} canvas={canvas} defaultModelKey={MODEL_KEY} />
+        <PromptBar node={target} canvas={canvas} defaultModelKey={MODEL_KEY} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -920,8 +920,57 @@ describe("saved prompts and unknown pricing", () => {
       expect(recipe.prompt).toBe("A saved composition")
       expect(recipe.modelKey).toBe(MODEL_KEY)
       expect(recipe.count).toBe(1)
+      // Saving alone never pins a note order onto a legacy recipe.
+      expect(recipe.blocks).toBeUndefined()
     })
     expect(submissions()).toHaveLength(0)
+  })
+
+  describe("a recipe that orders its notes", () => {
+    /** The note placed *after* the user's words, as an imported workflow can. */
+    const ORDERED = {
+      ...TARGET,
+      text: JSON.stringify({
+        prompt: "at dusk",
+        modelKey: MODEL_KEY,
+        common: { resolution: "720p", duration: 5 },
+        advanced: {},
+        count: 1,
+        blocks: [
+          { kind: "text", text: "at dusk" },
+          { kind: "note", nodeId: "note" },
+        ],
+      }),
+    }
+
+    it("sends the blocks in their own order", async () => {
+      const user = userEvent.setup()
+      renderBar(WIRED, ORDERED)
+
+      const run = await screen.findByRole("button", { name: "Run" })
+      await waitFor(() => expect(run).toBeEnabled())
+      await user.click(run)
+
+      await waitFor(() => expect(submissions()).toHaveLength(1))
+      expect(submissions()[0]![1]).toMatchObject({
+        request: { prompt: "at dusk\n\na bellhop opens the lift" },
+      })
+    })
+
+    it("sends what is typed into the prompt field", async () => {
+      const user = userEvent.setup()
+      renderBar(WIRED, ORDERED)
+
+      const run = await screen.findByRole("button", { name: "Run" })
+      await waitFor(() => expect(run).toBeEnabled())
+      await user.type(await screen.findByLabelText("Prompt"), ", slowly")
+      await user.click(run)
+
+      await waitFor(() => expect(submissions()).toHaveLength(1))
+      const sent = submissions()[0]![1] as { request: { prompt: string } }
+      expect(sent.request.prompt).toContain("at dusk, slowly")
+      expect(sent.request.prompt).toContain("a bellhop opens the lift")
+    })
   })
 
   it("requires cost acceptance again when the batch size changes", async () => {

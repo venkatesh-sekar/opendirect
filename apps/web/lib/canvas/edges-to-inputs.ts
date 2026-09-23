@@ -3,16 +3,16 @@
  *
  * Step 1 of the run flow, and the whole of it that has rules worth testing.
  * A generate node's incoming edges are walked in creation order and turned
- * into two things: the `references` the request carries, and the text that is
- * prepended to its prompt.
+ * into two things: the `references` the request carries, and the `notes` whose
+ * text the prompt's blocks place among the user's own words.
  *
  * What each source contributes:
  *
- * | Source node | Contribution                                       |
- * | ----------- | -------------------------------------------------- |
- * | text        | its text, prepended to the prompt, never a slot    |
- * | media       | its `assetId`, in the edge's slot                  |
- * | generate    | its `pickAssetId`, in the edge's slot              |
+ * | Source node | Contribution                                          |
+ * | ----------- | ----------------------------------------------------- |
+ * | text        | its text, placed by the prompt's blocks, never a slot |
+ * | media       | its `assetId`, in the edge's slot                     |
+ * | generate    | its `pickAssetId`, in the edge's slot                 |
  *
  * ⛔ Nothing here submits anything, and an edge never triggers a run. This is
  * a pure function over rows the canvas already has; the only thing it can do
@@ -30,6 +30,10 @@ import type {
   GenerationReference,
   ReferenceSlot,
 } from "@opendirect/contract"
+
+// Type-only, so the two modules never form a runtime cycle: `prompt-blocks`
+// must not import from here.
+import type { IncomingNote } from "./prompt-blocks"
 
 /** Why a run cannot be built yet. The UI shows `message` verbatim. */
 export type CanvasBlockCode =
@@ -53,8 +57,8 @@ export interface CanvasInputsBlocked {
 
 export interface CanvasInputs {
   references: GenerationReference[]
-  /** Joined text of every incoming text edge. Empty when there is none. */
-  promptPrefix: string
+  /** Every incoming text node, in wire order, its text untouched. */
+  notes: IncomingNote[]
 }
 
 export type CanvasInputsResult = CanvasInputs | CanvasInputsBlocked
@@ -73,9 +77,6 @@ export interface EdgesToInputsInput {
   /** The chosen model's own slots — `descriptor.referenceSlots`. */
   slots: readonly ReferenceSlot[]
 }
-
-/** What separates two notes feeding the same node. */
-export const PROMPT_PREFIX_SEPARATOR = "\n\n"
 
 /**
  * Edge creation order, which is the order the user drew them and therefore
@@ -113,13 +114,47 @@ function describe(node: CanvasNodeDto): string {
   return "An upstream generate node"
 }
 
+/** How long a note's title may run before it is cut. */
+const NOTE_TITLE_LENGTH = 32
+
+/** First non-empty line, at most 32 characters. Notes have no title of their own. */
+export function noteTitle(text: string | null): string {
+  const line = (text ?? "")
+    .split("\n")
+    .map((one) => one.trim())
+    .find((one) => one !== "")
+  if (line === undefined) return "Empty note"
+  return line.length > NOTE_TITLE_LENGTH
+    ? `${line.slice(0, NOTE_TITLE_LENGTH)}…`
+    : line
+}
+
+function toNote(node: CanvasNodeDto): IncomingNote {
+  return { nodeId: node.id, title: noteTitle(node.text), text: node.text ?? "" }
+}
+
+/**
+ * Every text node wired into `targetNodeId`, in wire order — blocked run or
+ * not. The composer shows a node's notes while an unpicked upstream node still
+ * blocks it, so they cannot come from `edgesToInputs`, which stops at a block.
+ */
+export function incomingNotes(
+  input: Pick<EdgesToInputsInput, "targetNodeId" | "nodes" | "edges">
+): IncomingNote[] {
+  const byId = new Map(input.nodes.map((node) => [node.id, node]))
+  return incomingEdges(input.edges, input.targetNodeId).flatMap((edge) => {
+    const source = byId.get(edge.sourceNodeId)
+    return source?.type === "text" ? [toNote(source)] : []
+  })
+}
+
 export function edgesToInputs(input: EdgesToInputsInput): CanvasInputsResult {
   const byId = new Map(input.nodes.map((node) => [node.id, node]))
   const slotFields = new Set(input.slots.map((slot) => slot.field))
 
   const references: GenerationReference[] = []
   const filled = new Map<string, number>()
-  const texts: string[] = []
+  const notes: IncomingNote[] = []
 
   for (const edge of incomingEdges(input.edges, input.targetNodeId)) {
     const source = byId.get(edge.sourceNodeId)
@@ -129,8 +164,7 @@ export function edgesToInputs(input: EdgesToInputsInput): CanvasInputsResult {
     if (!source) continue
 
     if (source.type === "text") {
-      const text = (source.text ?? "").trim()
-      if (text !== "") texts.push(text)
+      notes.push(toNote(source))
       continue
     }
 
@@ -182,18 +216,5 @@ export function edgesToInputs(input: EdgesToInputsInput): CanvasInputsResult {
     references.push({ slotField: edge.slotField, assetId, position })
   }
 
-  return { references, promptPrefix: texts.join(PROMPT_PREFIX_SEPARATOR) }
-}
-
-/**
- * The prompt a run is submitted with: the notes feeding it, then what the
- * user typed. An empty prefix leaves the prompt exactly as it was typed, and
- * an empty prompt leaves the notes standing on their own.
- */
-export function composePrompt(promptPrefix: string, prompt: string): string {
-  const prefix = promptPrefix.trim()
-  const body = prompt.trim()
-  if (prefix === "") return body
-  if (body === "") return prefix
-  return `${prefix}${PROMPT_PREFIX_SEPARATOR}${body}`
+  return { references, notes }
 }

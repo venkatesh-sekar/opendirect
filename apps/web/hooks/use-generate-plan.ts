@@ -33,7 +33,6 @@ import {
 } from "@/hooks/use-generations"
 import { useMentionSubjects } from "@/hooks/use-mentions"
 import {
-  composePrompt,
   isBlocked,
   type CanvasInputsResult,
 } from "@/lib/canvas/edges-to-inputs"
@@ -80,10 +79,15 @@ export interface GeneratePlanInput {
   /** Where the run's outputs are filed. */
   containerId: string | null
   /**
-   * The canvas's edges, read into references and a prompt prefix — or a
-   * sentence saying why they cannot be. Off the canvas there are none.
+   * The canvas's edges, read into references and notes — or a sentence
+   * saying why they cannot be. Off the canvas there are none.
    */
   inputs?: CanvasInputsResult
+  /**
+   * The prompt to resolve and send. The canvas passes its rendered blocks;
+   * a container page passes nothing and `draft.prompt` is used.
+   */
+  prompt?: string
   /**
    * What an accepted unknown price is scoped to, beyond the model, params and
    * count — the canvas node's id. Accepting the risk for one composition must
@@ -94,7 +98,7 @@ export interface GeneratePlanInput {
 
 /** Frozen: the empty answer must not be a new array on every render. */
 const NO_SUBJECTS: readonly MentionSubject[] = []
-const NO_INPUTS: CanvasInputsResult = { references: [], promptPrefix: "" }
+const NO_INPUTS: CanvasInputsResult = { references: [], notes: [] }
 
 export function useGeneratePlan({
   draft,
@@ -103,6 +107,7 @@ export function useGeneratePlan({
   kinds,
   containerId,
   inputs = NO_INPUTS,
+  prompt,
   scope = "",
 }: GeneratePlanInput) {
   const [acceptedCostFor, setAcceptedCostFor] = useState<string | null>(null)
@@ -121,16 +126,13 @@ export function useGeneratePlan({
   const mentions = useMemo(
     () =>
       resolveMentions({
-        prompt: composePrompt(
-          isBlocked(inputs) ? "" : inputs.promptPrefix,
-          draft.prompt
-        ),
+        prompt: prompt ?? draft.prompt,
         subjects,
         slots: descriptor?.referenceSlots ?? [],
         // The edges the user drew always win: they are an explicit gesture.
         occupied: countBySlot(isBlocked(inputs) ? [] : inputs.references),
       }),
-    [descriptor, draft.prompt, inputs, subjects]
+    [descriptor, draft.prompt, inputs, prompt, subjects]
   )
 
   const request = useMemo(() => {

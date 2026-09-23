@@ -10,10 +10,11 @@ import type {
 import { describe, expect, it } from "vitest"
 
 import {
-  composePrompt,
   edgesToInputs,
   incomingEdges,
+  incomingNotes,
   isBlocked,
+  noteTitle,
   type CanvasInputs,
   type CanvasInputsResult,
 } from "./edges-to-inputs"
@@ -112,7 +113,7 @@ describe("edgesToInputs", () => {
     expect(result.references).toEqual([
       { slotField: "reference_images", assetId: "asset-1", position: 0 },
     ])
-    expect(result.promptPrefix).toBe("")
+    expect(result.notes).toEqual([])
   })
 
   it("takes a generate node's pick, never one of its other tiles", () => {
@@ -190,7 +191,7 @@ describe("edgesToInputs", () => {
     ])
   })
 
-  it("prepends text nodes in edge order and never makes them references", () => {
+  it("reports text nodes as notes in edge order and never makes them references", () => {
     const result = ok(
       run(
         [
@@ -222,7 +223,13 @@ describe("edgesToInputs", () => {
         ]
       )
     )
-    expect(result.promptPrefix).toBe("shot on 35mm\n\ngolden hour")
+    // Wire order, text untouched, blank notes included: where each goes and
+    // what survives into the prompt is the blocks' business, not this one's.
+    expect(result.notes).toEqual([
+      { nodeId: "t2", title: "shot on 35mm", text: "shot on 35mm" },
+      { nodeId: "t1", title: "golden hour", text: "  golden hour  " },
+      { nodeId: "t3", title: "Empty note", text: "   " },
+    ])
     expect(result.references).toEqual([
       { slotField: "reference_images", assetId: "a1", position: 0 },
     ])
@@ -303,22 +310,49 @@ describe("edgesToInputs", () => {
   })
 
   it("is empty for a node nothing feeds", () => {
-    expect(ok(run([], []))).toEqual({ references: [], promptPrefix: "" })
+    expect(ok(run([], []))).toEqual({ references: [], notes: [] })
   })
 })
 
-describe("composePrompt", () => {
-  it("puts the notes ahead of what the user typed", () => {
-    expect(composePrompt("golden hour", "a corridor")).toBe(
-      "golden hour\n\na corridor"
-    )
+describe("incomingNotes", () => {
+  it("lists the notes even when a media edge blocks the run", () => {
+    const nodes = [
+      node({ id: "t1", type: "text", text: "golden hour" }),
+      node({ id: "g1", type: "video_gen", generationId: "gen-1" }),
+      node({ id: "t2", type: "text", text: "shot on 35mm" }),
+    ]
+    const edges = [
+      edge({ id: "e1", sourceNodeId: "t2", slotField: null, createdAt: 10 }),
+      edge({ id: "e2", sourceNodeId: "g1", createdAt: 20 }),
+      edge({ id: "e3", sourceNodeId: "t1", slotField: null, createdAt: 30 }),
+      edge({
+        id: "e4",
+        sourceNodeId: "t1",
+        targetNodeId: "somebody-else",
+        slotField: null,
+        createdAt: 40,
+      }),
+    ]
+    expect(isBlocked(run(nodes, edges))).toBe(true)
+    expect(incomingNotes({ targetNodeId: "target", nodes, edges })).toEqual([
+      { nodeId: "t2", title: "shot on 35mm", text: "shot on 35mm" },
+      { nodeId: "t1", title: "golden hour", text: "golden hour" },
+    ])
+  })
+})
+
+describe("noteTitle", () => {
+  it("is the first non-empty line", () => {
+    expect(noteTitle("\n  \n  golden hour  \nshot on 35mm")).toBe("golden hour")
   })
 
-  it("leaves a prompt alone when nothing feeds it", () => {
-    expect(composePrompt("", "  a corridor  ")).toBe("a corridor")
+  it("cuts a long line to 32 characters and an ellipsis", () => {
+    const line = "a".repeat(40)
+    expect(noteTitle(line)).toBe(`${"a".repeat(32)}…`)
   })
 
-  it("lets the notes stand alone when the prompt is empty", () => {
-    expect(composePrompt("golden hour", "   ")).toBe("golden hour")
+  it("names a blank note", () => {
+    expect(noteTitle("   \n  ")).toBe("Empty note")
+    expect(noteTitle(null)).toBe("Empty note")
   })
 })
