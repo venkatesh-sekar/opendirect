@@ -103,8 +103,14 @@ which container new canvas nodes are filed under. On `/canvas/`:
 
 - `?focus=<id>` frames that container's nodes, using the existing
   `requestCanvasFocus`.
-- New nodes are filed under the focus id when one is given, else under the
-  project root.
+- New nodes are filed under the focus id when one is given. Otherwise they go
+  under the container the user last visited (a `/container/?id=` page or a
+  `?focus`), remembered across reloads in `localStorage`, and only when there
+  is none, or it was deleted, under the first container in the tree. Not the
+  project root: a generate node reads its batch back from the container it was
+  filed under, so a run filed nowhere would show as an empty node.
+- A chip over the canvas says "File new nodes under ‹name›" and is a picker
+  for changing it; a change is remembered the same way.
 
 `WorkspaceContainerContext` can then go, or it can shrink to "last focused
 container".

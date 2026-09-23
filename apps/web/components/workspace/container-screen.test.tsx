@@ -3,7 +3,13 @@ import "@testing-library/jest-dom/vitest"
 
 import { createElement, type ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { cleanup, render, screen, within } from "@testing-library/react"
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -35,6 +41,8 @@ vi.mock("next/link", () => ({
 }))
 
 const { ContainerScreen } = await import("./container-screen")
+const { forgetFilingContainer, lastFilingContainer } =
+  await import("@/lib/canvas/filing")
 
 const RESPONSES: Record<string, unknown> = {
   "containers:tree": [
@@ -71,6 +79,7 @@ function mount(id: string | null) {
 afterEach(() => {
   cleanup()
   invoke.mockReset()
+  forgetFilingContainer()
 })
 
 describe("a container's page", () => {
@@ -106,6 +115,19 @@ describe("a container's page", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent(
       /character library/i
     )
+  })
+
+  /** The canvas files new nodes under the container last visited. */
+  it("becomes where the canvas files new nodes", async () => {
+    mount("mira")
+    await screen.findByRole("banner")
+    await waitFor(() => expect(lastFilingContainer()).toBe("mira"))
+  })
+
+  it("is not remembered when it does not exist", async () => {
+    mount("nope")
+    await screen.findByText(/no longer exists/i)
+    expect(lastFilingContainer()).toBeNull()
   })
 
   it("offers no library for a folder", async () => {

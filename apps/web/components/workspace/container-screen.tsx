@@ -1,12 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import { useContainerSummaries, useContainerTree } from "@/hooks/use-containers"
 import { findContainer } from "@/lib/board/sidebar-tree"
+import { rememberFilingContainer } from "@/lib/canvas/filing"
 
 import { AssetTile } from "@/components/canvas/nodes/asset-tile"
 import { SubjectLibrary } from "@/components/shell/subject-library"
@@ -45,6 +46,12 @@ export function ContainerScreen({ id }: { id: string | null }) {
     [id, tree.data]
   )
   const summary = summaries.data?.find((entry) => entry.id === id) ?? null
+
+  // The container you were last looking at is where the canvas files new
+  // nodes when it is opened without a focus.
+  useEffect(() => {
+    if (node) rememberFilingContainer(node.id)
+  }, [node])
 
   if (tree.isPending) {
     return (
