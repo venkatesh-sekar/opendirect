@@ -46,4 +46,12 @@ jobs:
           # Windows code-signing certificate (base64 .pfx).
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: pnpm exec electron-builder --publish always
+        # An unset secret still arrives as an empty string, and electron-builder
+        # treats an empty CSC_LINK as a path (the working directory) and fails.
+        # Drop the empty ones so a release without secrets builds unsigned.
+        shell: bash
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          pnpm exec electron-builder --publish always

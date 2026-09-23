@@ -55,6 +55,10 @@ linux:
   # Without this the binary is named after the scoped package (`@opendirectdesktop`).
   executableName: opendirect
   maintainer: OpenDirect <releases@opendirect.app>
+# The deb's default file name is built from the scoped package name, whose `/`
+# becomes a directory fpm cannot write into.
+deb:
+  artifactName: opendirect_${version}_${arch}.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
