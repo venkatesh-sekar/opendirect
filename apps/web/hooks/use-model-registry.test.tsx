@@ -59,6 +59,7 @@ const status = {
 }
 
 const override = {
+  key: "k1",
   id: "mine",
   raw: {},
   family: null,
@@ -164,33 +165,36 @@ describe("useSaveOverride", () => {
 })
 
 describe("override mutations", () => {
-  it("deletes and invalidates", async () => {
+  it("deletes by storage key and invalidates", async () => {
     invoke.mockResolvedValue({ ok: true })
     const { result, invalidate } = setup(useDeleteOverride)
 
-    await act(() => result.current.mutateAsync("mine"))
+    await act(() => result.current.mutateAsync("k1"))
 
     expect(invoke).toHaveBeenCalledWith("registry:overrides:delete", {
-      id: "mine",
+      key: "k1",
     })
     expectRegistryAndModelsInvalidated(invalidate)
   })
 
   it("imports candidates without saving them", async () => {
     invoke.mockResolvedValue({ candidates: [override] })
-    const { result } = setup(useImportOverrides)
+    const { result, invalidate } = setup(useImportOverrides)
 
     const imported = await act(() => result.current.mutateAsync())
 
     expect(invoke).toHaveBeenCalledWith("registry:overrides:import")
     expect(imported).toEqual([override])
+    // Nothing is stored until the editor saves, so nothing is stale.
+    expect(invalidate).not.toHaveBeenCalled()
   })
 
   it("exports by id and hands back the path", async () => {
     invoke.mockResolvedValue({ path: "/tmp/mine.json" })
-    const { result } = setup(useExportOverride)
+    const { result, invalidate } = setup(useExportOverride)
 
     const path = await act(() => result.current.mutateAsync("mine"))
+    expect(invalidate).not.toHaveBeenCalled()
 
     expect(invoke).toHaveBeenCalledWith("registry:overrides:export", {
       id: "mine",

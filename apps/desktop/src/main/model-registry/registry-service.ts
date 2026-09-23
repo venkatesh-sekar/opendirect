@@ -8,8 +8,8 @@
  * by `reload()` or the once-a-day `refreshIfStale()` — free `GET`s of static
  * JSON, never a provider and never at startup.
  */
-import { readFileSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { readFileSync, statSync, writeFileSync } from "node:fs"
+import { basename, join } from "node:path"
 
 import { app, dialog } from "electron"
 import log from "electron-log/main"
@@ -20,7 +20,12 @@ import { BUNDLED_FAMILIES, BUNDLED_INDEX } from "./bundled"
 import { registerRegistryHandlers, type RegistryFiles } from "./handlers"
 import { createOverrideStore } from "./overrides"
 import { createModelRegistry, type ModelRegistry } from "./registry"
-import { REGISTRY_CACHE_FILE, createRemoteSource } from "./remote"
+import {
+  MAX_REGISTRY_JSON_BYTES,
+  REGISTRY_CACHE_FILE,
+  createRemoteSource,
+  tooLargeMessage,
+} from "./remote"
 
 let registry: ModelRegistry | undefined
 
@@ -74,7 +79,14 @@ const electronFiles: RegistryFiles = {
     if (result.canceled || !result.filePath) return null
     return result.filePath
   },
-  readText: (path) => readFileSync(path, "utf8"),
+  readText(path) {
+    // Checked before reading, so a huge file is never loaded; the handler
+    // checks the text again.
+    if (statSync(path).size > MAX_REGISTRY_JSON_BYTES) {
+      throw new Error(`${basename(path)} ${tooLargeMessage()}`)
+    }
+    return readFileSync(path, "utf8")
+  },
   writeText: (path, text) => writeFileSync(path, text, "utf8"),
 }
 

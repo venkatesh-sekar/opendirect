@@ -38,9 +38,10 @@ describe("createOverrideStore", () => {
     const saved = overrides.save(family("mine"), null, 5)
 
     expect(saved).toMatchObject({ id: "mine", issues: [], updatedAt: 5 })
+    expect(saved.key).toEqual(expect.any(String))
     expect(saved.family?.endpoints[0]?.inputs).toEqual({})
     expect(store.data[OVERRIDES_KEY]).toEqual([
-      { raw: family("mine"), updatedAt: 5 },
+      { key: saved.key, raw: family("mine"), updatedAt: 5 },
     ])
     expect(overrides.list()).toEqual([saved])
   })
@@ -66,13 +67,15 @@ describe("createOverrideStore", () => {
     expect(overrides.list()).toEqual([])
   })
 
-  it("updates the entry with the same id in place", () => {
+  it("updates the entry with the same id in place, keeping its key", () => {
     const overrides = createOverrideStore(memoryStore())
-    overrides.save(family("a"), null, 1)
-    overrides.save(family("b"), null, 2)
+    const first = overrides.save(family("a"), null, 1)
+    const other = overrides.save(family("b"), null, 2)
+    expect(first.key).not.toBe(other.key)
 
-    overrides.save(family("a", "A again"), null, 3)
+    const again = overrides.save(family("a", "A again"), null, 3)
 
+    expect(again.key).toBe(first.key)
     expect(overrides.list().map((o) => [o.id, o.family?.name])).toEqual([
       ["a", "A again"],
       ["b", "b"],
@@ -101,14 +104,70 @@ describe("createOverrideStore", () => {
     ])
   })
 
-  it("deletes by id", () => {
+  it("deletes by storage key", () => {
     const overrides = createOverrideStore(memoryStore())
-    overrides.save(family("a"), null, 1)
+    const a = overrides.save(family("a"), null, 1)
     overrides.save(family("b"), null, 2)
 
-    overrides.delete("a")
+    overrides.delete(a.key)
 
     expect(overrides.list().map((o) => o.id)).toEqual(["b"])
+  })
+
+  it("gives legacy entries stable keys, so one without an id can be deleted", () => {
+    const store = memoryStore({
+      [OVERRIDES_KEY]: [
+        { raw: { name: "no id" }, updatedAt: 1 },
+        { raw: 42, updatedAt: 2 },
+        { raw: family("fine"), updatedAt: 3 },
+      ],
+    })
+    const overrides = createOverrideStore(store)
+
+    const listed = overrides.list()
+    expect(listed.map((o) => o.id)).toEqual([null, null, "fine"])
+    expect(new Set(listed.map((o) => o.key)).size).toBe(3)
+    // Derived keys do not change between reads.
+    expect(overrides.list().map((o) => o.key)).toEqual(listed.map((o) => o.key))
+
+    overrides.delete(listed[0]!.key)
+    expect(overrides.list().map((o) => o.raw)).toEqual([42, family("fine")])
+    overrides.delete(listed[1]!.key)
+    expect(overrides.list().map((o) => o.id)).toEqual(["fine"])
+  })
+
+  it("deletes one of two hand-edited entries that share an id", () => {
+    const store = memoryStore({
+      [OVERRIDES_KEY]: [
+        { raw: family("dup", "first"), updatedAt: 1 },
+        { raw: family("dup", "second"), updatedAt: 1 },
+        { key: "same", raw: family("x", "x1"), updatedAt: 1 },
+        { key: "same", raw: family("x", "x2"), updatedAt: 1 },
+      ],
+    })
+    const overrides = createOverrideStore(store)
+
+    const listed = overrides.list()
+    expect(new Set(listed.map((o) => o.key)).size).toBe(4)
+
+    overrides.delete(listed[1]!.key)
+    overrides.delete(listed[3]!.key)
+
+    expect(overrides.list().map((o) => o.family?.name)).toEqual(["first", "x1"])
+  })
+
+  it("keeps a legacy entry's key once a save writes the list back", () => {
+    const store = memoryStore({
+      [OVERRIDES_KEY]: [{ raw: { name: "no id" }, updatedAt: 1 }],
+    })
+    const overrides = createOverrideStore(store)
+    const [legacy] = overrides.list()
+
+    overrides.save(family("new"), null, 2)
+
+    expect(overrides.list()[0]?.key).toBe(legacy!.key)
+    overrides.delete(legacy!.key)
+    expect(overrides.list().map((o) => o.id)).toEqual(["new"])
   })
 
   it("lists a stored entry that no longer validates, with its issues", () => {

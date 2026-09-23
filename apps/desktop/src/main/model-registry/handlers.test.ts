@@ -122,7 +122,7 @@ describe("registerRegistryHandlers", () => {
       replaceId: "mine",
     })
 
-    const listed: Array<{ family: { name: string } }> = await call(
+    const listed: Array<{ key: string; family: { name: string } }> = await call(
       "registry:overrides:list"
     )
     expect(listed.map((o) => o.family.name)).toEqual(["Mine v2"])
@@ -131,9 +131,9 @@ describe("registerRegistryHandlers", () => {
       families: 2,
     })
 
-    expect(await call("registry:overrides:delete", { id: "mine" })).toEqual({
-      ok: true,
-    })
+    expect(
+      await call("registry:overrides:delete", { key: listed[0]!.key })
+    ).toEqual({ ok: true })
     expect(await call("registry:overrides:list")).toEqual([])
   })
 
@@ -183,6 +183,18 @@ describe("registerRegistryHandlers", () => {
     })
     await expect(call("registry:overrides:import")).rejects.toThrow(
       "x.json is not valid JSON"
+    )
+  })
+
+  it("refuses an import larger than 2 MB", async () => {
+    const { call } = wire({
+      chooseImport: vi.fn(async () => "/tmp/huge.json"),
+      readText: vi.fn(() =>
+        JSON.stringify({ ...family("huge"), pad: "x".repeat(2 * 1024 * 1024) })
+      ),
+    })
+    await expect(call("registry:overrides:import")).rejects.toThrow(
+      "huge.json is larger than 2 MB."
     )
   })
 

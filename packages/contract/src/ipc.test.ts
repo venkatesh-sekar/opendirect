@@ -342,6 +342,15 @@ describe("settings channels", () => {
       false
     )
     expect(input.safeParse({ registryUrl: "not a url" }).success).toBe(false)
+    expect(
+      input.safeParse({ registryUrl: "http://example.test/registry" }).success
+    ).toBe(false)
+    expect(
+      input.safeParse({ registryUrl: "file:///etc/registry" }).success
+    ).toBe(false)
+    expect(
+      input.safeParse({ registryUrl: "https://example.test/registry" }).success
+    ).toBe(true)
   })
 
   it("rejects out-of-range settings", () => {
@@ -595,6 +604,7 @@ describe("model registry channels", () => {
     endpoints: [{ provider: "replicate", model: "me/my-model" }],
   }
   const override = {
+    key: "k1",
     id: "my-model",
     raw: family,
     family,
@@ -631,6 +641,7 @@ describe("model registry channels", () => {
       ])
     ).toHaveLength(1)
     const broken = {
+      key: "legacy-1",
       id: null,
       raw: { name: 1 },
       family: null,
@@ -666,8 +677,12 @@ describe("model registry channels", () => {
 
   it("parses delete, import and export payloads", () => {
     expect(
-      ipcContract["registry:overrides:delete"].input.parse({ id: "my-model" })
-    ).toEqual({ id: "my-model" })
+      ipcContract["registry:overrides:delete"].input.parse({ key: "k1" })
+    ).toEqual({ key: "k1" })
+    expect(
+      ipcContract["registry:overrides:delete"].input.safeParse({ id: "x" })
+        .success
+    ).toBe(false)
     expect(
       ipcContract["registry:overrides:import"].output.parse({
         candidates: [override],

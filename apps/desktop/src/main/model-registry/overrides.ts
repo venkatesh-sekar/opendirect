@@ -10,8 +10,16 @@
  * refused outright when the family does not validate: nothing invalid is
  * ever written by the app itself.
  *
+ * Every entry has a storage `key`, assigned when the app writes it and kept
+ * across updates. The family id cannot serve: a hand-edited entry may have
+ * none, or share one with another entry. An entry written before keys
+ * existed gets one derived from its content, stable across reads, and keeps
+ * it once any save writes the list back.
+ *
  * ⛔ No network: this is local data only.
  */
+import { createHash, randomUUID } from "node:crypto"
+
 import {
   validateFamily,
   type RegistryIssue,
@@ -23,6 +31,7 @@ import type { SettingsStore } from "../settings"
 export const OVERRIDES_KEY = "modelRegistry.overrides"
 
 interface StoredOverride {
+  key: string
   raw: unknown
   updatedAt: number
 }
@@ -52,7 +61,8 @@ export interface OverrideStore {
    * not validate, and then stores nothing.
    */
   save(raw: unknown, replaceId: string | null, now: number): UserOverride
-  delete(id: string): void
+  /** Removes the one entry with this storage key; unknown keys are a no-op. */
+  delete(key: string): void
 }
 
 function rawId(raw: unknown): string | null {
@@ -65,6 +75,7 @@ function rawId(raw: unknown): string | null {
 export function toUserOverride(entry: StoredOverride): UserOverride {
   const { family, issues } = validateFamily(entry.raw)
   return {
+    key: entry.key,
     id: rawId(entry.raw),
     raw: entry.raw,
     family,
@@ -73,23 +84,39 @@ export function toUserOverride(entry: StoredOverride): UserOverride {
   }
 }
 
+/** A key for an entry stored without one: its content, so it is stable. */
+function derivedKey(raw: unknown, updatedAt: number): string {
+  const digest = createHash("sha256")
+    .update(JSON.stringify([raw, updatedAt]) ?? "undefined")
+    .digest("hex")
+  return `legacy-${digest.slice(0, 16)}`
+}
+
 export function createOverrideStore(store: SettingsStore): OverrideStore {
   function read(): StoredOverride[] {
     const value = store.get(OVERRIDES_KEY)
     if (!Array.isArray(value)) return []
+    const seen = new Map<string, number>()
     // Anything that is not even an entry is not a mapping; there is nothing
     // in it to list or fix.
     return value.flatMap((entry: unknown) => {
       if (typeof entry !== "object" || entry === null || !("raw" in entry)) {
         return []
       }
-      const updatedAt = (entry as { updatedAt?: unknown }).updatedAt
-      return [
-        {
-          raw: (entry as { raw: unknown }).raw,
-          updatedAt: typeof updatedAt === "number" ? updatedAt : 0,
-        },
-      ]
+      const raw = (entry as { raw: unknown }).raw
+      const stored = entry as { updatedAt?: unknown; key?: unknown }
+      const updatedAt =
+        typeof stored.updatedAt === "number" ? stored.updatedAt : 0
+      const base =
+        typeof stored.key === "string" && stored.key !== ""
+          ? stored.key
+          : derivedKey(raw, updatedAt)
+      // A copied entry repeats a key; the nth copy gets `#n`, which depends
+      // only on the entries before it with that same key.
+      const count = (seen.get(base) ?? 0) + 1
+      seen.set(base, count)
+      const key = count === 1 ? base : `${base}#${count}`
+      return [{ key, raw, updatedAt }]
     })
   }
 
@@ -100,10 +127,15 @@ export function createOverrideStore(store: SettingsStore): OverrideStore {
       const { family, issues } = validateFamily(raw)
       if (!family) throw new OverrideValidationError(issues)
 
-      const entry: StoredOverride = { raw, updatedAt: now }
       const entries = read()
       const target = replaceId ?? family.id
       const at = entries.findIndex((stored) => rawId(stored.raw) === target)
+      // An update keeps the entry's key, so a key the UI holds stays valid.
+      const entry: StoredOverride = {
+        key: at === -1 ? randomUUID() : entries[at]!.key,
+        raw,
+        updatedAt: now,
+      }
       // A rename onto an id another entry already holds replaces that one
       // too; two user entries with one id would only shadow each other.
       const next = entries.filter(
@@ -118,11 +150,10 @@ export function createOverrideStore(store: SettingsStore): OverrideStore {
       return toUserOverride(entry)
     },
 
-    delete(id) {
-      store.set(
-        OVERRIDES_KEY,
-        read().filter((stored) => rawId(stored.raw) !== id)
-      )
+    delete(key) {
+      const entries = read()
+      const next = entries.filter((stored) => stored.key !== key)
+      if (next.length !== entries.length) store.set(OVERRIDES_KEY, next)
     },
   }
 }

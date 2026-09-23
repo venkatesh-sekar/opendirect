@@ -129,7 +129,7 @@ export const mappingEndpointSchema = z
       if (position > 1) {
         const role = slotKeyRole(key)
         const previous = position === 2 ? role : `${role}:${position - 1}`
-        if (!(previous in endpoint.inputs)) {
+        if (!Object.hasOwn(endpoint.inputs, previous)) {
           ctx.addIssue({
             code: "custom",
             path: ["inputs", key],
@@ -272,6 +272,12 @@ export function validateFamily(raw: unknown): {
  * so it is listed with its issues and can be fixed rather than lost.
  */
 export const userOverrideSchema = z.object({
+  /**
+   * The stored entry's own key, unique within the list: what a delete names.
+   * Unlike `id` it exists for every entry, including one without an id or
+   * one sharing an id with another after a hand-edit.
+   */
+  key: z.string(),
   /** `raw.id` when it is a string. */
   id: z.string().nullable(),
   raw: z.unknown(),

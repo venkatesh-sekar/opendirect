@@ -11,7 +11,11 @@ import { http, HttpResponse } from "msw"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { server } from "../../../../../test/msw/server"
-import { createRemoteSource, type RemoteCache } from "./remote"
+import {
+  MAX_REGISTRY_JSON_BYTES,
+  createRemoteSource,
+  type RemoteCache,
+} from "./remote"
 
 const BASE =
   "https://raw.githubusercontent.com/example/opendirect/main/registry"
@@ -139,6 +143,36 @@ describe("createRemoteSource", () => {
 
     expect(cache.files).toEqual({})
     expect(methods).toEqual(["GET"])
+  })
+
+  it("refuses a registry file larger than the cap", async () => {
+    const pad = "x".repeat(MAX_REGISTRY_JSON_BYTES)
+    serve({
+      "index.json": {
+        status: 200,
+        body: { format: 1, registryVersion: 3, families: ["a", "big"] },
+      },
+      "models/a.json": { status: 200, body: family("a") },
+      "models/big.json": { status: 200, body: { ...family("big"), pad } },
+    })
+    const source = createRemoteSource({ path, now: () => NOW })
+
+    const cache = await source.fetch(BASE)
+
+    expect(cache.files.a).toEqual(family("a"))
+    expect(cache.files.big).toEqual({
+      __error: "The file is larger than 2 MB.",
+    })
+
+    serve({
+      "index.json": {
+        status: 200,
+        body: { format: 1, registryVersion: 3, families: [], pad },
+      },
+    })
+    await expect(source.fetch(BASE)).rejects.toThrow(
+      `Could not fetch the model registry from ${BASE}: The file is larger than 2 MB.`
+    )
   })
 
   it("strips a trailing slash from the base URL", async () => {

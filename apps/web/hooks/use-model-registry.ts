@@ -4,9 +4,10 @@
  * The model registry, from the renderer's side: where it stands, the
  * families in force, and the user's own mappings (design §4).
  *
- * Every mutation invalidates `["registry"]` and `["models"]`: a mapping
- * decides a model's slots and controls, so a save, a delete or a reload
- * changes the descriptors the canvas is drawn from.
+ * Every mutation that changes state invalidates `["registry"]` and
+ * `["models"]`: a mapping decides a model's slots and controls, so a save, a
+ * delete or a reload changes the descriptors the canvas is drawn from.
+ * Import (validates, saves nothing) and export (writes a file) do not.
  *
  * ⛔ Nothing here can reach a provider. `registry:reload` (and the background
  * refresh `registry:families` may start in main) make free `GET`s of static
@@ -138,7 +139,11 @@ export function useSaveOverride(): UseMutationResult<
   })
 }
 
-/** Deletes a user mapping by id; the lower layer takes over again. */
+/**
+ * Deletes one stored user mapping by its storage key (`UserOverride.key`),
+ * which every entry has — even one without an id, or sharing one — so an
+ * invalid entry can always be cleared. The lower layer takes over again.
+ */
 export function useDeleteOverride(): UseMutationResult<
   { ok: true },
   Error,
@@ -146,7 +151,7 @@ export function useDeleteOverride(): UseMutationResult<
 > {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => invoke("registry:overrides:delete", { id }),
+    mutationFn: (key: string) => invoke("registry:overrides:delete", { key }),
     onSuccess: () => invalidateMappings(client),
   })
 }
@@ -160,11 +165,9 @@ export function useImportOverrides(): UseMutationResult<
   Error,
   void
 > {
-  const client = useQueryClient()
   return useMutation({
     mutationFn: async () =>
       (await invoke("registry:overrides:import")).candidates,
-    onSuccess: () => invalidateMappings(client),
   })
 }
 
@@ -174,10 +177,8 @@ export function useExportOverride(): UseMutationResult<
   Error,
   string
 > {
-  const client = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) =>
       (await invoke("registry:overrides:export", { id })).path,
-    onSuccess: () => invalidateMappings(client),
   })
 }

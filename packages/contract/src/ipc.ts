@@ -95,8 +95,14 @@ export const settingsSchema = z.object({
   providerOrder: z.array(providerIdSchema).max(8),
   /** Whether a newer registry is fetched from GitHub (a free `GET`). */
   remoteRegistry: z.boolean(),
-  /** Base URL of the remote registry; null means the default. */
-  registryUrl: z.string().url().nullable(),
+  /** Base URL of the remote registry (https only); null means the default. */
+  registryUrl: z
+    .string()
+    .url()
+    .refine((url) => url.startsWith("https:"), {
+      message: "The registry URL must start with https://.",
+    })
+    .nullable(),
   /** Whether the picker lists models whose inputs no mapping has verified. */
   includeUnverified: z.boolean(),
 })
@@ -332,9 +338,13 @@ export const ipcContract = {
     input: z.object({ family: z.unknown(), replaceId: z.string().nullable() }),
     output: saveOverrideResultSchema,
   },
-  /** Deletes a user mapping; the lower layer takes over again. ⛔ No network. */
+  /**
+   * Deletes one stored user mapping by its storage `key` (not the family id,
+   * which a hand-edited entry may lack or share); the lower layer takes over
+   * again. ⛔ No network.
+   */
   "registry:overrides:delete": {
-    input: z.object({ id: z.string() }),
+    input: z.object({ key: z.string() }),
     output: okSchema,
   },
   /**

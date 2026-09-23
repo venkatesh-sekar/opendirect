@@ -6,7 +6,8 @@
  * This module only fetches and stores. Whether the copy is *used* (a format
  * this build understands, a newer `registryVersion`) is decided by
  * `registry.ts` when it merges the layers, so a cache written by a newer or
- * older app is read the same way.
+ * older app is read the same way; `registry.ts` also declines to write a
+ * fetched copy in a format it cannot read over the cache it has.
  *
  * ⛔ Free `GET`s of static JSON files only. Nothing here talks to a provider,
  * and nothing here runs at startup: `registry.ts` calls `fetch` from the
@@ -20,6 +21,41 @@ import { z } from "zod"
 
 /** Under `userData`, next to `model-catalog.json`. */
 export const REGISTRY_CACHE_FILE = "model-registry.json"
+
+/**
+ * The most a registry JSON file (remote or imported) may be. A real one is a
+ * few KB; this only stops a wrong URL or file from filling memory.
+ */
+export const MAX_REGISTRY_JSON_BYTES = 2 * 1024 * 1024
+
+/** "is larger than 2 MB." — prefixed with a file name, or with "The file". */
+export function tooLargeMessage(): string {
+  return `is larger than ${MAX_REGISTRY_JSON_BYTES / (1024 * 1024)} MB.`
+}
+
+/** Reads a response body, giving up as soon as it passes the cap. */
+async function readCapped(response: Response): Promise<string> {
+  const declared = Number(response.headers.get("content-length"))
+  if (Number.isFinite(declared) && declared > MAX_REGISTRY_JSON_BYTES) {
+    void response.body?.cancel().catch(() => {})
+    throw new Error(`The file ${tooLargeMessage()}`)
+  }
+  if (!response.body) return ""
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAX_REGISTRY_JSON_BYTES) {
+      void reader.cancel().catch(() => {})
+      throw new Error(`The file ${tooLargeMessage()}`)
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString("utf8")
+}
 
 /** Per request; a registry file is a few KB, so this only catches a hang. */
 const TIMEOUT_MS = 15_000
@@ -80,7 +116,7 @@ export function createRemoteSource(deps: {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    return (await response.json()) as unknown
+    return JSON.parse(await readCapped(response)) as unknown
   }
 
   return {

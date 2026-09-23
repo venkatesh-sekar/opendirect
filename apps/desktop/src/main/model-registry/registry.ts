@@ -37,8 +37,10 @@ import {
   type RemoteRegistrySource,
 } from "./remote"
 
-/** How old the remote copy (or the last failed try) may get before a background refresh. */
+/** How old the remote copy (or the last good try) may get before a background refresh. */
 export const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000
+/** After a failed background fetch, the next try comes this much sooner. */
+export const RETRY_INTERVAL_MS = 60 * 60 * 1000
 
 export interface ModelRegistryDeps {
   bundled: {
@@ -58,7 +60,10 @@ export interface ModelRegistry {
   status(): RegistryStatus
   /** Re-fetches the remote copy when enabled, then rebuilds. Never rejects. */
   reload(): Promise<RegistryStatus>
-  /** Background refresh at most every 24h; never throws; never blocks. */
+  /**
+   * Background refresh at most every 24h (1h after a failed try); never
+   * throws; never blocks.
+   */
   refreshIfStale(): void
   family(id: string): RegistryFamilyEntry | null
   familyForEndpoint(
@@ -69,7 +74,8 @@ export interface ModelRegistry {
     list(): UserOverride[]
     /** Throws `OverrideValidationError` when `raw` does not validate. */
     save(raw: unknown, replaceId: string | null): UserOverride
-    delete(id: string): void
+    /** By the entry's storage key (`UserOverride.key`). */
+    delete(key: string): void
   }
 }
 
@@ -130,8 +136,9 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
 
   let cache: RemoteCache | null | undefined
   let remoteError: string | null = null
-  let lastAttemptAt: number | null = null
-  let inflight: Promise<void> | null = null
+  let lastAttempt: { at: number; ok: boolean } | null = null
+  /** Keyed by URL: a reload after a URL change must not wait on the old one. */
+  const inflight = new Map<string, Promise<void>>()
   let built: Built | null = null
 
   function readCache(): RemoteCache | null {
@@ -271,16 +278,44 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
     built = null
   }
 
+  /**
+   * Why a fetched copy cannot be used at all, or null. A copy in a format
+   * this build cannot read is not written: it would replace a cache that
+   * still works with one that never will.
+   */
+  function unusable(next: RemoteCache): string | null {
+    const parsed = registryIndexSchema.safeParse(next.index)
+    if (parsed.success && parsed.data.format !== REGISTRY_FORMAT) {
+      return formatWarning("remote", parsed.data.format)
+    }
+    return null
+  }
+
   async function fetchRemote(url: string): Promise<void> {
-    lastAttemptAt = now()
+    const at = now()
     try {
       const next = await deps.remote.fetch(url)
+      // The URL changed while this was in flight: its answer is for a
+      // registry no longer in force, and must not replace the new one's.
+      if (remoteSettings().url !== url) return
+      const reason = unusable(next)
+      if (reason !== null) {
+        remoteError = reason
+        // Not a failure to retry soon: it stays so until the app updates.
+        lastAttempt = { at, ok: true }
+        onError(new Error(reason))
+        return
+      }
       deps.remote.write(next)
       cache = next
       remoteError = null
+      lastAttempt = { at, ok: true }
     } catch (error) {
       // The previous cache (if any) stays exactly as it was.
-      remoteError = messageOf(error)
+      if (remoteSettings().url === url) {
+        remoteError = messageOf(error)
+        lastAttempt = { at, ok: false }
+      }
       onError(error)
     } finally {
       invalidate()
@@ -288,18 +323,34 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
   }
 
   function startFetch(url: string): Promise<void> {
-    if (!inflight) {
-      inflight = fetchRemote(url).finally(() => {
-        inflight = null
+    let pending = inflight.get(url)
+    if (!pending) {
+      pending = fetchRemote(url).finally(() => {
+        inflight.delete(url)
       })
+      inflight.set(url, pending)
     }
-    return inflight
+    return pending
   }
 
   function status(): RegistryStatus {
     const current = build().status
-    // The error can change without the merge changing.
-    return { ...current, remote: { ...current.remote, error: remoteError } }
+    // The error can change without the merge changing. A newer format on
+    // the remote is also a warning, so the Models tab shows it with the rest.
+    const formatNotice =
+      remoteError !== null &&
+      remoteError.startsWith("The remote registry uses format") &&
+      !current.warnings.some((warning) => warning.message === remoteError)
+    return {
+      ...current,
+      remote: { ...current.remote, error: remoteError },
+      warnings: formatNotice
+        ? [
+            { source: "remote", familyId: null, message: remoteError! },
+            ...current.warnings,
+          ]
+        : current.warnings,
+    }
   }
 
   return {
@@ -318,15 +369,21 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
     refreshIfStale() {
       try {
         const { enabled, url } = remoteSettings()
-        if (!enabled || inflight) return
+        if (!enabled || inflight.size > 0) return
         const current = readCache()
         const fetchedAt =
           current && current.url === url ? current.fetchedAt : null
-        const last = Math.max(
-          fetchedAt ?? -Infinity,
-          lastAttemptAt ?? -Infinity
-        )
-        if (now() - last < REFRESH_INTERVAL_MS) return
+        if (lastAttempt && !lastAttempt.ok) {
+          // A failed try is retried sooner; the copy on disk, if any, is
+          // still the one in force meanwhile.
+          if (now() - lastAttempt.at < RETRY_INTERVAL_MS) return
+        } else {
+          const last = Math.max(
+            fetchedAt ?? -Infinity,
+            lastAttempt?.at ?? -Infinity
+          )
+          if (now() - last < REFRESH_INTERVAL_MS) return
+        }
         void startFetch(url)
       } catch (error) {
         onError(error)

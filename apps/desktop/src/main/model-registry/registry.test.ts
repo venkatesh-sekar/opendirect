@@ -7,7 +7,11 @@ import { describe, expect, it, vi } from "vitest"
 
 import type { SettingsStore } from "../settings"
 import { OverrideValidationError, createOverrideStore } from "./overrides"
-import { createModelRegistry, REFRESH_INTERVAL_MS } from "./registry"
+import {
+  createModelRegistry,
+  REFRESH_INTERVAL_MS,
+  RETRY_INTERVAL_MS,
+} from "./registry"
 import type { RemoteCache, RemoteRegistrySource } from "./remote"
 
 const NOW = 1_790_000_000_000
@@ -51,7 +55,10 @@ function fakeRemote(
   let cache = initial
   return {
     read: vi.fn(() => cache),
-    fetch: vi.fn((): Promise<RemoteCache> => fetched()),
+    fetch: vi.fn((url: string): Promise<RemoteCache> => {
+      void url
+      return fetched()
+    }),
     write: vi.fn((next: RemoteCache) => {
       cache = next
     }),
@@ -84,7 +91,7 @@ function setup(
   const clock = options.clock ?? { now: NOW }
   const settings = {
     remoteRegistry: options.remoteRegistry ?? true,
-    registryUrl: options.registryUrl ?? null,
+    registryUrl: (options.registryUrl ?? null) as string | null,
   }
   const onError = vi.fn()
   const registry = createModelRegistry({
@@ -231,7 +238,7 @@ describe("createModelRegistry", () => {
     })
     expect(registry.status().overrides).toBe(1)
 
-    registry.overrides.delete("a")
+    registry.overrides.delete(saved.key)
 
     expect(registry.family("a")?.source).toBe("remote")
     expect(registry.overrides.list()).toEqual([])
@@ -315,7 +322,7 @@ describe("createModelRegistry", () => {
     expect(names(registry)).toEqual(["A bundled", "B bundled"])
   })
 
-  it("refreshes in the background at most once a day, failures included", async () => {
+  it("retries a failed background refresh after an hour, not a day", async () => {
     const clock = { now: NOW }
     const remote = fakeRemote(null, async () => {
       throw new Error("HTTP 404")
@@ -327,10 +334,11 @@ describe("createModelRegistry", () => {
     await vi.waitFor(() =>
       expect(registry.status().remote.error).toBe("HTTP 404")
     )
-    clock.now += REFRESH_INTERVAL_MS - 1
+    clock.now += RETRY_INTERVAL_MS - 1
     registry.refreshIfStale()
 
     expect(remote.fetch).toHaveBeenCalledTimes(1)
+    expect(RETRY_INTERVAL_MS).toBeLessThan(REFRESH_INTERVAL_MS)
 
     clock.now += 1
     remote.fetch.mockImplementation(async () =>
@@ -341,6 +349,92 @@ describe("createModelRegistry", () => {
       expect(registry.status().activeSource).toBe("remote")
     )
     expect(remote.fetch).toHaveBeenCalledTimes(2)
+
+    // A success waits the full day again.
+    clock.now += RETRY_INTERVAL_MS
+    registry.refreshIfStale()
+    clock.now += REFRESH_INTERVAL_MS - RETRY_INTERVAL_MS - 1
+    registry.refreshIfStale()
+    expect(remote.fetch).toHaveBeenCalledTimes(2)
+    clock.now += 1
+    registry.refreshIfStale()
+    expect(remote.fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it("keeps a usable cache when the remote moves to a newer format, and says to update", async () => {
+    const remote = fakeRemote(remoteCache(), async () =>
+      remoteCache({ format: 2, registryVersion: 9, fetchedAt: NOW + 5 })
+    )
+    const { registry } = setup({ remote })
+
+    const status = await registry.reload()
+
+    expect(remote.write).not.toHaveBeenCalled()
+    expect(status).toMatchObject({
+      activeSource: "remote",
+      activeVersion: 4,
+      remote: {
+        version: 4,
+        fetchedAt: NOW,
+        error: expect.stringContaining("uses format 2"),
+      },
+    })
+    expect(status.remote.error).toContain("Update the app")
+    expect(status.warnings).toContainEqual({
+      source: "remote",
+      familyId: null,
+      message: expect.stringContaining("uses format 2"),
+    })
+    expect(registry.family("a")?.family.name).toBe("A remote")
+  })
+
+  it("does not cache a newer-format remote when there is no cache either", async () => {
+    const remote = fakeRemote(null, async () =>
+      remoteCache({ format: 2, registryVersion: 9 })
+    )
+    const { registry } = setup({ remote })
+
+    const status = await registry.reload()
+
+    expect(remote.write).not.toHaveBeenCalled()
+    expect(status.activeSource).toBe("bundled")
+    expect(status.remote.error).toContain("uses format 2")
+  })
+
+  it("fetches the new URL when a reload follows a URL change mid-fetch", async () => {
+    let release: (() => void) | undefined
+    const remote = fakeRemote(null, async () => remoteCache())
+    remote.fetch.mockImplementation(
+      (url: string) =>
+        new Promise<RemoteCache>((resolve) => {
+          const cache = remoteCache({ url })
+          if (url === DEFAULT_REGISTRY_URL) release = () => resolve(cache)
+          else resolve(cache)
+        })
+    )
+    const { registry, settings } = setup({ remote })
+
+    registry.refreshIfStale()
+    expect(remote.fetch).toHaveBeenCalledWith(DEFAULT_REGISTRY_URL)
+
+    settings.registryUrl = "https://mirror.test/registry"
+    const status = await registry.reload()
+
+    expect(remote.fetch).toHaveBeenLastCalledWith(
+      "https://mirror.test/registry"
+    )
+    expect(status).toMatchObject({
+      activeSource: "remote",
+      remote: { url: "https://mirror.test/registry", fetchedAt: NOW },
+    })
+
+    // The stale fetch finishing later must not replace the new URL's cache.
+    release?.()
+    await vi.waitFor(() => expect(release).toBeDefined())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(remote.write).toHaveBeenCalledTimes(1)
+    expect(registry.status().remote.url).toBe("https://mirror.test/registry")
+    expect(registry.status().activeSource).toBe("remote")
   })
 
   it("does not refresh a cache that is still fresh", () => {

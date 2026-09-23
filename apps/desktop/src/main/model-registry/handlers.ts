@@ -15,6 +15,7 @@ import { formatFamilyJson } from "@opendirect/contract"
 import type { IpcRegistrar } from "../ipc-registry"
 import { OverrideValidationError, toUserOverride } from "./overrides"
 import type { ModelRegistry } from "./registry"
+import { MAX_REGISTRY_JSON_BYTES, tooLargeMessage } from "./remote"
 
 /** The native pieces the import and export channels need. */
 export interface RegistryFiles {
@@ -60,26 +61,32 @@ export function registerRegistryHandlers(
     }
   })
 
-  handle("registry:overrides:delete", ({ id }) => {
-    registry().overrides.delete(id)
+  handle("registry:overrides:delete", ({ key }) => {
+    registry().overrides.delete(key)
     return { ok: true as const }
   })
 
   handle("registry:overrides:import", async () => {
     const path = await files.chooseImport()
     if (path === null) return { candidates: [] }
+    const text = files.readText(path)
+    if (Buffer.byteLength(text, "utf8") > MAX_REGISTRY_JSON_BYTES) {
+      throw new Error(`${basename(path)} ${tooLargeMessage()}`)
+    }
     let parsed: unknown
     try {
-      parsed = JSON.parse(files.readText(path)) as unknown
+      parsed = JSON.parse(text) as unknown
     } catch {
       throw new Error(`${basename(path)} is not valid JSON.`)
     }
     // Validated for the editor to show, and deliberately not saved: the
-    // user reviews an import before it changes what runs.
+    // user reviews an import before it changes what runs. A candidate's key
+    // only tells candidates apart; it names no stored entry until saved.
     const updatedAt = now()
     return {
-      candidates: (Array.isArray(parsed) ? parsed : [parsed]).map((raw) =>
-        toUserOverride({ raw, updatedAt })
+      candidates: (Array.isArray(parsed) ? parsed : [parsed]).map(
+        (raw, index) =>
+          toUserOverride({ key: `import-${index + 1}`, raw, updatedAt })
       ),
     }
   })
