@@ -1,14 +1,6 @@
 "use client"
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useHotkeys } from "react-hotkeys-hook"
 import {
@@ -27,15 +19,11 @@ import { isBridgeAvailable, subscribe } from "@/lib/ipc"
 
 import { useAssetDnd } from "@/hooks/use-asset-dnd"
 import { useBridge } from "@/hooks/use-bridge"
-import { useContainerTree, useCurrentProject } from "@/hooks/use-containers"
-import {
-  findContainer,
-  firstSelectableContainer,
-} from "@/lib/board/sidebar-tree"
+import { useCurrentProject } from "@/hooks/use-containers"
+import { isSettingsPath, rememberRoute, returnRoute } from "@/lib/shell/routes"
 
 import { ProjectLauncher } from "./project-launcher"
 import { ProjectSidebar } from "./sidebar"
-import { SubjectLibrary } from "./subject-library"
 import { StatusBar } from "./status-bar"
 
 /**
@@ -58,21 +46,6 @@ function ShellSkeleton() {
 }
 
 /**
- * The container the workspace is pointed at, published for whichever route is
- * mounted inside the shell.
- *
- * The sidebar lives above the router now, so the selection it owns can no
- * longer be handed to the canvas as a prop — the canvas is a *child* route.
- * A context is the smallest thing that spans the two.
- */
-const WorkspaceContainerContext = createContext<string | null>(null)
-
-/** The selected container id, or null when the project has none. */
-export function useWorkspaceContainerId(): string | null {
-  return useContext(WorkspaceContainerContext)
-}
-
-/**
  * The window: sidebar, the route's content, and the drag context that joins
  * them.
  *
@@ -88,18 +61,37 @@ export function useWorkspaceContainerId(): string | null {
 export function AppShell({ children }: { children?: ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const onSettings = (pathname ?? "/").startsWith("/settings")
+  const onSettings = isSettingsPath(pathname)
   const bridge = useBridge()
   const project = useCurrentProject()
-  const tree = useContainerTree(project.data != null)
   const dnd = useAssetDnd()
-  const [libraryId, setLibraryId] = useState<string | null>(null)
   const [switching, setSwitching] = useState(false)
-  const [chosen, setChosen] = useState<string | null>(null)
+
+  /**
+   * Every route but Settings is remembered as the way back out of it, query
+   * string included — `/canvas/?focus=mira` should come back framed on Mira.
+   * Read from `location` rather than `useSearchParams`, which would suspend
+   * the whole window during the static export's prerender.
+   */
+  useEffect(() => {
+    rememberRoute(pathname ?? "/", window.location.search)
+  }, [pathname])
+
+  /**
+   * Leaving for Settings re-reads the query string too: `/container/?id=a` to
+   * `?id=b` changes no pathname, so the effect above never saw it.
+   */
+  const leaveFor = useCallback(
+    (path: string) => {
+      rememberRoute(pathname ?? "/", window.location.search)
+      router.push(path)
+    },
+    [router, pathname]
+  )
 
   const toSettings = useCallback(
-    () => router.push(onSettings ? "/" : "/settings"),
-    [router, onSettings]
+    () => (onSettings ? router.push(returnRoute()) : leaveFor("/settings")),
+    [router, onSettings, leaveFor]
   )
 
   /**
@@ -138,9 +130,10 @@ export function AppShell({ children }: { children?: ReactNode }) {
     if (!isBridgeAvailable()) return
     return subscribe("shell:navigate", ({ path, toggle }) => {
       const current = pathname ?? "/"
-      router.push(toggle && current.startsWith(path) ? "/" : path)
+      if (toggle && current.startsWith(path)) router.push(returnRoute())
+      else leaveFor(path)
     })
-  }, [router, pathname])
+  }, [router, pathname, leaveFor])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -157,18 +150,6 @@ export function AppShell({ children }: { children?: ReactNode }) {
       },
     })
   )
-
-  const nodes = useMemo(() => tree.data ?? [], [tree.data])
-
-  /**
-   * Which container the workspace is pointed at. Derived rather than stored,
-   * so the shell opens on the first container without an effect and falls back
-   * on its own the moment the selected container is deleted underneath it.
-   */
-  const containerId = useMemo<string | null>(() => {
-    if (chosen && findContainer(nodes, chosen)) return chosen
-    return firstSelectableContainer(nodes)?.id ?? null
-  }, [chosen, nodes])
 
   // Before hydration is over we cannot know which of the two windows this is,
   // and the skeleton is the one answer that is honest either way.
@@ -204,68 +185,52 @@ export function AppShell({ children }: { children?: ReactNode }) {
   }
 
   return (
-    <WorkspaceContainerContext.Provider value={containerId}>
-      <DndContext
-        sensors={sensors}
-        onDragStart={dnd.onDragStart}
-        onDragEnd={dnd.onDragEnd}
-        onDragCancel={dnd.onDragCancel}
-      >
-        <SidebarProvider>
-          <ProjectSidebar
-            project={project.data}
-            selectedContainerId={containerId}
-            onSelectContainer={(node) => {
-              setChosen(node.id)
-              if (node.kind === "character" || node.kind === "scene")
-                setLibraryId(node.id)
-            }}
-            onSwitchProject={() => setSwitching(true)}
-          />
-
-          {libraryId && findContainer(nodes, libraryId) && (
-            <SubjectLibrary
-              key={libraryId}
-              node={findContainer(nodes, libraryId)!}
-              onClose={() => setLibraryId(null)}
-            />
-          )}
-          <SidebarInset className="flex min-h-svh min-w-0 flex-col">
-            {/*
-            Whichever route is mounted. The canvas is one of them and Settings
-            is the other, and both of them keep the sidebar, the status strip
-            and ⌘, because those are rendered here, above the router.
+    <DndContext
+      sensors={sensors}
+      onDragStart={dnd.onDragStart}
+      onDragEnd={dnd.onDragEnd}
+      onDragCancel={dnd.onDragCancel}
+    >
+      <SidebarProvider>
+        <ProjectSidebar
+          project={project.data}
+          onSwitchProject={() => setSwitching(true)}
+        />
+        <SidebarInset className="flex min-h-svh min-w-0 flex-col">
+          {/*
+            Whichever route is mounted — Home, a grid, the canvas, Settings —
+            and every one of them keeps the sidebar, the status strip and ⌘,
+            because those are rendered here, above the router.
 
             The canvas mounts inside this `DndContext` on purpose: it watches
             for the sidebar's asset drag and accepts it on its own droppable,
             turning the drop into a media node. ⛔ Nothing on this path spends
             money without a click on the prompt bar's Generate button.
           */}
-            {children}
+          {children}
 
-            {/*
+          {/*
             The status strip: the only permanent sign that work is happening in
             the background, and the way into the job list.
           */}
-            <StatusBar />
-          </SidebarInset>
-        </SidebarProvider>
+          <StatusBar />
+        </SidebarInset>
+      </SidebarProvider>
 
-        <DragOverlay dropAnimation={null}>
-          {dnd.activeDrag ? (
-            <div className="flex flex-col gap-0.5 rounded-md bg-primary px-2 py-1.5 text-xs text-primary-foreground shadow-lg">
-              <span>
-                {dnd.moveIntent ? "Move to container" : "Add to container"}
-              </span>
-              <span className="text-primary-foreground/70">
-                {dnd.moveIntent
-                  ? "Release Shift to keep a copy here"
-                  : "Hold Shift to move"}
-              </span>
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
-    </WorkspaceContainerContext.Provider>
+      <DragOverlay dropAnimation={null}>
+        {dnd.activeDrag ? (
+          <div className="flex flex-col gap-0.5 rounded-md bg-primary px-2 py-1.5 text-xs text-primary-foreground shadow-lg">
+            <span>
+              {dnd.moveIntent ? "Move to container" : "Add to container"}
+            </span>
+            <span className="text-primary-foreground/70">
+              {dnd.moveIntent
+                ? "Release Shift to keep a copy here"
+                : "Hold Shift to move"}
+            </span>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }

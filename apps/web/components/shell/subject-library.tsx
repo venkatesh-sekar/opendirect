@@ -17,6 +17,7 @@ import { useSetContainerReferences } from "@/hooks/use-containers"
 import { useCreateCanvasNode } from "@/hooks/use-canvas"
 import { AssetTile, assetLabel } from "@/components/canvas/nodes/asset-tile"
 import { requestCanvasFocus } from "@/lib/canvas/focus-request"
+import { canvasHref } from "@/lib/shell/routes"
 import { seedPromptDraft } from "@/components/canvas/prompt-bar"
 import { ContainerDetailsDialog } from "./container-details-dialog"
 
@@ -92,7 +93,7 @@ export function SubjectLibrary({
         modelKey: null,
       })
       requestCanvasFocus(made.id)
-      router.push("/")
+      router.push(canvasHref())
       onClose()
       toast.success("Image composition created", {
         description: "Choose a model and describe the image to generate.",

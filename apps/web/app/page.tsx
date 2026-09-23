@@ -1,15 +1,17 @@
 "use client"
 
-import { useWorkspaceContainerId } from "@/components/shell/app-shell"
+import Link from "next/link"
 
-import { Canvas } from "@/components/canvas/canvas"
+import { canvasHref } from "@/lib/shell/routes"
 
-/**
- * The canvas route. The shell around it — sidebar, status strip, drag context
- * — lives in the root layout, so this page is only the workspace itself and
- * the container the sidebar has selected for it.
- */
-export default function Page() {
-  const containerId = useWorkspaceContainerId()
-  return <Canvas containerId={containerId} />
+/** Home. The canvas moved to `/canvas/`; the sections arrive next. */
+export default function HomePage() {
+  return (
+    <main className="flex min-h-0 flex-1 flex-col gap-2 p-8">
+      <h1 className="text-sm font-semibold">Home</h1>
+      <Link href={canvasHref()} className="text-sm text-muted-foreground">
+        Open canvas
+      </Link>
+    </main>
+  )
 }

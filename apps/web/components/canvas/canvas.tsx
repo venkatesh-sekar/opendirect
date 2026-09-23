@@ -24,6 +24,7 @@
  */
 import {
   pendingCanvasFocus,
+  resolveCanvasFocus,
   subscribeCanvasFocus,
   clearCanvasFocus,
 } from "@/lib/canvas/focus-request"
@@ -290,7 +291,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
   const client = useQueryClient()
   const settings = useSettings()
-  const { screenToFlowPosition, setCenter } = useReactFlow()
+  const { screenToFlowPosition, setCenter, fitView } = useReactFlow()
   const flowStore = useStoreApi<CanvasFlowNode, CanvasFlowEdge>()
 
   const mover = useCanvasNodeMover()
@@ -311,22 +312,41 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   const [selectedEdges, setSelectedEdges] = useState<readonly string[]>([])
   const [fileDropActive, setFileDropActive] = useState(false)
   const [migrationDismissed, setMigrationDismissed] = useState(false)
+  const canvasLoaded = canvasQuery.data !== undefined
   useEffect(() => {
     const focus = () => {
       const id = pendingCanvasFocus()
-      if (!id || !canvas.nodes.some((node) => node.id === id)) return
-      setSelectedNodes([id])
-      setSelectedEdges([])
-      const node = canvas.nodes.find((node) => node.id === id)!
-      void setCenter?.(node.x + node.width / 2, node.y + node.height / 2, {
-        zoom: 0.85,
-        duration: 300,
-      })
+      if (!id) return
+      const target = resolveCanvasFocus(canvas.nodes, id)
+      if (!target) {
+        // A container with nothing on the canvas yet: once the surface has
+        // loaded, there is nothing to wait for, and a request left pending
+        // would frame the first node filed there much later, out of nowhere.
+        if (canvasLoaded && !canvas.nodes.some((node) => node.id === id))
+          clearCanvasFocus(id)
+        return
+      }
+      if (target.kind === "node") {
+        setSelectedNodes([id])
+        setSelectedEdges([])
+        const node = canvas.nodes.find((node) => node.id === id)!
+        void setCenter?.(node.x + node.width / 2, node.y + node.height / 2, {
+          zoom: 0.85,
+          duration: 300,
+        })
+      } else {
+        void fitView?.({
+          nodes: target.ids.map((nodeId) => ({ id: nodeId })),
+          padding: 0.2,
+          maxZoom: 1,
+          duration: 300,
+        })
+      }
       clearCanvasFocus(id)
     }
     focus()
     return subscribeCanvasFocus(focus)
-  }, [canvas.nodes, setCenter])
+  }, [canvas.nodes, canvasLoaded, setCenter, fitView])
 
   /* ------------------------------------------------------------------ */
   /* Rows → what React Flow draws                                        */

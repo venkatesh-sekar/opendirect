@@ -13,6 +13,8 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 
+import { returnRoute } from "@/lib/shell/routes"
+
 import { AiToolsForm } from "@/components/settings/ai-tools-form"
 import { GeneralSettingsForm } from "@/components/settings/general-settings-form"
 import { ProviderKeysForm } from "@/components/settings/provider-keys-form"
@@ -51,7 +53,7 @@ function SettingsScreen() {
       ) {
         return
       }
-      router.push("/")
+      router.push(returnRoute())
     },
     { enableOnFormTags: true, enableOnContentEditable: true },
     [router]
@@ -67,10 +69,10 @@ function SettingsScreen() {
           variant="ghost"
           size="sm"
           className="-ml-2 self-start"
-          onClick={() => router.push("/")}
+          onClick={() => router.push(returnRoute())}
         >
           <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
-          Back to the canvas
+          Back
         </Button>
         <div>
           <h1 className="text-lg font-medium">Settings</h1>

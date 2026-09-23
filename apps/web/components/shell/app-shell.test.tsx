@@ -88,6 +88,7 @@ function emit(channel: string, payload: unknown) {
 }
 
 const { AppShell } = await import("./app-shell")
+const { forgetReturnRoute } = await import("@/lib/shell/routes")
 
 function Shell({ children }: { children?: React.ReactNode }) {
   const client = new QueryClient({
@@ -129,6 +130,7 @@ afterEach(() => {
   bridge.listeners = {}
   route.pathname = "/"
   route.pushed = []
+  forgetReturnRoute()
   document.body.innerHTML = ""
 })
 
@@ -240,7 +242,7 @@ describe("AppShell", () => {
     expect(screen.getByText("Settings content")).toBeVisible()
   })
 
-  it("renders the canvas route inside the same shell", async () => {
+  it("renders Home inside the same shell", async () => {
     bridge.present = true
     bridge.responses = {
       "project:current": { project: { name: "Nikita", path: "/tmp/nikita" } },
@@ -250,13 +252,60 @@ describe("AppShell", () => {
 
     render(
       <Shell>
-        <main>Canvas</main>
+        <main>Home content</main>
       </Shell>
     )
 
     expect(await screen.findByText("Nikita")).toBeVisible()
     const settings = await screen.findByRole("link", { name: /settings/i })
     expect(settings).not.toHaveAttribute("data-active")
+    // "/" is Home now; the canvas is one place among the others.
+    expect(screen.getByRole("link", { name: /^home/i })).toHaveAttribute(
+      "data-active"
+    )
+    expect(screen.getByRole("link", { name: /^canvas/i })).toHaveAttribute(
+      "href",
+      "/canvas/"
+    )
+    expect(screen.getByText("Home content")).toBeVisible()
+  })
+
+  /**
+   * Settings is a detour, not a destination: ⌘, out of it goes back to the
+   * page it was opened from — the canvas, a grid, a container — not to Home.
+   */
+  it("toggles out of Settings to the route it was opened from", async () => {
+    bridge.present = true
+    bridge.responses = {
+      "project:current": { project: { name: "Nikita", path: "/tmp/nikita" } },
+      "containers:tree": [],
+    }
+    route.pathname = "/characters/"
+
+    const view = render(
+      <Shell>
+        <main>Characters</main>
+      </Shell>
+    )
+    await screen.findByText("Nikita")
+
+    act(() => emit("shell:navigate", { path: "/settings", toggle: true }))
+    expect(route.pushed).toEqual(["/settings"])
+
+    route.pathname = "/settings/"
+    view.rerender(
+      <Shell>
+        <main>Settings content</main>
+      </Shell>
+    )
+    await screen.findByText("Settings content")
+
+    act(() => emit("shell:navigate", { path: "/settings", toggle: true }))
+    expect(route.pushed).toEqual(["/settings", "/characters/"])
+
+    route.pushed = []
+    press()
+    expect(route.pushed).toEqual(["/characters/"])
   })
 
   /**
@@ -286,7 +335,7 @@ describe("AppShell", () => {
     expect(route.pushed).toEqual(["/"])
   })
 
-  it("goes to Settings from the canvas on the same menu item", async () => {
+  it("goes to Settings from Home on the same menu item", async () => {
     bridge.present = true
     bridge.responses = {
       "project:current": { project: { name: "Nikita", path: "/tmp/nikita" } },
