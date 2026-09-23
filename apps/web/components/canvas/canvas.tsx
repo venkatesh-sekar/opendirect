@@ -945,6 +945,15 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     setSelectedEdges([])
   }, [])
 
+  /** A note double-clicked in the composer: the canvas selects it. */
+  const selectNode = useCallback((nodeId: string) => {
+    setSelectedNodes([nodeId])
+    setSelectedEdges([])
+  }, [])
+
+  /** The note the composer's pointer is over, lit up on the surface. */
+  const [highlightedNote, setHighlightedNote] = useState<string | null>(null)
+
   /* ------------------------------------------------------------------ */
   /* Migration                                                           */
   /* ------------------------------------------------------------------ */
@@ -1012,15 +1021,21 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
   // Actions need current mutation/history closures, but a changed history
   // label or unrelated row must not broadcast a render to every node body.
-  const actions = useRef({ spawn, pick, branch, selectGeneration })
+  const actions = useRef({
+    spawn,
+    pick,
+    branch,
+    selectGeneration,
+    selectNode,
+  })
   const noteDrafts = useMemo(() => createNoteDrafts(), [])
   useEffect(() => {
     const live = new Set(canvas.nodes.map((node) => node.id))
     noteDrafts.retain(live)
   }, [canvas.nodes, noteDrafts])
   useEffect(() => {
-    actions.current = { spawn, pick, branch, selectGeneration }
-  }, [spawn, pick, branch, selectGeneration])
+    actions.current = { spawn, pick, branch, selectGeneration, selectNode }
+  }, [spawn, pick, branch, selectGeneration, selectNode])
   const surface: CanvasSurface = useMemo(
     () => ({
       containerId,
@@ -1030,6 +1045,9 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       pick: (...args) => actions.current.pick(...args),
       branch: (...args) => actions.current.branch(...args),
       selectGeneration: (...args) => actions.current.selectGeneration(...args),
+      selectNode: (...args) => actions.current.selectNode(...args),
+      // A state setter is already stable; no ref needed.
+      highlightNote: setHighlightedNote,
     }),
     [containerId, noteDrafts]
   )
@@ -1041,6 +1059,39 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           (node) => node.id === selectedNodes[0] && isGenerateNode(node.type)
         ) ?? null)
       : null
+
+  /**
+   * The composer's hover, drawn onto the surface by attribute rather than by
+   * re-rendering React Flow: the note and the wire(s) from it into the
+   * selected node get `data-prompt-highlight`, which `react-flow.css` styles.
+   * Going through the flow nodes would rebuild the caches every body reads.
+   */
+  const highlightTarget = selectedGenerateNode?.id ?? null
+  useEffect(() => {
+    const root = wrapper.current
+    if (!root || !highlightedNote || !highlightTarget) return
+    const lit: Element[] = []
+    const noteElement = root.querySelector(
+      `.react-flow__node[data-id="${CSS.escape(highlightedNote)}"]`
+    )
+    if (noteElement) lit.push(noteElement)
+    for (const edge of canvas.edges) {
+      if (
+        edge.sourceNodeId !== highlightedNote ||
+        edge.targetNodeId !== highlightTarget
+      )
+        continue
+      const edgeElement = root.querySelector(
+        `.react-flow__edge[data-id="${CSS.escape(edge.id)}"]`
+      )
+      if (edgeElement) lit.push(edgeElement)
+    }
+    for (const element of lit) element.setAttribute("data-prompt-highlight", "")
+    return () => {
+      for (const element of lit)
+        element.removeAttribute("data-prompt-highlight")
+    }
+  }, [canvas.edges, highlightTarget, highlightedNote])
 
   const defaultModelKey = selectedGenerateNode
     ? defaultModelKeyFor(selectedGenerateNode.type)

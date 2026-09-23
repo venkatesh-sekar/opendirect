@@ -99,3 +99,18 @@
 .react-flow__node {
   backface-visibility: hidden;
 }
+
+/*
+ * The note the prompt composer is pointing at, and its wire into the selected
+ * node. Set by attribute from `canvas.tsx`, so hovering a block in the bar
+ * never re-renders the flow.
+ */
+.react-flow__node[data-prompt-highlight] {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+.react-flow__edge[data-prompt-highlight] path {
+  stroke: var(--primary);
+  stroke-width: 2.5;
+}

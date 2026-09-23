@@ -75,6 +75,10 @@ export interface CanvasSurface {
    * moves the canvas. A run with no node on this canvas selects nothing.
    */
   selectGeneration: (generationId: string) => void
+  /** The composer is pointing at this note: light it and its wire up. Null clears. */
+  highlightNote?: (nodeId: string | null) => void
+  /** Select one node, e.g. a note double-clicked in the composer. */
+  selectNode?: (nodeId: string) => void
 }
 
 const CanvasSurfaceContext = createContext<CanvasSurface | null>(null)

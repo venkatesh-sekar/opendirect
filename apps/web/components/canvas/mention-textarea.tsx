@@ -26,10 +26,13 @@ import {
   useCallback,
   useEffect,
   useId,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
+  type KeyboardEvent,
   type ReactNode,
+  type Ref,
 } from "react"
 import { createPortal } from "react-dom"
 import { Textarea } from "@workspace/ui/components/textarea"
@@ -56,6 +59,10 @@ export interface MentionTextareaProps {
   rows?: number
   className?: string
   "aria-label"?: string
+  /** Every key the mention picker did not take for itself. */
+  onKeyDown?: (event: KeyboardEvent<HTMLTextAreaElement>) => void
+  /** The underlying `<textarea>`, for a caller that moves the focus. */
+  textareaRef?: Ref<HTMLTextAreaElement>
 }
 
 /**
@@ -125,8 +132,12 @@ export function MentionTextarea({
   rows = 1,
   className,
   "aria-label": ariaLabel,
+  onKeyDown,
+  textareaRef,
 }: MentionTextareaProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  // The caller's ref sees the same element the picker measures.
+  useImperativeHandle(textareaRef, () => ref.current!, [])
   const overlay = useRef<HTMLDivElement>(null)
   const listId = useId()
   const [query, setQuery] = useState<MentionQuery | null>(null)
@@ -283,7 +294,10 @@ export function MentionTextarea({
         onKeyDown={(event) => {
           // The IME owns every key until it has committed a word.
           if (composing.current || event.nativeEvent.isComposing) return
-          if (!open) return
+          if (!open) {
+            onKeyDown?.(event)
+            return
+          }
           if (event.key === "ArrowDown") {
             event.preventDefault()
             setActive((current) => (current + 1) % matches.length)
@@ -310,7 +324,9 @@ export function MentionTextarea({
             setDismissed(query?.start ?? null)
             setQuery(null)
             setAnchor(null)
+            return
           }
+          onKeyDown?.(event)
         }}
       />
 

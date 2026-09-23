@@ -23,7 +23,13 @@ import type {
   ModelDescriptor,
 } from "@opendirect/contract"
 import { TooltipProvider } from "@workspace/ui/components/tooltip"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -360,6 +366,8 @@ beforeEach(() => {
         return { ...TARGET, ...(payload as { patch: object }).patch }
       case "canvas:edge:update":
         return { ...edge({ id: "e-media" }), ...(payload as object) }
+      case "canvas:edge:delete":
+        return { ok: true }
       default:
         throw new Error(`Unexpected channel ${String(channel)}`)
     }
@@ -716,7 +724,12 @@ describe("PromptBar", () => {
       await screen.findByRole("button", { name: /improve prompt/i })
     )
 
-    expect(await screen.findByRole("status")).toHaveTextContent(/rough prompt/i)
+    // The block list's drag announcer is a status region too; this is the
+    // bar's own notice.
+    expect(await screen.findByText(/rough prompt/i)).toHaveAttribute(
+      "role",
+      "status"
+    )
     expect(invoke.mock.calls.filter(([c]) => c === "ai:run")).toHaveLength(0)
   })
 
@@ -900,6 +913,83 @@ describe("PromptBar", () => {
   })
 })
 
+describe("the prompt's blocks", () => {
+  /** jsdom lays nothing out; stack the listed blocks 40px apart. */
+  function stackBlocks() {
+    return vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        const item = this.closest("li[data-block-id]")
+        const index = item
+          ? [...item.parentElement!.children].indexOf(item)
+          : -1
+        const top = index < 0 ? 0 : index * 40
+        return {
+          x: 0,
+          y: top,
+          left: 0,
+          top,
+          width: 400,
+          height: 32,
+          right: 400,
+          bottom: top + 32,
+          toJSON: () => ({}),
+        } as DOMRect
+      })
+  }
+
+  it("sends notes and text in block order", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.type(await screen.findByLabelText("Prompt"), "slowly")
+
+    const rect = stackBlocks()
+    try {
+      screen.getByRole("button", { name: "Move note 1" }).focus()
+      await user.keyboard(" ")
+      await user.keyboard("{ArrowDown}")
+      await user.keyboard(" ")
+    } finally {
+      rect.mockRestore()
+    }
+    const list = screen.getByRole("list", { name: "Prompt blocks" })
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole("listitem")
+          .map((item) => item.dataset.kind)
+      ).toEqual(["text", "note", "text"])
+    )
+
+    await user.click(run)
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    expect(submissions()[0]![1]).toMatchObject({
+      request: { prompt: "slowly\n\na bellhop opens the lift" },
+    })
+  })
+
+  it("✕ on a note deletes its edge", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Disconnect a bellhop opens the lift",
+      })
+    )
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:edge:delete", {
+        ids: ["e-text"],
+      })
+    )
+    expect(submissions()).toHaveLength(0)
+  })
+})
+
 describe("saved prompts and unknown pricing", () => {
   it("persists the complete recipe without submitting a paid run", async () => {
     const user = userEvent.setup()
@@ -963,7 +1053,10 @@ describe("saved prompts and unknown pricing", () => {
 
       const run = await screen.findByRole("button", { name: "Run" })
       await waitFor(() => expect(run).toBeEnabled())
-      await user.type(await screen.findByLabelText("Prompt"), ", slowly")
+      await user.type(
+        await screen.findByLabelText("Prompt, part 1"),
+        ", slowly"
+      )
       await user.click(run)
 
       await waitFor(() => expect(submissions()).toHaveLength(1))
@@ -1010,21 +1103,24 @@ describe("saved prompts and unknown pricing", () => {
       await waitFor(() => expect(submissions()).toHaveLength(1))
       expect(submissions()[0]![1]).toMatchObject({
         request: {
+          // Apply rewrites the text and leaves the note where it was: the
+          // note now leads, as the only block the answer did not replace.
           prompt:
-            "a bellhop opens the lift, slowly\n\na bellhop opens the lift",
+            "a bellhop opens the lift\n\na bellhop opens the lift, slowly",
         },
       })
 
       await user.click(screen.getByRole("button", { name: "Save prompt" }))
       await waitFor(() => expect(savedRecipe()).toBeDefined())
-      expect(savedRecipe()).toMatchObject({
-        prompt: "a bellhop opens the lift, slowly",
-        blocks: [
-          { kind: "text", text: "a bellhop opens the lift, slowly" },
-          { kind: "note", nodeId: "note" },
-          { kind: "text", text: "" },
-        ],
-      })
+      expect(savedRecipe()).toEqual(
+        expect.objectContaining({
+          prompt: "a bellhop opens the lift, slowly",
+          blocks: [
+            { kind: "note", nodeId: "note" },
+            { kind: "text", text: "a bellhop opens the lift, slowly" },
+          ],
+        })
+      )
     })
 
     it("sends and saves an inserted shot", async () => {
@@ -1056,20 +1152,23 @@ describe("saved prompts and unknown pricing", () => {
       await waitFor(() => expect(submissions()).toHaveLength(1))
       expect(submissions()[0]![1]).toMatchObject({
         request: {
-          prompt: "at dusk, a slow push-in\n\na bellhop opens the lift",
+          // The shot lands in the last text block, after the note.
+          prompt: "at dusk\n\na bellhop opens the lift\n\na slow push-in",
         },
       })
 
       await user.click(screen.getByRole("button", { name: "Save prompt" }))
       await waitFor(() => expect(savedRecipe()).toBeDefined())
-      expect(savedRecipe()).toMatchObject({
-        prompt: "at dusk, a slow push-in",
-        blocks: [
-          { kind: "text", text: "at dusk, a slow push-in" },
-          { kind: "note", nodeId: "note" },
-          { kind: "text", text: "" },
-        ],
-      })
+      expect(savedRecipe()).toEqual(
+        expect.objectContaining({
+          prompt: "at dusk\n\na slow push-in",
+          blocks: [
+            { kind: "text", text: "at dusk" },
+            { kind: "note", nodeId: "note" },
+            { kind: "text", text: "a slow push-in" },
+          ],
+        })
+      )
     })
   })
 

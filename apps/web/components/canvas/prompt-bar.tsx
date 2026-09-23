@@ -63,7 +63,11 @@ import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
 
 import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useContainerTree } from "@/hooks/use-containers"
-import { useUpdateCanvasEdge, useUpdateCanvasNode } from "@/hooks/use-canvas"
+import {
+  useDeleteCanvasEdges,
+  useUpdateCanvasEdge,
+  useUpdateCanvasNode,
+} from "@/hooks/use-canvas"
 import { MAX_BATCH, useGeneratePlan } from "@/hooks/use-generate-plan"
 import { useModel } from "@/hooks/use-models"
 import {
@@ -76,8 +80,11 @@ import {
   incomingNotes,
 } from "@/lib/canvas/edges-to-inputs"
 import {
+  appendText,
   reconcileBlocks,
   renderPromptBlocks,
+  replaceText,
+  textOfBlocks,
   type DraftBlock,
 } from "@/lib/canvas/prompt-blocks"
 import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
@@ -94,7 +101,7 @@ import { CostBadge } from "@/components/create/cost-badge"
 import { ModelPicker } from "@/components/models/model-picker"
 
 import { useCanvasSurface } from "./canvas-context"
-import { MentionTextarea } from "./mention-textarea"
+import { PromptBlocks } from "./prompt-blocks"
 import { MentionNotes, ReferenceTray } from "./reference-tray"
 import { SettingsPopover } from "./settings-popover"
 
@@ -182,31 +189,44 @@ export function seedPromptDraft(
 }
 
 /**
- * The single prompt field's text, written back into a draft.
+ * A block edit, written back into a draft.
  *
- * A legacy draft keeps only `prompt`, exactly as before blocks. A draft whose
- * blocks order its notes gets `text` in its first text block and loses the
- * others — the field shows them joined — so a note keeps its place relative to
- * the start of the user's words. `prompt` is kept exactly as typed, trailing
- * space and all, since it is the field's value.
+ * A legacy draft — one whose recipe never ordered its notes — stays legacy for
+ * as long as the edit leaves it in the legacy shape (its notes in wire order,
+ * then one text block): typing or applying an answer keeps only `prompt`, as
+ * typed, trailing space and all, so saving alone never pins a note order. Any
+ * other edit records the blocks, and `prompt` becomes their text joined.
  */
-function withPromptText(
+function withBlocks(
   current: PromptDraft,
-  text: string,
+  edit: (blocks: DraftBlock[]) => DraftBlock[],
   noteIds: readonly string[]
 ): PromptDraft {
-  if (current.blocks === undefined) return { ...current, prompt: text }
   const base = reconcileBlocks({
     blocks: current.blocks,
     prompt: current.prompt,
     noteIds,
   })
-  const first = base.findIndex((block) => block.kind === "text")
-  const blocks = base.flatMap((block, index): DraftBlock[] => {
-    if (block.kind !== "text") return [block]
-    return index === first ? [{ ...block, text }] : []
+  const next = edit(base)
+  if (current.blocks === undefined) {
+    const text = legacyText(next, noteIds)
+    if (text !== null) return { ...current, prompt: text }
+  }
+  return { ...current, blocks: next, prompt: textOfBlocks(next) }
+}
+
+/** The one text block's words, when `blocks` is the legacy order; else null. */
+function legacyText(
+  blocks: readonly DraftBlock[],
+  noteIds: readonly string[]
+): string | null {
+  if (blocks.length !== noteIds.length + 1) return null
+  const matches = noteIds.every((nodeId, index) => {
+    const block = blocks[index]!
+    return block.kind === "note" && block.nodeId === nodeId
   })
-  return { ...current, prompt: text, blocks }
+  const last = blocks.at(-1)!
+  return matches && last.kind === "text" ? last.text : null
 }
 
 /** Test seam: a fresh canvas between tests must not inherit yesterday's draft. */
@@ -410,24 +430,37 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   )
 
   /**
-   * The one way the prompt field's text changes — typing, Apply and Insert —
-   * so a draft whose blocks order its notes never sends stale text.
+   * The one way the prompt changes — typing, a drag, "+", Apply and Insert —
+   * each an edit over the reconciled blocks, so what is shown, sent and saved
+   * is always the same list.
    */
-  const setPromptText = useCallback(
-    (edit: (prompt: string) => string) => {
-      updateDraft((current) =>
-        withPromptText(current, edit(current.prompt), noteIds)
-      )
+  const editBlocks = useCallback(
+    (edit: (current: DraftBlock[]) => DraftBlock[]) => {
+      updateDraft((current) => withBlocks(current, edit, noteIds))
     },
     [noteIds, updateDraft]
   )
 
+  /** "Insert shot": onto the end of the last text block. */
   const appendToPrompt = useCallback(
-    (text: string) =>
-      setPromptText((prompt) =>
-        prompt.trim() === "" ? text : `${prompt.trimEnd()}, ${text}`
-      ),
-    [setPromptText]
+    (text: string) => editBlocks((current) => appendText(current, text)),
+    [editBlocks]
+  )
+
+  /**
+   * ✕ on a note: the wire goes, the note stays on the canvas, and reconcile
+   * drops its block. ⛔ An edge delete; nothing is run.
+   */
+  const deleteEdges = useDeleteCanvasEdges()
+  const deleteEdgesMutate = deleteEdges.mutate
+  const disconnectNote = useCallback(
+    (noteNodeId: string) => {
+      const ids = incomingEdges(canvas.edges, node.id)
+        .filter((edge) => edge.sourceNodeId === noteNodeId)
+        .map((edge) => edge.id)
+      if (ids.length > 0) deleteEdgesMutate(ids)
+    },
+    [canvas.edges, deleteEdgesMutate, node.id]
   )
 
   /**
@@ -721,23 +754,21 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           mentions={mentions.outcomes}
         />
 
-        {/* ---- the prompt field -------------------------------------------
-            One plain textarea, kept whole and kept here on purpose: the
-            @-mention picker is going to attach to exactly this element, and
-            it needs a caret it can read from a real <textarea>. Its width
-            comes from `flex-1` inside a bar of stated width, so it is the one
-            thing that absorbs the remaining space instead of setting it.
+        {/* ---- the prompt ------------------------------------------------
+            The notes wired in and the user's own text blocks, in the order
+            they are sent. Each text block is a real <textarea> so the
+            @-mention picker has a caret to read. It takes `flex-1` inside a
+            bar of stated width, so it absorbs the remaining space instead of
+            setting it.
             ----------------------------------------------------------------- */}
-        <MentionTextarea
-          aria-label="Prompt"
-          placeholder="Describe what you want…"
-          rows={1}
-          value={draft.prompt}
-          onChange={(prompt) => setPromptText(() => prompt)}
+        <PromptBlocks
+          blocks={blocks}
+          notesById={notesById}
           subjects={subjects}
-          className="max-h-32 min-h-9 w-full resize-none py-2"
+          onEdit={editBlocks}
+          onDisconnect={disconnectNote}
         />
-        {/* ---- end of the prompt field ----------------------------------- */}
+        {/* ---- end of the prompt ----------------------------------------- */}
 
         {/*
           The ✨ menu, in the same place the creation bar kept it: between the
@@ -885,7 +916,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         controller={ai}
         onApply={
           ai.helper === "improve-prompt"
-            ? (text) => setPromptText(() => text)
+            ? (text) => editBlocks((current) => replaceText(current, text))
             : undefined
         }
         applyLabel="Use this prompt"
