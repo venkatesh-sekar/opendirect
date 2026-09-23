@@ -12,7 +12,11 @@ import {
   waitFor,
 } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { ReactFlowProps, ReactFlowState } from "@xyflow/react"
+import {
+  Position,
+  type ReactFlowProps,
+  type ReactFlowState,
+} from "@xyflow/react"
 import type { CanvasDto, CanvasNodeDto } from "@opendirect/contract"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@workspace/ui/components/tooltip"
@@ -25,6 +29,9 @@ const fixture = vi.hoisted(() => ({
   invoke: vi.fn(),
   props: null as ReactFlowProps<CanvasFlowNode, CanvasFlowEdge> | null,
   state: null as (() => ReactFlowState<CanvasFlowNode, CanvasFlowEdge>) | null,
+  setState: null as
+    | ((patch: Partial<ReactFlowState<CanvasFlowNode, CanvasFlowEdge>>) => void)
+    | null,
   surface: null as CanvasSurface | null,
 }))
 vi.mock("@/lib/ipc", () => ({
@@ -40,10 +47,9 @@ vi.mock("@xyflow/react", async (importOriginal) => {
     ReactFlow: (props: ReactFlowProps<CanvasFlowNode, CanvasFlowEdge>) => {
       fixture.props = props
       fixture.surface = useCanvasSurface()
-      fixture.state = actual.useStoreApi<
-        CanvasFlowNode,
-        CanvasFlowEdge
-      >().getState
+      const store = actual.useStoreApi<CanvasFlowNode, CanvasFlowEdge>()
+      fixture.state = store.getState
+      fixture.setState = store.setState
       return createElement(
         actual.ReactFlow<CanvasFlowNode, CanvasFlowEdge>,
         props
@@ -381,6 +387,54 @@ describe("the composer on a real canvas", () => {
     })
   })
 
+  /**
+   * jsdom lays nothing out, so React Flow never measures a node or its
+   * handles and draws no edge. Hand it the measurements a browser would: a
+   * viewport, each node's size, and a handle on either side.
+   */
+  function layOut() {
+    act(() => {
+      const state = fixture.state!()
+      for (const node of state.nodeLookup.values()) {
+        const width = node.width ?? 240
+        const height = node.height ?? 120
+        node.measured = { width, height }
+        node.internals.handleBounds = {
+          source: [
+            {
+              id: null,
+              type: "source",
+              nodeId: node.id,
+              position: Position.Right,
+              x: width,
+              y: height / 2,
+              width: 1,
+              height: 1,
+            },
+          ],
+          target: [
+            {
+              id: null,
+              type: "target",
+              nodeId: node.id,
+              position: Position.Left,
+              x: 0,
+              y: height / 2,
+              width: 1,
+              height: 1,
+            },
+          ],
+        }
+      }
+      fixture.setState!({
+        width: 2000,
+        height: 1000,
+        transform: [0, 0, 1],
+        edges: [...state.edges],
+      })
+    })
+  }
+
   it("lights the hovered note and its wire, and clears them after", async () => {
     const { container } = await mountComposer()
     const noteNode = () =>
@@ -388,10 +442,12 @@ describe("the composer on a real canvas", () => {
     const wire = () =>
       container.querySelector('.react-flow__edge[data-id="e-note"]')
     await waitFor(() => expect(noteNode()).not.toBeNull())
+    layOut()
+    await waitFor(() => expect(wire()).not.toBeNull())
 
     act(() => fixture.surface!.highlightNote!("note"))
     expect(noteNode()).toHaveAttribute("data-prompt-highlight")
-    if (wire()) expect(wire()).toHaveAttribute("data-prompt-highlight")
+    expect(wire()).toHaveAttribute("data-prompt-highlight")
 
     act(() => fixture.surface!.highlightNote!(null))
     expect(noteNode()).not.toHaveAttribute("data-prompt-highlight")
