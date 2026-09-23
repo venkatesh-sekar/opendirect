@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# The desktop app ships x64 and arm64 builds from a single runner per OS, and
+# sharp loads its native binary from per-arch optional packages
+# (`@img/sharp-<os>-<cpu>`). pnpm installs only the host's by default, so the
+# other arch's build crashed at startup. Install both CPUs for the host OS.
+supportedArchitectures:
+  os: [current]
+  cpu: [x64, arm64]
