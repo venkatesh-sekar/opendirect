@@ -273,6 +273,9 @@ export function ModelPicker({
             aria-expanded={open}
             aria-haspopup="listbox"
             disabled={disabled}
+            // The caller may let the chip shrink; a truncated name is still
+            // readable on hover.
+            title={selected?.name ?? value ?? undefined}
             className={cn("justify-between", className)}
           >
             <span className="truncate">

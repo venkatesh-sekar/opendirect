@@ -73,6 +73,7 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useContainerTree } from "@/hooks/use-containers"
@@ -354,6 +355,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     () => fullPromptPreference
   )
   const fullPromptId = useId()
+  const advancedReasonId = useId()
 
   const model = useModel(draft.modelKey)
   const descriptor = model.data
@@ -768,6 +770,15 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const advancedCount = advancedSchema
     ? Object.keys(advancedSchema.properties).length
     : 0
+  /** The count is in the name, so it is heard as well as seen. */
+  const advancedLabel =
+    advancedCount > 0
+      ? `Advanced parameters, ${advancedCount}`
+      : "Advanced parameters"
+  // A schema with no fields left is off, not an empty dialog.
+  const advancedOffReason = descriptor
+    ? "This model has no advanced parameters."
+    : "Choose a model to see its advanced parameters."
 
   /**
    * ⛔ Records the recipe on the node. It saves a composition, not a run.
@@ -870,8 +881,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           kinds={kinds}
           // Stated so the model's own name cannot move its neighbours. The
           // one control allowed to give: when every other control is
-          // showing, its name truncates rather than pushing Run off the bar.
-          className="w-44 min-w-24 shrink"
+          // showing, its name truncates (the full name is its title) rather
+          // than pushing Run off the bar.
+          className={cn("w-44 shrink", narrow ? "min-w-12" : "min-w-24")}
           // The canvas can show several bars over its lifetime; the palette
           // chord belongs to the window, not to whichever one is mounted.
           hotkeys={false}
@@ -883,6 +895,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             grid={grid ?? EMPTY_GRID}
             values={draft.common}
             onChange={setCommon}
+            compact={narrow}
             footer={
               narrow ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -897,28 +910,72 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             worded button does not fit the one row beside the stepper and
             the cost. The width is stated, so a count arriving with the
             model cannot move its neighbours. */}
-        <Tooltip>
-          <TooltipTrigger
-            render={
+        {advancedCount > 0 ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={advancedLabel}
+                  onClick={() => setAdvancedOpen(true)}
+                  className={cn(
+                    "nokey shrink-0 text-muted-foreground",
+                    narrow
+                      ? "w-8 justify-center px-0"
+                      : "w-12 justify-start px-2"
+                  )}
+                />
+              }
+            >
+              <HugeiconsIcon
+                icon={SlidersHorizontalIcon}
+                className="size-3.5"
+              />
+              {advancedCount > 0 && !narrow ? (
+                <span className="font-mono text-xs tabular-nums">
+                  {advancedCount}
+                </span>
+              ) : null}
+            </TooltipTrigger>
+            <TooltipContent>{advancedLabel}</TooltipContent>
+          </Tooltip>
+        ) : (
+          // A disabled button takes neither the pointer nor focus, so the
+          // reason lives on a wrapper that does — as the strip's full "+".
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  tabIndex={0}
+                  data-testid="advanced-off-wrapper"
+                  className="nokey inline-flex shrink-0 rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                />
+              }
+            >
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label="Advanced"
-                disabled={!advancedSchema}
-                onClick={() => setAdvancedOpen(true)}
-                className="nokey w-12 shrink-0 justify-start px-2 text-muted-foreground"
-              />
-            }
-          >
-            <HugeiconsIcon icon={SlidersHorizontalIcon} className="size-3.5" />
-            {advancedCount > 0 ? (
-              <span className="font-mono text-xs tabular-nums">
-                {advancedCount}
+                disabled
+                aria-label={advancedLabel}
+                aria-describedby={advancedReasonId}
+                className={cn(
+                  "text-muted-foreground",
+                  narrow ? "w-8 justify-center px-0" : "w-12 justify-start px-2"
+                )}
+              >
+                <HugeiconsIcon
+                  icon={SlidersHorizontalIcon}
+                  className="size-3.5"
+                />
+              </Button>
+              <span id={advancedReasonId} className="sr-only">
+                {advancedOffReason}
               </span>
-            ) : null}
-          </TooltipTrigger>
-          <TooltipContent>Advanced parameters</TooltipContent>
-        </Tooltip>
+            </TooltipTrigger>
+            <TooltipContent>{advancedOffReason}</TooltipContent>
+          </Tooltip>
+        )}
 
         {/*
           The ✨ menu. It is absent entirely when no local CLI was detected,
@@ -965,10 +1022,16 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           aria-pressed={fullPromptOpen}
           aria-controls={fullPromptOpen ? fullPromptId : undefined}
           onClick={toggleFullPrompt}
-          className="nokey shrink-0 text-muted-foreground aria-pressed:text-foreground"
+          // Narrow, the toggle is its icon; the name and title keep the word.
+          aria-label={narrow ? "Full prompt" : undefined}
+          title={narrow ? "Full prompt" : undefined}
+          className={cn(
+            "nokey shrink-0 text-muted-foreground aria-pressed:text-foreground",
+            narrow && "size-8 px-0"
+          )}
         >
           <HugeiconsIcon icon={ViewIcon} className="size-3.5" />
-          Full prompt
+          {narrow ? null : "Full prompt"}
         </Button>
 
         {/* Below the sidebar's own breakpoint these three live in the
@@ -1005,8 +1068,15 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
               />
             }
           >
-            <Button onClick={run} disabled={!canRun}>
-              {submission.isPending ? "Queueing…" : "Run"}
+            {/* Narrow, "Queueing…" is wider than the room Run has, so the
+                button keeps its word and says it is busy instead. */}
+            <Button
+              onClick={run}
+              disabled={!canRun}
+              aria-busy={submission.isPending || undefined}
+              className={cn(narrow && submission.isPending && "animate-pulse")}
+            >
+              {submission.isPending && !narrow ? "Queueing…" : "Run"}
             </Button>
           </TooltipTrigger>
           <TooltipContent>

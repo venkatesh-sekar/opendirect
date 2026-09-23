@@ -44,6 +44,24 @@ vi.mock("@/lib/ipc", () => ({
   subscribe: () => () => {},
 }))
 
+/**
+ * `useIsMobile`, forced when a test sets `mobile.forced`. Left null it is the
+ * real hook, which the first-paint test below depends on reading the window.
+ */
+const mobile = vi.hoisted(() => ({ forced: null as boolean | null }))
+
+vi.mock("@workspace/ui/hooks/use-mobile", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@workspace/ui/hooks/use-mobile")>()
+  return {
+    ...actual,
+    useIsMobile: () => {
+      const real = actual.useIsMobile()
+      return mobile.forced ?? real
+    },
+  }
+})
+
 const MODEL_KEY = "replicate:bytedance/seedance-2.5"
 
 /** A model with a reference slot and — deliberately — no output-count field. */
@@ -327,6 +345,7 @@ function submissions() {
 }
 
 beforeEach(() => {
+  mobile.forced = null
   quote = estimated
   served = descriptor
   aiTools = tools("claude")
@@ -782,21 +801,8 @@ describe("PromptBar", () => {
     ["wide", false],
     ["narrow", true],
   ])("the toolbar at a %s width", (_, narrow) => {
-    let wide = 0
     beforeEach(() => {
-      wide = window.innerWidth
-      if (narrow) {
-        Object.defineProperty(window, "innerWidth", {
-          configurable: true,
-          value: 500,
-        })
-      }
-    })
-    afterEach(() => {
-      Object.defineProperty(window, "innerWidth", {
-        configurable: true,
-        value: wide,
-      })
+      mobile.forced = narrow
     })
 
     it("stays one row and ends with Run", async () => {
@@ -810,9 +816,20 @@ describe("PromptBar", () => {
         .getAllByRole("combobox")
         .find((element) => element.textContent === MODEL_KEY)
       expect(controls).toContainElement(picker!)
-      expect(controls).toContainElement(
-        screen.getByRole("button", { name: "Full prompt" })
-      )
+      // A truncated name is still readable on hover.
+      expect(picker).toHaveAttribute("title", MODEL_KEY)
+      const fullPrompt = screen.getByRole("button", { name: "Full prompt" })
+      expect(controls).toContainElement(fullPrompt)
+      // Narrow, the toggle is its icon: the word does not fit beside Run.
+      expect(fullPrompt).toHaveTextContent(narrow ? /^$/ : "Full prompt")
+      const chip = screen.getByTestId("settings-chip")
+      if (narrow) {
+        // The settings chip too: its summary is its name and its title.
+        expect(chip).toHaveTextContent(/^$/)
+        expect(chip).toHaveAccessibleName("Settings: 720p")
+      } else {
+        expect(chip).toHaveTextContent("720p")
+      }
       expect(controls).toContainElement(
         screen.getByRole("button", { name: "Save prompt" })
       )
@@ -821,13 +838,46 @@ describe("PromptBar", () => {
       // may truncate, down to a floor, so the row gives there and not at Run.
       for (const child of controls.children) {
         if (child === picker) {
-          expect(child).toHaveClass("shrink", "min-w-24")
+          expect(child).toHaveClass("shrink", narrow ? "min-w-12" : "min-w-24")
         } else {
           expect(child).toHaveClass("shrink-0")
         }
       }
       expect(Boolean(screen.queryByTestId("count-stepper"))).toBe(!narrow)
     })
+  })
+
+  it("names Advanced with its count, and says why it is off", async () => {
+    const user = userEvent.setup()
+    const first = renderBar()
+
+    const advanced = await screen.findByRole("button", {
+      name: "Advanced parameters, 1",
+    })
+    expect(advanced).toBeEnabled()
+    first.unmount()
+
+    served = textOnly
+    renderBar(BARE)
+    await user.type(await screen.findByLabelText("Prompt"), "a lift")
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Run" })).toBeEnabled()
+    )
+    const off = screen.getByRole("button", { name: "Advanced parameters" })
+    expect(off).toBeDisabled()
+    expect(off).toHaveAccessibleDescription(
+      "This model has no advanced parameters."
+    )
+    // A disabled button takes no pointer or focus, so its wrapper does.
+    const wrapper = screen.getByTestId("advanced-off-wrapper")
+    expect(wrapper).toHaveAttribute("tabindex", "0")
+    await user.hover(wrapper)
+    // Once for the screen reader, once in the tooltip now showing.
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("This model has no advanced parameters.")
+      ).toHaveLength(2)
+    )
   })
 
   it("has no header line above the prompt", async () => {

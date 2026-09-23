@@ -51,6 +51,11 @@ export interface SettingsPopoverProps {
    * wider does.
    */
   footer?: ReactNode
+  /**
+   * The chip as its icon alone, named by its summary. For the narrowest bar,
+   * where the summary's words would push Run off the card.
+   */
+  compact?: boolean
 }
 
 /** The longest side of an aspect-ratio glyph, in pixels. */
@@ -162,6 +167,7 @@ export function SettingsPopover({
   onChange,
   disabled,
   footer,
+  compact = false,
 }: SettingsPopoverProps) {
   // No row means the model promotes none of these three. A chip that opened an
   // empty popover would be a promise of controls that do not exist — unless
@@ -179,12 +185,26 @@ export function SettingsPopover({
             size="sm"
             disabled={disabled}
             data-testid="settings-chip"
+            aria-label={
+              compact
+                ? summary
+                  ? `Settings: ${summary}`
+                  : "Settings"
+                : undefined
+            }
+            title={compact ? summary || "Settings" : undefined}
             // Stated, not measured: the summary changes with the model and a
             // chip that resizes moves every control beside it.
-            className="w-32 shrink-0 justify-start"
+            className={
+              compact
+                ? "size-8 shrink-0 justify-center px-0"
+                : "w-32 shrink-0 justify-start"
+            }
           >
             <HugeiconsIcon icon={Settings02Icon} className="size-3.5" />
-            <span className="truncate">{summary || "Settings"}</span>
+            {compact ? null : (
+              <span className="truncate">{summary || "Settings"}</span>
+            )}
           </Button>
         }
       />
