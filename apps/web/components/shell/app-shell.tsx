@@ -214,7 +214,8 @@ export function AppShell({ children }: { children?: ReactNode }) {
             The canvas mounts inside this `DndContext` on purpose: it watches
             for the sidebar's asset drag and accepts it on its own droppable,
             turning the drop into a media node. ⛔ Nothing on this path spends
-            money without a click on the prompt bar's Generate button.
+            money without a click on a Generate button: the canvas prompt
+            bar's, or the generate panel's on a character or scene page.
           */}
           {children}
 
