@@ -244,14 +244,56 @@ export function useDeleteContainer(): UseMutationResult<
   })
 }
 
+/** The tree with one container's references replaced, everything else kept. */
+function withReferences(
+  nodes: readonly ContainerNodeDto[],
+  id: string,
+  assetIds: string[] | null
+): ContainerNodeDto[] {
+  return nodes.map((node) =>
+    node.id === id
+      ? { ...node, referenceAssetIds: assetIds }
+      : node.children.length > 0
+        ? { ...node, children: withReferences(node.children, id, assetIds) }
+        : node
+  )
+}
+
+/**
+ * Sets the references a mention sends, in order.
+ *
+ * Written into the tree cache before main answers, because the page computes
+ * the next edit from the list it shows: a second click, or a thumbnail
+ * dropped, while the tree still held the old list would overwrite the first
+ * edit, or snap back. A refusal puts the old tree back. The mutation stays
+ * pending until the refetch has landed, so nothing unlocks on a stale list.
+ */
 export function useSetContainerReferences() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (variables: { id: string; assetIds: string[] | null }) =>
       invoke("containers:setReferences", variables),
-    onSuccess: () => {
-      void client.invalidateQueries({ queryKey: queryKeys.containers.all })
-      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+    onMutate: async ({ id, assetIds }) => {
+      // An in-flight tree fetch would land on top of the optimistic write.
+      await client.cancelQueries({ queryKey: queryKeys.containers.tree })
+      const previous = client.getQueryData<ContainerNodeDto[]>(
+        queryKeys.containers.tree
+      )
+      if (previous)
+        client.setQueryData(
+          queryKeys.containers.tree,
+          withReferences(previous, id, assetIds)
+        )
+      return { previous }
     },
+    onError: (_error, _variables, context) => {
+      if (context?.previous)
+        client.setQueryData(queryKeys.containers.tree, context.previous)
+    },
+    onSettled: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.containers.all }),
+        client.invalidateQueries({ queryKey: queryKeys.mentions.all }),
+      ]),
   })
 }

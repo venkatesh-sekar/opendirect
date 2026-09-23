@@ -258,6 +258,147 @@ describe("a character's page", () => {
     })
   })
 
+  /**
+   * Main as it really behaves: a write lands at once, and the tree that
+   * reflects it arrives a moment later. A page that unlocks its controls in
+   * between, or reads the stale tree, loses the first of two quick edits.
+   */
+  function slowTree() {
+    const answer = invoke.getMockImplementation()!
+    let references = ["sheet", "side"]
+    invoke.mockImplementation(
+      (channel: string, payload?: { assetIds?: string[] | null }) => {
+        if (channel === "containers:setReferences") {
+          references = payload?.assetIds ?? []
+          return Promise.resolve(container({ id: "mira" }))
+        }
+        if (channel === "containers:tree") {
+          const tree = (
+            responses()["containers:tree"] as ReturnType<typeof container>[]
+          ).map((node) =>
+            node.id === "mira"
+              ? { ...node, referenceAssetIds: [...references] }
+              : node
+          )
+          return new Promise((resolve) => setTimeout(() => resolve(tree), 60))
+        }
+        return answer(channel, payload)
+      }
+    )
+    return () => references
+  }
+
+  it("keeps both of two quick reference edits", async () => {
+    const user = userEvent.setup()
+    mount("mira")
+    const saved = slowTree()
+
+    await user.click(
+      await screen.findByRole("button", { name: "Use Upload as a reference" })
+    )
+    const next = await screen.findByRole("button", {
+      name: "Use Rooftop as a reference",
+    })
+    await waitFor(() => expect(next).toBeEnabled())
+    await user.click(next)
+
+    await waitFor(() =>
+      expect(calls("containers:setReferences")).toHaveLength(2)
+    )
+    expect(calls("containers:setReferences")[1]![1]).toEqual({
+      id: "mira",
+      assetIds: ["sheet", "side", "upload", "made"],
+    })
+    expect(saved()).toEqual(["sheet", "side", "upload", "made"])
+  })
+
+  it("reorders the references by dragging one onto another's place", async () => {
+    const user = userEvent.setup()
+    mount("mira")
+    slowTree()
+
+    const strip = await screen.findByRole("list", {
+      name: /references sent to the model/i,
+    })
+    await within(strip).findAllByRole("listitem")
+    // jsdom lays nothing out; give each thumbnail its place in the row.
+    const rect = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        const item = this.closest("li[data-asset-id]")
+        const index = item
+          ? ["sheet", "side"].indexOf(item.getAttribute("data-asset-id")!)
+          : -1
+        const left = index < 0 ? 0 : index * 72
+        return {
+          x: left,
+          y: 0,
+          left,
+          top: 0,
+          width: 64,
+          height: 80,
+          right: left + 64,
+          bottom: 80,
+          toJSON: () => ({}),
+        } as DOMRect
+      })
+
+    try {
+      within(strip)
+        .getByRole("button", { name: /reference 1: sheet/i })
+        .focus()
+      await user.keyboard(" ")
+      await user.keyboard("{ArrowRight}")
+      await user.keyboard(" ")
+
+      await waitFor(() =>
+        expect(calls("containers:setReferences")).toHaveLength(1)
+      )
+      expect(calls("containers:setReferences")[0]![1]).toEqual({
+        id: "mira",
+        assetIds: ["side", "sheet"],
+      })
+      // The new order shows at once, not after the tree comes back.
+      expect(
+        within(strip)
+          .getAllByRole("listitem")
+          .map((item) => item.dataset.assetId)
+      ).toEqual(["side", "sheet"])
+    } finally {
+      rect.mockRestore()
+    }
+  })
+
+  it("puts the references back when main refuses the change", async () => {
+    const user = userEvent.setup()
+    mount("mira")
+    const answer = invoke.getMockImplementation()!
+    invoke.mockImplementation((channel: string, payload?: unknown) =>
+      channel === "containers:setReferences"
+        ? Promise.reject(new Error("That asset is not in Mira"))
+        : answer(channel, payload)
+    )
+
+    const strip = await screen.findByRole("list", {
+      name: /references sent to the model/i,
+    })
+    await user.click(
+      await within(strip).findByRole("button", {
+        name: "Remove Sheet from references",
+      })
+    )
+    await waitFor(() =>
+      expect(calls("containers:setReferences")).toHaveLength(1)
+    )
+    await waitFor(() =>
+      expect(
+        within(strip)
+          .getAllByRole("listitem")
+          .map((item) => item.dataset.assetId)
+      ).toEqual(["sheet", "side"])
+    )
+  })
+
   it("imports into itself", async () => {
     const user = userEvent.setup()
     mount("mira")
