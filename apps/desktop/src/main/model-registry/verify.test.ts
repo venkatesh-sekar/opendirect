@@ -17,6 +17,7 @@ import { fixtureInputSchema } from "./fixture-schemas"
 import {
   formatVerifyReport,
   parseVerifyArgs,
+  resolveFamilyPath,
   verifyRegistry,
   type FetchSchema,
 } from "./verify"
@@ -109,12 +110,12 @@ describe("verifyRegistry", () => {
   })
 
   it("reports a failed fetch as an error and keeps going", async () => {
-    let n = 0
     const report = await verifyRegistry(
       [bundled("flux-schnell"), bundled("nano-banana-2")],
       async (provider, model) => {
-        n += 1
-        if (n === 1) throw new Error("404 Not Found")
+        if (model === "black-forest-labs/flux-schnell") {
+          throw new Error("404 Not Found")
+        }
         return {
           status: "ok",
           inputSchema: fixtureInputSchema(provider, model),
@@ -186,5 +187,28 @@ describe("parseVerifyArgs", () => {
       registry: true,
       files: ["x.json"],
     })
+  })
+})
+
+describe("resolveFamilyPath", () => {
+  it("resolves against the directory pnpm was run from (INIT_CWD)", () => {
+    // `pnpm --filter` runs the script in apps/desktop, but a path typed at
+    // the repo root is relative to the repo root.
+    expect(
+      resolveFamilyPath(
+        "registry/models/flux-schnell.json",
+        { INIT_CWD: "/repo" },
+        "/repo/apps/desktop"
+      )
+    ).toBe("/repo/registry/models/flux-schnell.json")
+  })
+
+  it("falls back to the process cwd and keeps absolute paths", () => {
+    expect(resolveFamilyPath("x.json", {}, "/repo/apps/desktop")).toBe(
+      "/repo/apps/desktop/x.json"
+    )
+    expect(
+      resolveFamilyPath("/tmp/x.json", { INIT_CWD: "/repo" }, "/elsewhere")
+    ).toBe("/tmp/x.json")
   })
 })

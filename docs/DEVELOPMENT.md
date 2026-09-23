@@ -269,10 +269,13 @@ pnpm --filter @opendirect/desktop verify:providers -- --registry
 pnpm --filter @opendirect/desktop verify:providers -- --registry --file path/to/family.json
 ```
 
-It reads keys from `.env.local`, makes one free `GET` per endpoint through
-the adapters' `getModel`, and prints `family · provider:model` with `OK`, the
-issues, or `skipped (no REPLICATE_API_TOKEN)`. `--file` adds a family, or
-replaces the bundled one with the same id. It exits with 1 when any endpoint
+It reads keys from `.env.local` and fetches schemas through the adapters'
+`getModel`, which only makes free `GET`s: one per Replicate endpoint, and at
+most two for all of OpenRouter (the video and image model listings, fetched
+once and cached for the run). It prints `family · provider:model` with `OK`,
+the issues, or `skipped (no REPLICATE_API_TOKEN)`. `--file` adds a family, or
+replaces the bundled one with the same id; its path is resolved against
+`INIT_CWD` (where you typed the command), not `apps/desktop`. It exits with 1 when any endpoint
 has issues or cannot be read; skips do not count. The pure part lives in
 `model-registry/verify.ts` so the test suite covers it.
 

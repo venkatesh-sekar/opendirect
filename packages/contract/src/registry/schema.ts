@@ -150,7 +150,8 @@ export const mappingEndpointSchema = z
           message: `Control "${name}" maps "${control.field}", which input "${input}" already maps. A field is either an input or a control.`,
         })
       }
-      // 5. `count` is a number of runs, not a vocabulary.
+      // 5. `count` is how many outputs one run makes (the field `planBatch`
+      // fills), always a number, never a vocabulary.
       if (name === "count" && control.values !== undefined) {
         ctx.addIssue({
           code: "custom",

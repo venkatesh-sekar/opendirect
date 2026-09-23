@@ -125,7 +125,8 @@ boards. Change the `field`, not the key, when a provider renames something.
 
 The controls are a fixed list: `prompt`, `negative_prompt`, `aspect_ratio`,
 `duration`, `resolution`, `seed`, `generate_audio`, `count`. Map the ones the
-endpoint has. `count` is the number of outputs per run.
+endpoint has. `count` is the provider's field for how many outputs one run
+makes (such as `num_outputs`); map it only when the model has one.
 
 When the provider uses a different vocabulary from everyone else, add
 `values`, a map from the canonical value to the provider's value:
@@ -216,8 +217,11 @@ Both are free `GET`s. Never record a fixture by running a model.
    ```
 
    It reads `REPLICATE_API_TOKEN` and `OPENROUTER_API_KEY` from `.env.local`
-   and makes one free `GET` per endpoint. A provider without a key is
-   reported as skipped. It exits with 1 when a mapped field no longer exists
+   and makes only free `GET`s: one per Replicate endpoint, and for
+   OpenRouter at most two in total (its video and image model listings,
+   fetched once and reused). A provider without a key is reported as
+   skipped. Run it from the repo root; `--file` paths are relative to where
+   you typed the command. It exits with 1 when a mapped field no longer exists
    upstream, which is how we notice a provider renaming something.
 
 ### The fastest path: build it in the app
@@ -276,17 +280,14 @@ The rules that keep the list from growing (from the
    - At least two models from different vendors have it.
    - The UX would filter or route it differently.
 4. **When unsure, use `reference`.** It is never wrong, only less useful.
-5. **Changing the list is a contract change.** It bumps the registry format
-   version and needs these rules cited in the PR.
+5. **Changing the list is a contract change.** Bump `REGISTRY_FORMAT` in
+   `packages/contract/src/registry/schema.ts`, update `referenceRoleSchema`
+   in `packages/contract/src/roles.ts`, and cite these rules in the PR,
+   saying how the new role passes each of the three tests.
 
 In practice: if a provider's field takes "reference images" that could be
 anything, map it as `reference`. Only pick `character` or `style` when the
 provider's docs say that is what the field is for.
-
-Changing the list is a contract change: bump `REGISTRY_FORMAT` in
-`packages/contract/src/registry/schema.ts`, update `referenceRoleSchema` in
-`packages/contract/src/roles.ts`, and cite these rules in the PR, saying how
-the new role passes each of the three tests.
 
 ## Pull request checklist
 

@@ -9,6 +9,8 @@
  *
  * ⛔ Nothing here makes a request. The script's fetcher may only ever `GET`.
  */
+import { resolve } from "node:path"
+
 import {
   checkEndpointAgainstSchema,
   type ModelFamily,
@@ -118,6 +120,19 @@ export function formatVerifyReport(report: VerifyReport): string {
     }
   })
   return lines.join("\n")
+}
+
+/**
+ * A `--file` path as the user meant it. `pnpm --filter` runs the script in
+ * `apps/desktop`, but sets `INIT_CWD` to the directory the command was typed
+ * in, so a path relative to the repo root still resolves.
+ */
+export function resolveFamilyPath(
+  file: string,
+  env: Record<string, string | undefined>,
+  cwd: string
+): string {
+  return resolve(env.INIT_CWD || cwd, file)
 }
 
 export interface VerifyArgs {

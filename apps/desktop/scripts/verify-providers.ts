@@ -8,10 +8,11 @@
  * at Replicate shows up as a diff in the printed shape rather than as a broken
  * form at generation time.
  *
- * Registry mode performs the same GETs, one per mapped endpoint: it reads
- * each endpoint's live input schema through the adapters' `getModel`
- * (Replicate `GET /v1/models/{owner}/{name}`, OpenRouter's `GET` model
- * listings) and checks the mapping against it with
+ * Registry mode performs the same kind of GETs: it reads each endpoint's
+ * live input schema through the adapters' `getModel` (Replicate: one
+ * `GET /v1/models/{owner}/{name}` per endpoint; OpenRouter: its video and
+ * image model listings, fetched at most once each and cached for the run)
+ * and checks the mapping against it with
  * `checkEndpointAgainstSchema`, the same check the fixture guard and the
  * mapping editor run. A provider with no key is skipped, not failed.
  *
@@ -44,6 +45,7 @@ import {
 import {
   formatVerifyReport,
   parseVerifyArgs,
+  resolveFamilyPath,
   verifyRegistry,
   type FetchSchema,
 } from "../src/main/model-registry/verify"
@@ -86,7 +88,9 @@ function loadFamilies(extraFiles: readonly string[]): ModelFamily[] {
     readFamily(resolve(REGISTRY_DIR, "models", `${id}.json`))
   )
   for (const file of extraFiles) {
-    const family = readFamily(resolve(process.cwd(), file))
+    const family = readFamily(
+      resolveFamilyPath(file, process.env, process.cwd())
+    )
     const at = families.findIndex((existing) => existing.id === family.id)
     if (at === -1) families.push(family)
     else families[at] = family
