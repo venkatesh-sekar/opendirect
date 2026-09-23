@@ -17,7 +17,13 @@ import type {
   CanvasNodeDto,
   ReferenceSlot,
 } from "@opendirect/contract"
-import { cleanup, render, screen, within } from "@testing-library/react"
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -309,6 +315,10 @@ describe("groupStrip", () => {
     expect(
       unassigned.items.map((item) => (item.kind === "edge" ? item.edgeId : ""))
     ).toEqual(["e0", "e2"])
+    // Both block the run, so both are drawn as problems.
+    expect(
+      unassigned.items.map((item) => (item.kind === "edge" ? item.problem : ""))
+    ).toEqual(["No slot", "Unknown input"])
     expect(unassigned.capacity).toBeNull()
     expect(unassigned.full).toBe(false)
   })
@@ -376,13 +386,15 @@ function renderStrip(canvas: CanvasDto, slots: ReferenceSlot[] = SLOTS) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return render(
+  const tree = (next: CanvasDto) => (
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <Controlled canvas={canvas} slots={slots} />
+        <Controlled canvas={next} slots={slots} />
       </TooltipProvider>
     </QueryClientProvider>
   )
+  const view = render(tree(canvas))
+  return { ...view, redraw: (next: CanvasDto) => view.rerender(tree(next)) }
 }
 
 const UNBOUNDED: ReferenceSlot[] = [{ ...SLOTS[0]!, max: null }]
@@ -466,6 +478,75 @@ describe("CanvasReferenceStrip", () => {
     // A single-value slot holding its one is full.
     expect(screen.getByText("1 / 1")).toBeInTheDocument()
     expect(screen.getByText("0 / 4")).toBeInTheDocument()
+  })
+
+  it("says why a full slot's + is off, to the keyboard as well as the pointer", async () => {
+    const user = userEvent.setup()
+    renderStrip(wiredCanvas(2), [{ ...SLOTS[0]!, max: 2 }])
+
+    const add = screen.getByRole("button", {
+      name: "Add references to Reference Images",
+    })
+    expect(add).toHaveAccessibleDescription("Reference Images is full (2 / 2)")
+
+    // The disabled button cannot take focus; the span around it can.
+    const wrapper = screen.getByTestId("add-full-wrapper")
+    for (let i = 0; i < 10 && document.activeElement !== wrapper; i++) {
+      await user.tab()
+    }
+    expect(wrapper).toHaveFocus()
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("Reference Images is full (2 / 2)")
+      ).toHaveLength(2)
+    )
+  })
+
+  it("heads the Unassigned gallery with why it is not sent", async () => {
+    const user = userEvent.setup()
+    const canvas: CanvasDto = {
+      nodes: [NODE, mediaNode("m0")],
+      edges: [wire("e0", "m0", null, 1)],
+    }
+    renderStrip(canvas)
+
+    await user.click(
+      screen.getByRole("button", { name: /^Open Unassigned gallery/ })
+    )
+
+    const gallery = screen.getByRole("region", { name: "Unassigned gallery" })
+    expect(within(gallery).getByRole("banner")).toHaveTextContent(
+      "Unassigned· 1 · not sent until each wire has an input"
+    )
+    expect(gallery).not.toHaveTextContent("sent as")
+  })
+
+  it("forgets a gallery whose group is gone, so it does not spring back", async () => {
+    const user = userEvent.setup()
+    const canvas: CanvasDto = {
+      nodes: [NODE, mediaNode("m0")],
+      edges: [wire("e0", "m0", null, 1)],
+    }
+    const { redraw } = renderStrip(canvas)
+    await user.click(
+      screen.getByRole("button", { name: /^Open Unassigned gallery/ })
+    )
+    expect(
+      screen.getByRole("region", { name: "Unassigned gallery" })
+    ).toBeInTheDocument()
+
+    // The wire is deleted: no Unassigned group, no gallery.
+    redraw({ nodes: [NODE, mediaNode("m0")], edges: [] })
+    expect(
+      screen.queryByRole("region", { name: "Unassigned gallery" })
+    ).toBeNull()
+
+    // Drawn again, the group is back, but nobody asked for its gallery.
+    redraw(canvas)
+    expect(screen.getByTestId("reference-thumb")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("region", { name: "Unassigned gallery" })
+    ).toBeNull()
   })
 
   it("keeps its keys away from the canvas behind it", () => {

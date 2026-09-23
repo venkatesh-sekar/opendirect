@@ -24,7 +24,7 @@
  *
  * ⛔ Nothing here submits or spends. Drawing an edge never starts a run.
  */
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useId, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons"
@@ -133,7 +133,11 @@ export interface StripGroup {
 }
 
 /** One entry per incoming media or generate edge, in the order drawn. */
-function readEdges(node: CanvasNodeDto, canvas: CanvasDto): EdgeItem[] {
+function readEdges(
+  node: CanvasNodeDto,
+  canvas: CanvasDto,
+  declared: ReadonlySet<string>
+): EdgeItem[] {
   const byId = new Map(canvas.nodes.map((one) => [one.id, one]))
   const out: EdgeItem[] = []
   for (const edge of incomingEdges(canvas.edges, node.id)) {
@@ -149,7 +153,10 @@ function readEdges(node: CanvasNodeDto, canvas: CanvasDto): EdgeItem[] {
           : "No pick"
         : edge.slotField === null
           ? "No slot"
-          : null
+          : // `edgesToInputs` blocks the run on it, so the strip says which.
+            !declared.has(edge.slotField)
+            ? "Unknown input"
+            : null
     out.push({
       kind: "edge",
       key: edge.id,
@@ -174,8 +181,8 @@ export function groupStrip(
   slots: readonly ReferenceSlot[],
   mentions: readonly MentionOutcome[]
 ): StripGroup[] {
-  const edges = readEdges(node, canvas)
   const declared = new Set(slots.map((slot) => slot.field))
+  const edges = readEdges(node, canvas, declared)
   const images = mentions.filter(isMentionImage).flatMap((outcome) =>
     outcome.assetIds.map((assetId, index): MentionItem => ({
       kind: "mention",
@@ -372,6 +379,13 @@ export function CanvasReferenceStrip({
   const total = groups.reduce((sum, group) => sum + group.items.length, 0)
   const headed = slots.length > 1 || groups.some((group) => !group.slot)
   const gallery = groups.find((group) => groupKey(group) === galleryFor)
+
+  // A gallery whose group is gone — its wires deleted, the model switched —
+  // closes for good, rather than springing open when the group comes back.
+  const stale = galleryFor !== null && !gallery
+  useEffect(() => {
+    if (stale) onGalleryChange(null)
+  }, [stale, onGalleryChange])
 
   const notify = useCallback(
     (message: string) => onNotice?.(message),
@@ -643,8 +657,9 @@ function StripThumb({
 
 /**
  * A slot's `+`. When the slot is full it stays in place, disabled, and says
- * why — a disabled button fires no pointer events, so the tooltip hangs off a
- * span around it.
+ * why — a disabled button fires no pointer or focus events, so the tooltip
+ * hangs off a focusable span around it, and the button carries the reason as
+ * its description for a screen reader.
  */
 function AddButton({
   slot,
@@ -657,10 +672,13 @@ function AddButton({
   capacity: number | null
   onAdd: (slot: ReferenceSlot) => void
 }) {
+  const reasonId = useId()
+  const reason = `${slot.label} is full (${capacity} / ${capacity})`
   const button = (
     <button
       type="button"
       disabled={full}
+      aria-describedby={full ? reasonId : undefined}
       aria-label={`Add references to ${slot.label}`}
       onClick={() => onAdd(slot)}
       className={cn(
@@ -676,12 +694,21 @@ function AddButton({
   if (!full) return button
   return (
     <Tooltip>
-      <TooltipTrigger render={<span className="inline-flex" />}>
+      <TooltipTrigger
+        render={
+          <span
+            tabIndex={0}
+            data-testid="add-full-wrapper"
+            className="inline-flex rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          />
+        }
+      >
         {button}
+        <span id={reasonId} className="sr-only">
+          {reason}
+        </span>
       </TooltipTrigger>
-      <TooltipContent>
-        {`${slot.label} is full (${capacity} / ${capacity})`}
-      </TooltipContent>
+      <TooltipContent>{reason}</TooltipContent>
     </Tooltip>
   )
 }
