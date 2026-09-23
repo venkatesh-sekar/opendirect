@@ -124,6 +124,9 @@ function record(
     // Set only by the canvas, for the sibling runs of one batch — the column
     // write that makes them findable without scanning `request_json`.
     batchId: request.batchId,
+    // Who the prompt was about: the stored prompt has its mentions resolved
+    // into prose, so this is what a scene's cast is read from.
+    mentionedContainerIds: request.mentionedContainerIds,
     inputs: request.references.map((reference) => ({
       assetId: reference.assetId,
       slotField: reference.slotField,

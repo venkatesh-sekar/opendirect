@@ -106,6 +106,7 @@ function request(
     costConfidence: "estimated",
     parentGenerationId: null,
     batchId: null,
+    mentionedContainerIds: null,
     ...overrides,
   }
 }

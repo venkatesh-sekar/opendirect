@@ -77,6 +77,7 @@ function request(
     costConfidence: "estimated",
     parentGenerationId: null,
     batchId: null,
+    mentionedContainerIds: null,
     ...overrides,
   }
 }
@@ -214,6 +215,24 @@ describe("submitGeneration", () => {
     )
   })
 
+  it("records the containers the prompt mentioned, once each, in order", async () => {
+    const generation = await submitGeneration(
+      context(),
+      deps(),
+      request({ mentionedContainerIds: ["mira", "hall", "mira"] })
+    )
+    expect(
+      getGeneration(opened.handle.db, generation.id)?.mentionedContainerIds
+    ).toEqual(["mira", "hall"])
+  })
+
+  it("leaves the mentions unrecorded when the caller did not say", async () => {
+    const generation = await submitGeneration(context(), deps(), request())
+    expect(
+      getGeneration(opened.handle.db, generation.id)?.mentionedContainerIds
+    ).toBeNull()
+  })
+
   it("puts the run on the container's board", async () => {
     const generation = await submitGeneration(context(), deps(), request())
     expect(listByContainer(opened.handle.db, { containerId }).items).toEqual([
@@ -340,6 +359,20 @@ describe("submitBatch", () => {
     ).rejects.toThrow(/ghost/)
 
     expect(listByContainer(opened.handle.db, { containerId }).items).toEqual([])
+  })
+
+  it("records the mentions on every sibling", async () => {
+    const batch = await submitBatch(
+      context(),
+      deps(),
+      request({ mentionedContainerIds: ["mira"] }),
+      2
+    )
+    for (const generation of batch.generations) {
+      expect(
+        getGeneration(opened.handle.db, generation.id)?.mentionedContainerIds
+      ).toEqual(["mira"])
+    }
   })
 
   it("keeps a batch id the caller already minted for the node", async () => {

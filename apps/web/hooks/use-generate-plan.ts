@@ -45,6 +45,7 @@ import {
 } from "@/lib/create/request"
 import {
   countBySlot,
+  mentionedContainerIds,
   resolveMentions,
   type MentionSubject,
 } from "@/lib/mentions/resolve"
@@ -154,6 +155,9 @@ export function useGeneratePlan({
       // ⛔ Null on purpose: main mints the batch id, so the renderer cannot
       // claim two runs are siblings when the handler decided otherwise.
       batchId: null,
+      // The prompt above has lost its `@handles`, so who this run was about
+      // travels beside it — a scene's cast is read from this.
+      mentionedContainerIds: mentionedContainerIds(mentions),
     })
   }, [containerId, descriptor, draft, inputs, mentions])
 

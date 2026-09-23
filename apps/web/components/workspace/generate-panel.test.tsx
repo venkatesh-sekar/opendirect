@@ -227,6 +227,7 @@ describe("the generate panel", () => {
           { slotField: "image_input", assetId: "side", position: 1 },
         ],
         estimatedCostUsd: 0.04,
+        mentionedContainerIds: ["mira"],
       },
     })
     // The mention is resolved in what is sent; the draft keeps `@mira`.

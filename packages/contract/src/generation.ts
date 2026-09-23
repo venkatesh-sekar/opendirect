@@ -57,6 +57,17 @@ export const generationRequestSchema = z.object({
    * retry — keeps building a valid request without knowing the canvas exists.
    */
   batchId: z.string().nullable().default(null),
+  /**
+   * The characters and scenes the prompt `@`-mentioned, by container id, in
+   * order of first mention. Recorded because the prompt that is stored is the
+   * *resolved* one — `@mira` is already "Mira (the person in reference image
+   * 1)" — so the mention cannot be read back out of it. A scene's cast and a
+   * character's "Appears in" are derived from this.
+   *
+   * Null means "not recorded" (a caller that knows nothing of mentions), not
+   * "mentioned nobody", which is an empty list.
+   */
+  mentionedContainerIds: z.array(z.string().min(1)).nullable().default(null),
 })
 export type GenerationRequest = z.output<typeof generationRequestSchema>
 

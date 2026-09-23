@@ -198,6 +198,17 @@ export const generations = sqliteTable(
      */
     batchId: text("batch_id"),
     /**
+     * The characters and scenes the prompt `@`-mentioned, by container id.
+     * `prompt` holds the *resolved* text, where `@mira` is already a sentence,
+     * so this is the only record of who a run was about — a scene's cast and
+     * a character's "Appears in" are read from it. Null on rows from before it
+     * existed (and from callers that do not know about mentions); those fall
+     * back to the characters whose assets were sent as inputs.
+     */
+    mentionedContainerIds: text("mentioned_container_ids", {
+      mode: "json",
+    }).$type<string[] | null>(),
+    /**
      * Branching. `set null` rather than `cascade`: pruning one run must not
      * silently wipe every variant descended from it.
      */

@@ -226,6 +226,14 @@ describe("buildGenerationRequest", () => {
     expect(build().parentGenerationId).toBeNull()
   })
 
+  it("carries the containers the prompt mentioned", () => {
+    expect(
+      build({ mentionedContainerIds: ["mira", "hall"] }).mentionedContainerIds
+    ).toEqual(["mira", "hall"])
+    // Not told is not the same as nobody: null, not an empty list.
+    expect(build().mentionedContainerIds).toBeNull()
+  })
+
   it("produces something the contract accepts", () => {
     expect(() => generationRequestSchema.parse(build({ quote }))).not.toThrow()
   })

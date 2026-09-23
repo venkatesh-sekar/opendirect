@@ -793,6 +793,8 @@ describe("PromptBar", () => {
           { slotField: "reference_images", assetId: "a0", position: 0 },
           { slotField: "reference_images", assetId: "a-venkz", position: 1 },
         ],
+        // Who the run was about, since the prompt no longer says `@venkz`.
+        mentionedContainerIds: ["c-venkz"],
       },
     })
     // ⛔ The raw text is still the user's to edit.
@@ -822,6 +824,10 @@ describe("PromptBar", () => {
       "a shot of a tired bellhop in a green coat"
     )
     expect(request.request.references).toEqual([])
+    // Text only, and still a mention: Venkz is in this run.
+    expect(submissions()[0]![1]).toMatchObject({
+      request: { mentionedContainerIds: ["c-venkz"] },
+    })
   })
 
   it("⛔ leaves a handle nobody claims in the prompt and still runs", async () => {

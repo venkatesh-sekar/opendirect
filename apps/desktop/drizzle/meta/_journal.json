@@ -57,6 +57,13 @@
       "when": 1789632799274,
       "tag": "0007_nice_praxagora",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790174557793,
+      "tag": "0008_adorable_human_cannonball",
+      "breakpoints": true
     }
   ]
 }

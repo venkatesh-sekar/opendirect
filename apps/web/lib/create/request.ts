@@ -56,6 +56,11 @@ export interface BuildRequestInput {
    * one — a single Generate is a single run — so it defaults to null.
    */
   batchId?: string | null
+  /**
+   * The characters and scenes the prompt mentioned, by container id. Left
+   * out, it is null — "not recorded" — rather than "mentioned nobody".
+   */
+  mentionedContainerIds?: string[] | null
 }
 
 /** True for a value the user has actually supplied. */
@@ -111,6 +116,7 @@ export function buildGenerationRequest(
     costConfidence: quote ? quote.confidence : null,
     parentGenerationId: input.parentGenerationId ?? null,
     batchId: input.batchId ?? null,
+    mentionedContainerIds: input.mentionedContainerIds ?? null,
   }
 }
 

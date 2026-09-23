@@ -49,6 +49,7 @@ const request: GenerationRequest = {
   costConfidence: "exact",
   parentGenerationId: null,
   batchId: null,
+  mentionedContainerIds: null,
 }
 function provider(configured = true) {
   const validateSpend = vi.fn(async () => {})

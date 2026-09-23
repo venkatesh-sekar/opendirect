@@ -12,7 +12,11 @@ import type { MentionSubjectDto, ReferenceSlot } from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
 import { deriveReferenceSlots } from "../../../desktop/src/main/providers/reference-slots"
-import { countBySlot, resolveMentions } from "./resolve"
+import {
+  countBySlot,
+  mentionedContainerIds,
+  resolveMentions,
+} from "./resolve"
 
 /** A model with a `reference_images` array, up to four. */
 const MULTI_IMAGE: ReferenceSlot[] = deriveReferenceSlots({
@@ -443,5 +447,29 @@ describe("countBySlot", () => {
 
   it("is an empty tally for no references at all", () => {
     expect(countBySlot([])).toEqual({})
+  })
+})
+
+describe("mentionedContainerIds", () => {
+  it("names every resolved subject once, image or text, and no stranger", () => {
+    const result = resolveMentions({
+      prompt: "@lobby: @venkz meets @nobody, then @venkz leaves",
+      subjects: [VENKZ, LOBBY],
+      slots: SINGLE_IMAGE,
+      occupied: {},
+    })
+    // One image slot: the lobby takes it and Venkz falls back to prose —
+    // he is still in the run.
+    expect(mentionedContainerIds(result)).toEqual(["c-lobby", "c-venkz"])
+  })
+
+  it("is empty for a prompt with no mentions", () => {
+    const result = resolveMentions({
+      prompt: "a quiet corridor",
+      subjects: [VENKZ],
+      slots: MULTI_IMAGE,
+      occupied: {},
+    })
+    expect(mentionedContainerIds(result)).toEqual([])
   })
 })

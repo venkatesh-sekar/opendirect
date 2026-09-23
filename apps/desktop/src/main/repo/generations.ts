@@ -68,6 +68,11 @@ export interface CreateGenerationInput {
   parentGenerationId?: string | null
   /** Groups the sibling runs of one canvas batch. Null for every other run. */
   batchId?: string | null
+  /**
+   * The characters and scenes the prompt mentioned. Null — the default — is
+   * "not recorded", and sends the cast back to the run's input assets.
+   */
+  mentionedContainerIds?: readonly string[] | null
   branchNote?: string | null
   inputs?: GenerationInputSlot[]
   status?: GenerationStatus
@@ -139,6 +144,9 @@ export function createGeneration(
     costConfidence: input.costConfidence ?? null,
     parentGenerationId: input.parentGenerationId ?? null,
     batchId: input.batchId ?? null,
+    mentionedContainerIds: input.mentionedContainerIds
+      ? [...new Set(input.mentionedContainerIds)]
+      : null,
     branchNote: input.branchNote ?? null,
     createdAt: input.now ?? Date.now(),
     startedAt: null,

@@ -1,0 +1,1 @@
+ALTER TABLE `generations` ADD `mentioned_container_ids` text;

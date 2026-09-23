@@ -120,6 +120,24 @@ function imagePhrase(numbers: readonly number[], totalImages: number): string {
   return `${plural} ${joinNumbers(numbers)}`
 }
 
+/**
+ * The containers a resolved prompt was about, once each, in order of first
+ * mention — whether the mention became a picture or prose. A handle nobody
+ * claims names no one.
+ *
+ * Submitted with the run because the prompt that is stored is the resolved
+ * one: once `@mira` is "Mira (the person in reference image 1)" nothing can
+ * read the mention back out, and a scene's cast is built from this.
+ */
+export function mentionedContainerIds(resolved: ResolvedMentions): string[] {
+  const ids: string[] = []
+  for (const outcome of resolved.outcomes) {
+    if (outcome.kind === "unresolved") continue
+    if (!ids.includes(outcome.containerId)) ids.push(outcome.containerId)
+  }
+  return ids
+}
+
 /** How many references each slot already carries. */
 export function countBySlot(
   references: readonly GenerationReference[]
