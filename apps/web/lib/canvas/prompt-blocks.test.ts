@@ -164,6 +164,19 @@ describe("reconcileBlocks", () => {
     })
     expect(next.map((block) => block.id)).toEqual(["n", "t-9", "n2", "text:3"])
   })
+  it("never gives a new block an id that is already taken", () => {
+    const blocks = reconcileBlocks({
+      blocks: [
+        { id: "text:2", kind: "text", text: "x" },
+        { id: "note:a", kind: "note", nodeId: "a" },
+      ],
+      prompt: "",
+      noteIds: ["a"],
+    })
+    const ids = blocks.map((block) => block.id)
+    expect(ids).toHaveLength(3)
+    expect(new Set(ids).size).toBe(3)
+  })
 })
 
 describe("legacy parity", () => {

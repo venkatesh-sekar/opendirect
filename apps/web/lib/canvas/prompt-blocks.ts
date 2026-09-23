@@ -28,6 +28,9 @@ export const BLOCK_SEPARATOR = "\n\n"
 /** A block as the composer holds it: the persisted shape plus a stable UI id. */
 export type DraftBlock = PromptBlock & { id: string }
 
+/** Numbers the `t-<n>` ids of blocks made here, so none is ever reused. */
+let counter = 0
+
 export interface IncomingNote {
   nodeId: string
   title: string
@@ -116,11 +119,17 @@ export function reconcileBlocks(input: {
     kept.every((block) => block.id !== undefined)
   if (unchanged) return input.blocks as DraftBlock[]
 
-  return kept.map((block, index) =>
-    block.id === undefined
-      ? { ...block, id: defaultId(block, index) }
-      : (block as DraftBlock)
-  )
+  // A default id can already belong to a block that has moved since it got
+  // it (`text:2` dragged to the top), and two blocks sharing an id would
+  // share a React key and a dnd-kit handle. Such a block gets a fresh one.
+  const taken = new Set(kept.flatMap((block) => block.id ?? []))
+  return kept.map((block, index) => {
+    if (block.id !== undefined) return block as DraftBlock
+    let id = defaultId(block, index)
+    if (taken.has(id)) id = `t-${++counter}`
+    taken.add(id)
+    return { ...block, id }
+  })
 }
 
 /** The user's own words only — what `draft.prompt` holds and the AI helpers edit. */
@@ -144,8 +153,6 @@ export function moveBlock(
   next.splice(to, 0, ...next.splice(from, 1))
   return next
 }
-
-let counter = 0
 
 /** A text block made by the UI, with an id nothing else will use. */
 export function newTextBlock(text = ""): DraftBlock {
