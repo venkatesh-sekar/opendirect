@@ -97,3 +97,24 @@ describe("project workspace keys", () => {
     expect(pages).not.toEqual(queryKeys.generations.projectPages(30))
   })
 })
+
+describe("registry keys", () => {
+  it("keeps status, families and overrides under one invalidatable prefix", () => {
+    for (const key of [
+      queryKeys.registry.status,
+      queryKeys.registry.families,
+      queryKeys.registry.overrides,
+    ]) {
+      expect(key[0]).toBe(queryKeys.registry.all[0])
+    }
+    expect(queryKeys.registry.all).toEqual(["registry"])
+    expect(queryKeys.registry.families).not.toEqual(
+      queryKeys.registry.overrides
+    )
+  })
+
+  it("does not collide with the models catalog", () => {
+    // A mapping change invalidates both, but they are separate caches.
+    expect(queryKeys.registry.all[0]).not.toBe("models")
+  })
+})

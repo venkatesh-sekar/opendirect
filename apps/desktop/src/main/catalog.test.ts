@@ -686,6 +686,25 @@ describe("registerModelHandlers", () => {
     expect(provider.calls.list).toBe(2)
   })
 
+  it("tells the registry a list was asked for, so it can refresh in the background", async () => {
+    const main = fakeIpcMain()
+    const catalog = createModelCatalog({
+      providers: () => [stubProvider("replicate").provider],
+      store: memoryStore().store,
+      now: () => NOW,
+    })
+    const onList = vi.fn()
+    registerModelHandlers(
+      createIpcRegistrar(main.ipc).handle,
+      () => catalog,
+      onList
+    )
+
+    await main.invoke("models:list", {})
+
+    expect(onList).toHaveBeenCalledTimes(1)
+  })
+
   it("reports provider failures through models:list", async () => {
     const main = fakeIpcMain()
     const catalog = createModelCatalog({

@@ -1,0 +1,393 @@
+/**
+ * ⛔ No network: the remote source is an in-memory fake here. The real one is
+ * exercised against msw in `remote.test.ts`.
+ */
+import { DEFAULT_REGISTRY_URL } from "@opendirect/contract"
+import { describe, expect, it, vi } from "vitest"
+
+import type { SettingsStore } from "../settings"
+import { OverrideValidationError, createOverrideStore } from "./overrides"
+import { createModelRegistry, REFRESH_INTERVAL_MS } from "./registry"
+import type { RemoteCache, RemoteRegistrySource } from "./remote"
+
+const NOW = 1_790_000_000_000
+
+const family = (id: string, name = id, model = `me/${id}`) => ({
+  id,
+  name,
+  kind: "image",
+  endpoints: [{ provider: "replicate", model }],
+})
+
+const bundled = {
+  index: { format: 1, registryVersion: 3, families: ["a", "b"] },
+  families: [
+    { origin: "registry/models/a.json", raw: family("a", "A bundled") },
+    { origin: "registry/models/b.json", raw: family("b", "B bundled") },
+  ],
+}
+
+function remoteCache(
+  patch: Partial<RemoteCache> & {
+    registryVersion?: number
+    format?: number
+  } = {}
+): RemoteCache {
+  const { registryVersion = 4, format = 1, ...rest } = patch
+  return {
+    version: 1,
+    url: DEFAULT_REGISTRY_URL,
+    fetchedAt: NOW,
+    index: { format, registryVersion, families: ["a"] },
+    files: { a: family("a", "A remote") },
+    ...rest,
+  }
+}
+
+function fakeRemote(
+  initial: RemoteCache | null = null,
+  fetched: () => Promise<RemoteCache> = async () => remoteCache()
+) {
+  let cache = initial
+  return {
+    read: vi.fn(() => cache),
+    fetch: vi.fn((): Promise<RemoteCache> => fetched()),
+    write: vi.fn((next: RemoteCache) => {
+      cache = next
+    }),
+  } satisfies RemoteRegistrySource
+}
+
+function memoryStore(): SettingsStore {
+  const data: Record<string, unknown> = {}
+  return {
+    get: (key) => data[key],
+    set: (key, value) => {
+      data[key] = value
+    },
+    delete: (key) => {
+      delete data[key]
+    },
+  }
+}
+
+function setup(
+  options: {
+    remote?: ReturnType<typeof fakeRemote>
+    remoteRegistry?: boolean
+    registryUrl?: string | null
+    clock?: { now: number }
+    bundled?: typeof bundled
+  } = {}
+) {
+  const remote = options.remote ?? fakeRemote()
+  const clock = options.clock ?? { now: NOW }
+  const settings = {
+    remoteRegistry: options.remoteRegistry ?? true,
+    registryUrl: options.registryUrl ?? null,
+  }
+  const onError = vi.fn()
+  const registry = createModelRegistry({
+    bundled: options.bundled ?? bundled,
+    remote,
+    overrides: createOverrideStore(memoryStore()),
+    settings: () => settings,
+    now: () => clock.now,
+    onError,
+  })
+  return { registry, remote, settings, clock, onError }
+}
+
+function names(registry: ReturnType<typeof setup>["registry"]) {
+  return registry.merged().families.map((entry) => entry.family.name)
+}
+
+describe("createModelRegistry", () => {
+  it("serves the bundled layer alone", () => {
+    const { registry } = setup()
+
+    expect(names(registry)).toEqual(["A bundled", "B bundled"])
+    expect(registry.status()).toEqual({
+      format: 1,
+      bundledVersion: 3,
+      activeVersion: 3,
+      activeSource: "bundled",
+      remote: {
+        enabled: true,
+        url: DEFAULT_REGISTRY_URL,
+        version: null,
+        fetchedAt: null,
+        error: null,
+      },
+      overrides: 0,
+      families: 2,
+      warnings: [],
+    })
+  })
+
+  it("uses a newer remote copy, whose family replaces the bundled one", () => {
+    const { registry } = setup({ remote: fakeRemote(remoteCache()) })
+
+    expect(registry.family("a")).toMatchObject({
+      source: "remote",
+      shadows: ["bundled"],
+      family: { name: "A remote" },
+    })
+    expect(registry.family("b")?.source).toBe("bundled")
+    expect(registry.status()).toMatchObject({
+      activeSource: "remote",
+      activeVersion: 4,
+      remote: { version: 4, fetchedAt: NOW, error: null },
+    })
+  })
+
+  it("keeps the bundled layer, with a warning, for a format it cannot read", () => {
+    const { registry } = setup({
+      remote: fakeRemote(remoteCache({ format: 2, registryVersion: 9 })),
+    })
+
+    expect(registry.family("a")?.source).toBe("bundled")
+    const status = registry.status()
+    expect(status.activeSource).toBe("bundled")
+    expect(status.remote.version).toBe(9)
+    expect(status.warnings).toEqual([
+      {
+        source: "remote",
+        familyId: null,
+        message:
+          "The remote registry uses format 2; this version of OpenDirect understands 1. Update the app to use it.",
+      },
+    ])
+  })
+
+  it("ignores a remote copy that is not newer, without a warning", () => {
+    const { registry } = setup({
+      remote: fakeRemote(remoteCache({ registryVersion: 3 })),
+    })
+
+    expect(registry.family("a")?.source).toBe("bundled")
+    expect(registry.status()).toMatchObject({
+      activeSource: "bundled",
+      activeVersion: 3,
+      remote: { version: 3 },
+      warnings: [],
+    })
+  })
+
+  it("warns about a remote index it cannot read and keeps the bundled layer", () => {
+    const { registry } = setup({
+      remote: fakeRemote(remoteCache({ index: { format: "one" } })),
+    })
+
+    expect(registry.status().activeSource).toBe("bundled")
+    expect(registry.status().warnings[0]).toMatchObject({
+      source: "remote",
+      message: expect.stringContaining("index.json"),
+    })
+  })
+
+  it("reports a remote family file that failed, and the bundled one stays", () => {
+    const { registry } = setup({
+      remote: fakeRemote(
+        remoteCache({
+          index: { format: 1, registryVersion: 4, families: ["a", "b"] },
+          files: { a: { __error: "HTTP 404" }, b: family("b", "B remote") },
+        })
+      ),
+    })
+
+    expect(registry.family("a")?.source).toBe("bundled")
+    expect(registry.family("b")?.source).toBe("remote")
+    expect(registry.status().warnings).toContainEqual({
+      source: "remote",
+      familyId: "a",
+      message: "remote models/a.json: HTTP 404",
+    })
+  })
+
+  it("ignores a cache fetched from another URL", () => {
+    const { registry } = setup({
+      remote: fakeRemote(
+        remoteCache({ url: "https://elsewhere.test/registry" })
+      ),
+    })
+
+    expect(registry.status()).toMatchObject({
+      activeSource: "bundled",
+      remote: { version: null, fetchedAt: null },
+    })
+  })
+
+  it("lets a user mapping shadow both lower layers", () => {
+    const { registry } = setup({ remote: fakeRemote(remoteCache()) })
+
+    const saved = registry.overrides.save(family("a", "A mine"), null)
+
+    expect(saved.updatedAt).toBe(NOW)
+    expect(registry.family("a")).toMatchObject({
+      source: "user",
+      shadows: ["bundled", "remote"],
+      family: { name: "A mine" },
+    })
+    expect(registry.status().overrides).toBe(1)
+
+    registry.overrides.delete("a")
+
+    expect(registry.family("a")?.source).toBe("remote")
+    expect(registry.overrides.list()).toEqual([])
+  })
+
+  it("refuses an invalid user mapping and changes nothing", () => {
+    const { registry } = setup()
+
+    expect(() => registry.overrides.save({ id: "a", name: "A" }, null)).toThrow(
+      OverrideValidationError
+    )
+    expect(registry.family("a")?.source).toBe("bundled")
+  })
+
+  it("finds the family that maps an endpoint", () => {
+    const { registry } = setup()
+    registry.overrides.save(family("c", "C", "someone/else"), null)
+
+    expect(registry.familyForEndpoint("replicate", "me/a")?.family.id).toBe("a")
+    expect(
+      registry.familyForEndpoint("replicate", "someone/else")?.family.id
+    ).toBe("c")
+    expect(registry.familyForEndpoint("openrouter", "me/a")).toBeNull()
+    expect(registry.family("nope")).toBeNull()
+  })
+
+  it("reloads: fetches the remote copy, caches it and uses it", async () => {
+    const { registry, remote } = setup()
+
+    const status = await registry.reload()
+
+    expect(remote.fetch).toHaveBeenCalledWith(DEFAULT_REGISTRY_URL)
+    expect(remote.write).toHaveBeenCalledTimes(1)
+    expect(status).toMatchObject({ activeSource: "remote", activeVersion: 4 })
+    expect(registry.family("a")?.family.name).toBe("A remote")
+  })
+
+  it("fetches from the URL in settings", async () => {
+    const { registry, remote } = setup({
+      registryUrl: "https://mirror.test/registry/",
+    })
+
+    await registry.reload()
+
+    expect(remote.fetch).toHaveBeenCalledWith("https://mirror.test/registry")
+    expect(registry.status().remote.url).toBe("https://mirror.test/registry")
+  })
+
+  it("keeps the previous cache when a reload fails, and says why", async () => {
+    const remote = fakeRemote(remoteCache(), async () => {
+      throw new Error(
+        `Could not fetch the model registry from ${DEFAULT_REGISTRY_URL}: HTTP 404`
+      )
+    })
+    const { registry, onError } = setup({ remote })
+
+    const status = await registry.reload()
+
+    expect(remote.write).not.toHaveBeenCalled()
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(status).toMatchObject({
+      activeSource: "remote",
+      remote: { error: expect.stringContaining("HTTP 404") },
+    })
+
+    // The next good fetch clears it.
+    remote.fetch.mockImplementation(async () => remoteCache())
+    expect((await registry.reload()).remote.error).toBeNull()
+  })
+
+  it("degrades to the bundled layer when the remote has never been reachable", async () => {
+    const remote = fakeRemote(null, async () => {
+      throw new Error("HTTP 404")
+    })
+    const { registry } = setup({ remote })
+
+    const status = await registry.reload()
+
+    expect(status.activeSource).toBe("bundled")
+    expect(status.remote.error).toBe("HTTP 404")
+    expect(names(registry)).toEqual(["A bundled", "B bundled"])
+  })
+
+  it("refreshes in the background at most once a day, failures included", async () => {
+    const clock = { now: NOW }
+    const remote = fakeRemote(null, async () => {
+      throw new Error("HTTP 404")
+    })
+    const { registry } = setup({ remote, clock })
+
+    registry.refreshIfStale()
+    registry.refreshIfStale()
+    await vi.waitFor(() =>
+      expect(registry.status().remote.error).toBe("HTTP 404")
+    )
+    clock.now += REFRESH_INTERVAL_MS - 1
+    registry.refreshIfStale()
+
+    expect(remote.fetch).toHaveBeenCalledTimes(1)
+
+    clock.now += 1
+    remote.fetch.mockImplementation(async () =>
+      remoteCache({ fetchedAt: clock.now })
+    )
+    registry.refreshIfStale()
+    await vi.waitFor(() =>
+      expect(registry.status().activeSource).toBe("remote")
+    )
+    expect(remote.fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not refresh a cache that is still fresh", () => {
+    const { registry, remote } = setup({
+      remote: fakeRemote(remoteCache({ fetchedAt: NOW - 1000 })),
+    })
+
+    registry.refreshIfStale()
+
+    expect(remote.fetch).not.toHaveBeenCalled()
+  })
+
+  it("never fetches, and ignores the cache, when the remote is turned off", async () => {
+    const { registry, remote } = setup({
+      remoteRegistry: false,
+      remote: fakeRemote(remoteCache()),
+    })
+
+    registry.refreshIfStale()
+    const status = await registry.reload()
+
+    expect(remote.fetch).not.toHaveBeenCalled()
+    expect(status).toMatchObject({
+      activeSource: "bundled",
+      remote: { enabled: false },
+    })
+  })
+
+  it("follows a settings change without a reload", () => {
+    const { registry, settings } = setup({ remote: fakeRemote(remoteCache()) })
+    expect(registry.status().activeSource).toBe("remote")
+
+    settings.remoteRegistry = false
+
+    expect(registry.status().activeSource).toBe("bundled")
+    expect(registry.family("a")?.source).toBe("bundled")
+  })
+
+  it("warns, rather than failing, when the bundled index is broken", () => {
+    const { registry } = setup({
+      bundled: { ...bundled, index: { format: 2 } as never },
+    })
+
+    expect(names(registry)).toEqual(["A bundled", "B bundled"])
+    expect(registry.status().warnings[0]).toMatchObject({
+      source: "bundled",
+      message: expect.stringContaining("registry/index.json"),
+    })
+  })
+})

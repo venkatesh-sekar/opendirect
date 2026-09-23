@@ -237,6 +237,37 @@ export const registryStatusSchema = z.object({
 export type RegistryStatus = z.output<typeof registryStatusSchema>
 
 /**
+ * One validation problem, addressed so a form can put it under the row it is
+ * about: `path` is dotted into the family (`endpoints.0.inputs.character.field`),
+ * and empty for the family as a whole. The same shape as `SchemaIssue`.
+ */
+export const registryIssueSchema = z.object({
+  path: z.string(),
+  message: z.string(),
+})
+export type RegistryIssue = z.output<typeof registryIssueSchema>
+
+/**
+ * `modelFamilySchema.safeParse`, flattened into every issue with its path —
+ * main uses it to refuse a save, the mapping editor to show the same
+ * messages under the same rows before the user ever presses Save.
+ */
+export function validateFamily(raw: unknown): {
+  family: ModelFamily | null
+  issues: RegistryIssue[]
+} {
+  const parsed = modelFamilySchema.safeParse(raw)
+  if (parsed.success) return { family: parsed.data, issues: [] }
+  return {
+    family: null,
+    issues: parsed.error.issues.map((issue) => ({
+      path: issue.path.map(String).join("."),
+      message: issue.message,
+    })),
+  }
+}
+
+/**
  * A user mapping as stored. `raw` is kept even when it no longer validates,
  * so it is listed with its issues and can be fixed rather than lost.
  */
@@ -246,10 +277,21 @@ export const userOverrideSchema = z.object({
   raw: z.unknown(),
   /** Null when `raw` does not validate. */
   family: modelFamilySchema.nullable(),
-  issues: z.array(z.string()),
+  issues: z.array(registryIssueSchema),
   updatedAt: z.number(),
 })
 export type UserOverride = z.output<typeof userOverrideSchema>
+
+/**
+ * What saving a user mapping answers. A rejected save is an answer, not an
+ * error: the issues come back with their paths, so the editor can show each
+ * one under its row rather than one joined sentence.
+ */
+export const saveOverrideResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), override: userOverrideSchema }),
+  z.object({ ok: z.literal(false), issues: z.array(registryIssueSchema) }),
+])
+export type SaveOverrideResult = z.output<typeof saveOverrideResultSchema>
 
 /** Attached to family descriptors (`family:<id>`). */
 export const familyInfoSchema = z.object({

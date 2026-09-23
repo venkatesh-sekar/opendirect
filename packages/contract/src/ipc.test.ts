@@ -586,3 +586,98 @@ describe("batched generation requests", () => {
     expect(parsed.batchId).toBe("b1")
   })
 })
+
+describe("model registry channels", () => {
+  const family = {
+    id: "my-model",
+    name: "My model",
+    kind: "image",
+    endpoints: [{ provider: "replicate", model: "me/my-model" }],
+  }
+  const override = {
+    id: "my-model",
+    raw: family,
+    family,
+    issues: [],
+    updatedAt: 1,
+  }
+
+  it("parses a status with a remote error", () => {
+    const parsed = ipcContract["registry:status"].output.parse({
+      format: 1,
+      bundledVersion: 1,
+      activeVersion: 1,
+      activeSource: "bundled",
+      remote: {
+        enabled: true,
+        url: "https://example.com/registry",
+        version: null,
+        fetchedAt: null,
+        error:
+          "Could not fetch the model registry from https://example.com/registry: HTTP 404",
+      },
+      overrides: 0,
+      families: 5,
+      warnings: [],
+    })
+    expect(parsed.remote.error).toContain("HTTP 404")
+    expect(ipcContract["registry:reload"].output.parse(parsed)).toEqual(parsed)
+  })
+
+  it("parses families and overrides, invalid ones included", () => {
+    expect(
+      ipcContract["registry:families"].output.parse([
+        { family, source: "user", shadows: ["bundled"], warnings: [] },
+      ])
+    ).toHaveLength(1)
+    const broken = {
+      id: null,
+      raw: { name: 1 },
+      family: null,
+      issues: [{ path: "name", message: "Expected a string" }],
+      updatedAt: 2,
+    }
+    expect(
+      ipcContract["registry:overrides:list"].output.parse([override, broken])
+    ).toHaveLength(2)
+  })
+
+  it("takes any JSON to save and answers with the saved entry or per-field issues", () => {
+    const input = ipcContract["registry:overrides:save"].input.parse({
+      family: { anything: true },
+      replaceId: null,
+    })
+    expect(input.replaceId).toBeNull()
+    expect(
+      ipcContract["registry:overrides:save"].output.parse({
+        ok: true,
+        override,
+      })
+    ).toMatchObject({ ok: true })
+    const rejected = ipcContract["registry:overrides:save"].output.parse({
+      ok: false,
+      issues: [{ path: "endpoints.0.model", message: "Too small" }],
+    })
+    expect(rejected).toEqual({
+      ok: false,
+      issues: [{ path: "endpoints.0.model", message: "Too small" }],
+    })
+  })
+
+  it("parses delete, import and export payloads", () => {
+    expect(
+      ipcContract["registry:overrides:delete"].input.parse({ id: "my-model" })
+    ).toEqual({ id: "my-model" })
+    expect(
+      ipcContract["registry:overrides:import"].output.parse({
+        candidates: [override],
+      }).candidates
+    ).toHaveLength(1)
+    expect(
+      ipcContract["registry:overrides:export"].input.parse({ id: "my-model" })
+    ).toEqual({ id: "my-model" })
+    expect(
+      ipcContract["registry:overrides:export"].output.parse({ path: null })
+    ).toEqual({ path: null })
+  })
+})

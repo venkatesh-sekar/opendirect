@@ -7,6 +7,7 @@ import {
   registryIndexSchema,
   slotKeyRole,
   slotKeySchema,
+  validateFamily,
 } from "./schema"
 
 /**
@@ -268,5 +269,36 @@ describe("modelDescriptorSchema registry fields", () => {
     })
     expect(descriptor.family).toBeNull()
     expect(descriptor.mappedBy).toBeNull()
+  })
+})
+
+describe("validateFamily", () => {
+  it("returns the family and no issues when it validates", () => {
+    const result = validateFamily(klingV3Pro)
+    expect(result.issues).toEqual([])
+    expect(result.family?.id).toBe("kling-v3-pro")
+  })
+
+  it("returns every issue with the dotted path a form row can match", () => {
+    const result = validateFamily(
+      withEndpoint((endpoint) => ({
+        ...endpoint,
+        inputs: {
+          ...endpoint.inputs,
+          last_frame: { field: "start_image_url", kind: "image" },
+        },
+      }))
+    )
+    expect(result.family).toBeNull()
+    expect(result.issues).toContainEqual({
+      path: "endpoints.0.inputs.last_frame.field",
+      message: expect.stringContaining('"start_image_url" is mapped by both'),
+    })
+  })
+
+  it("reports a root-level problem with an empty path", () => {
+    expect(validateFamily("not a family").issues).toEqual([
+      { path: "", message: expect.any(String) },
+    ])
   })
 })

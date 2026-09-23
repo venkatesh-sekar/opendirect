@@ -95,6 +95,17 @@ export const queryKeys = {
     all: ["mentions"] as const,
     subjects: ["mentions", "subjects"] as const,
   },
+  /**
+   * The model registry (bundled, remote and user mappings). A mapping change
+   * also changes the model descriptors, so its mutations invalidate
+   * `["models"]` alongside `registry.all`.
+   */
+  registry: {
+    all: ["registry"] as const,
+    status: ["registry", "status"] as const,
+    families: ["registry", "families"] as const,
+    overrides: ["registry", "overrides"] as const,
+  },
   generations: {
     all: ["generations"] as const,
     byContainer: (containerId: string, options?: PageKey) =>

@@ -1,4 +1,5 @@
 import { app, dialog, ipcMain } from "electron"
+import log from "electron-log/main"
 
 import {
   cancelAiRun,
@@ -12,6 +13,10 @@ import { registerProjectHandlers } from "./handlers"
 import { createIpcRegistrar } from "./ipc-registry"
 import { registerMentionHandlers } from "./mentions-service"
 import { rendererRefreshAccelerator } from "./menu"
+import {
+  getModelRegistry,
+  registerModelRegistryHandlers,
+} from "./model-registry/registry-service"
 import { isDevelopment } from "./resolve"
 import { getSettingsService } from "./settings-service"
 import { describeKeys, verifyProviderKey } from "./settings"
@@ -90,7 +95,21 @@ export function registerIpcHandlers(): void {
    * ⛔ Listing endpoints only. The catalog never submits a generation; see
    * `catalog.ts`.
    */
-  registerModelHandlers(handle, getModelCatalog)
+  registerModelHandlers(handle, getModelCatalog, () => {
+    // The registry must never be the reason the model list fails.
+    try {
+      getModelRegistry().refreshIfStale()
+    } catch (error) {
+      log.warn("Model registry refresh could not start", error)
+    }
+  })
+
+  /**
+   * The model registry: bundled mappings, a newer remote copy, the user's
+   * own. ⛔ Free GETs of static JSON at most (`registry:reload` and a
+   * once-a-day background refresh) — never a provider.
+   */
+  registerModelRegistryHandlers(handle)
 
   // Project folder, containers, assets and generations — all scoped to the
   // currently open project (`project-service.ts`).

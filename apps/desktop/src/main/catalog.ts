@@ -372,11 +372,17 @@ export function createModelCatalog(deps: ModelCatalogDeps): ModelCatalog {
  */
 export function registerModelHandlers(
   handle: IpcRegistrar["handle"],
-  catalog: () => ModelCatalog
+  catalog: () => ModelCatalog,
+  /**
+   * Called on every `models:list`, before the catalog answers. Main passes
+   * the registry's `refreshIfStale` — a once-a-day free GET, never awaited.
+   */
+  onList: () => void = () => {}
 ): void {
-  handle("models:list", ({ kinds, refresh }) =>
-    catalog().list({ kinds, refresh })
-  )
+  handle("models:list", ({ kinds, refresh }) => {
+    onList()
+    return catalog().list({ kinds, refresh })
+  })
 
   handle("models:get", ({ key }) => catalog().getModel(key))
 

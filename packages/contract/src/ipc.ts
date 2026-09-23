@@ -40,6 +40,12 @@ import {
   relatedContainersSchema,
 } from "./project"
 import { providerIdSchema } from "./provider"
+import {
+  registryFamilyEntrySchema,
+  registryStatusSchema,
+  saveOverrideResultSchema,
+  userOverrideSchema,
+} from "./registry/schema"
 
 /**
  * Where a resolved API key came from. `env` means a `.env.local` /
@@ -279,6 +285,75 @@ export const ipcContract = {
       video: z.array(recommendedModelSchema),
       image: z.array(recommendedModelSchema),
     }),
+  },
+
+  /**
+   * The model registry (design §4): bundled mappings, a newer remote copy
+   * when there is one, then the user's own. Where it stands — versions, the
+   * remote's last fetch and error, every warning.
+   *
+   * ⛔ Makes no network call; it reads what main already holds.
+   */
+  "registry:status": { input: z.void(), output: registryStatusSchema },
+  /**
+   * The **Reload registry** button: re-fetches the remote copy when it is
+   * enabled, then rebuilds. A failed fetch keeps what was there and reports
+   * it in `remote.error`.
+   *
+   * ⛔ Free `GET`s of static JSON files at most — never a provider call.
+   */
+  "registry:reload": { input: z.void(), output: registryStatusSchema },
+  /**
+   * Every family in force after the merge, with its source and warnings.
+   *
+   * ⛔ At most starts a background refresh of the remote copy (free `GET`s,
+   * once a day).
+   */
+  "registry:families": {
+    input: z.void(),
+    output: z.array(registryFamilyEntrySchema),
+  },
+  /**
+   * The user's own mappings, including any that no longer validate (listed
+   * with their issues so they can be fixed). ⛔ No network.
+   */
+  "registry:overrides:list": {
+    input: z.void(),
+    output: z.array(userOverrideSchema),
+  },
+  /**
+   * Creates or updates a user mapping. Main re-validates: an invalid family
+   * is refused with per-field issues and nothing is stored. `replaceId`
+   * renames — it replaces that entry rather than the one with the new id.
+   *
+   * ⛔ No network.
+   */
+  "registry:overrides:save": {
+    input: z.object({ family: z.unknown(), replaceId: z.string().nullable() }),
+    output: saveOverrideResultSchema,
+  },
+  /** Deletes a user mapping; the lower layer takes over again. ⛔ No network. */
+  "registry:overrides:delete": {
+    input: z.object({ id: z.string() }),
+    output: okSchema,
+  },
+  /**
+   * Reads mapping JSON through a native open dialog — one family or an
+   * array — and returns the candidates validated. **Does not save**: the
+   * editor opens on them first. Empty when cancelled. ⛔ No network.
+   */
+  "registry:overrides:import": {
+    input: z.void(),
+    output: z.object({ candidates: z.array(userOverrideSchema) }),
+  },
+  /**
+   * Writes one family (a user mapping, else the family in force with that
+   * id) through a native save dialog, formatted exactly as the bundled files
+   * are, ready for a pull request. Null when cancelled. ⛔ No network.
+   */
+  "registry:overrides:export": {
+    input: z.object({ id: z.string() }),
+    output: z.object({ path: z.string().nullable() }),
   },
 
   /**
