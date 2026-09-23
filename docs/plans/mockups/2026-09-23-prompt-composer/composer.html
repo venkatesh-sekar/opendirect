@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompt composer (mockup)</title>
+<!--
+  Reference mockup for docs/plans/2026-09-23-prompt-composer-design.md.
+  Plain HTML + vanilla JS so it opens straight from disk. Colours are
+  hardcoded; build with the app's own shadcn tokens instead.
+
+  Try: drag a block by its ⋮⋮ handle, click a note to expand it, type in any
+  text block, "+" on a note inserts a text block below it, "+97" opens every
+  image, the model switch at the top shows a multi-input (video) model.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f5f4; --card: #ffffff; --border: #e7e5e4; --subtle: #fafaf9;
+    --fg: #1c1917; --muted: #57534e; --faint: #78716c; --ghost: #a8a29e; --ghost-2: #c4bfba;
+    --accent: #0f766e; --accent-bg: #f0fdfa; --accent-fg: #115e59; --drop: #2563eb;
+    --mono: "Geist Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px 16px; font-family: Geist, system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+  button, textarea, select { font: inherit; }
+  .wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .demo-bar { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  .demo-bar select { height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); padding: 0 8px; }
+
+  .composer { background: var(--card); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 24px rgba(28,25,23,.08); }
+  .body { display: flex; flex-direction: column; gap: 8px; padding: 14px 14px 12px; }
+
+  /* references */
+  .refs { display: flex; gap: 18px; align-items: flex-end; padding-bottom: 10px; border-bottom: 1px solid var(--bg); }
+  .slot { display: flex; flex-direction: column; gap: 4px; }
+  .slot-label { font-size: 10px; font-weight: 600; color: var(--faint); letter-spacing: .04em; text-transform: uppercase; }
+  .slot-label span { font-family: var(--mono); font-weight: 400; color: var(--ghost); }
+  .thumbs { display: flex; gap: 4px; }
+  .thumb { width: 40px; height: 40px; padding: 0; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .thumb:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .more { height: 40px; min-width: 48px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--subtle); color: var(--muted); font-family: var(--mono); font-size: 12px; cursor: pointer; }
+  .add-ref { width: 40px; height: 40px; border: 1px dashed #d6d3d1; border-radius: 6px; background: transparent; color: var(--ghost); cursor: pointer; }
+  .refs-summary { margin-left: auto; font-size: 11px; color: var(--ghost); }
+
+  .gallery { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--subtle); border: 1px solid var(--border); border-radius: 10px; }
+  .gallery-head { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .gallery-head .meta { font-family: var(--mono); font-size: 11px; color: var(--ghost); }
+  .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 4px; max-height: 200px; overflow: auto; }
+  .gallery-grid .thumb { width: 100%; height: auto; aspect-ratio: 1; font-family: var(--mono); font-size: 9px; color: rgba(28,25,23,.45); }
+
+  /* blocks */
+  .blocks { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+  .blk { position: relative; display: flex; align-items: flex-start; gap: 8px; min-height: 30px; padding: 5px 6px 5px 26px; border-radius: 6px; }
+  .blk.dragging { opacity: .35; }
+  .blk.note { cursor: pointer; }
+  .blk.note:hover { background: var(--bg); }
+  .grip, .act { opacity: 0; transition: opacity .12s; }
+  .blk:hover .grip, .blk:hover .act, .blk:focus-within .grip { opacity: 1; }
+  .grip { position: absolute; left: 4px; top: 6px; padding: 2px; color: var(--ghost); cursor: grab; }
+  .num { flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px; border-radius: 5px; background: var(--border); color: var(--muted); font-family: var(--mono); font-size: 10px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; }
+  .note-title { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 20px; font-size: 12px; font-weight: 600; color: var(--faint); }
+  .note-body { flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; color: var(--ghost); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blk.open .note-body { white-space: normal; }
+  .words { flex-shrink: 0; height: 20px; display: inline-flex; align-items: center; font-family: var(--mono); font-size: 11px; color: var(--ghost-2); }
+  .act { flex-shrink: 0; width: 22px; height: 22px; padding: 0; border: none; border-radius: 5px; background: transparent; color: var(--faint); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .act:hover { background: var(--border); }
+  .tx { border: none; outline: none; resize: none; background: transparent; width: 100%; padding: 0; margin: 0; font-size: 15px; line-height: 22px; color: var(--fg); field-sizing: content; min-height: 22px; }
+  .tx::placeholder { color: var(--ghost-2); }
+  .drop { height: 2px; margin: 1px 0 1px 26px; background: var(--drop); border-radius: 1px; }
+  .end-zone { min-height: 14px; }
+
+  /* toolbar */
+  .toolbar { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); }
+  .btn { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--fg); font-size: 13px; cursor: pointer; }
+  .ghost { height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: none; border-radius: 8px; background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; }
+  .ghost.on { background: var(--accent-bg); color: var(--accent-fg); }
+  .model { width: 176px; }
+  .model span { flex-grow: 1; text-align: left; font-weight: 500; }
+  .cost { width: 56px; text-align: right; font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: auto; }
+  .run { height: 34px; padding: 0 18px; border: none; border-radius: 8px; background: var(--fg); color: #fafaf9; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  /* full prompt */
+  .full { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px; border-top: 1px solid var(--border); background: var(--subtle); border-radius: 0 0 14px 14px; }
+  .full[hidden] { display: none; }
+  .full-head { display: flex; align-items: center; gap: 10px; }
+  .full-title { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .04em; }
+  .stats { font-family: var(--mono); font-size: 11px; color: var(--ghost); }
+  .full-head label { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+  .caption { font-size: 11px; color: var(--faint); margin-bottom: 4px; }
+  .rendered { font-family: var(--mono); font-size: 12px; line-height: 19px; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+  .rendered .seg + .seg { margin-top: 19px; }
+  .rendered.hl .seg.from-note { background: var(--accent-bg); color: var(--accent-fg); box-shadow: 0 0 0 3px var(--accent-bg); border-radius: 2px; }
+  .inputs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .input-chip { height: 26px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); font-family: var(--mono); font-size: 11px; color: var(--muted); cursor: pointer; }
+  .input-chip span { color: var(--ghost); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="demo-bar">
+    <label for="model-kind">Mockup model:</label>
+    <select id="model-kind">
+      <option value="image">Image model · 1 input (100 images)</option>
+      <option value="video">Video model · 3 inputs</option>
+    </select>
+  </div>
+
+  <div class="composer">
+    <div class="body">
+      <div class="refs" id="refs"></div>
+      <div class="gallery" id="gallery" hidden></div>
+      <div class="blocks" id="blocks"></div>
+    </div>
+
+    <div class="toolbar">
+      <button class="btn model"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"/></svg><span id="model-name">Flux Kontext Pro</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>1:1</button>
+      <button class="ghost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 18h3M11 18h9M4 12h5M13 12h7"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="18" r="2"/><circle cx="11" cy="12" r="2"/></svg>Advanced</button>
+      <button class="ghost on" id="toggle-full" aria-expanded="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Full prompt</button>
+      <span class="cost">$0.08</span>
+      <button class="ghost" aria-label="Save prompt"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg></button>
+      <button class="run">Run</button>
+    </div>
+
+    <div class="full" id="full">
+      <div class="full-head">
+        <span class="full-title">EXACTLY WHAT GETS SENT</span>
+        <span class="stats" id="stats"></span>
+        <label><input type="checkbox" id="highlight" checked> Highlight notes</label>
+        <button class="ghost" id="copy" style="height:26px;font-size:12px">Copy</button>
+      </div>
+      <div>
+        <div class="caption">prompt</div>
+        <div class="rendered hl" id="rendered"></div>
+      </div>
+      <div>
+        <div class="caption">images</div>
+        <div class="inputs" id="inputs"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const GRIP = '<svg width="12" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.7"/><circle cx="15" cy="6" r="1.7"/><circle cx="9" cy="12" r="1.7"/><circle cx="15" cy="12" r="1.7"/><circle cx="9" cy="18" r="1.7"/><circle cx="15" cy="18" r="1.7"/></svg>'
+  const LINK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg>'
+  const PLUS = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>'
+  const X = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>'
+  const PERSON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(28,25,23,0.35)" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="9" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>'
+  const TONES = ["#d6d3d1", "#e7e5e4", "#c7d2cf", "#d9cfc4", "#cfd6de", "#ddd6cc", "#c9ccd1", "#e0d9d0"]
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c])
+
+  // The model's own reference inputs (descriptor.referenceSlots), not ours.
+  const SLOTS = {
+    image: [{ label: "Reference images", field: "input_images", count: 100 }],
+    video: [
+      { label: "First frame", field: "first_frame", count: 1 },
+      { label: "Last frame", field: "last_frame", count: 1 },
+      { label: "Reference images", field: "reference_images", count: 12 },
+    ],
+  }
+
+  // Connected notes (text nodes wired into this node), by node id.
+  const NOTES = {
+    n1: { title: "Character brief", text: "Appearance, clothing, personality and visual style. Late 30s, tall, weathered navy peacoat, calm but guarded expression, short greying hair, a thin scar over the left eyebrow." },
+    n2: { title: "Lighting", text: "Soft key light from camera left, faint cool rim light, overcast palette, no harsh shadows." },
+    n3: { title: "World", text: "Rain-soaked harbour town in the 1970s, sodium street lamps, fishing boats in the background." },
+  }
+
+  // The recipe's `blocks`: ordered, mixing the user's text and note references.
+  const state = {
+    kind: "image",
+    blocks: [
+      { id: "b1", kind: "note", nodeId: "n1" },
+      { id: "b2", kind: "text", text: "Create a clear character portrait with consistent facial features." },
+      { id: "b3", kind: "note", nodeId: "n2" },
+      { id: "b4", kind: "text", text: "Keep the jawline and scar identical across every take, and use a simple background." },
+      { id: "b5", kind: "note", nodeId: "n3" },
+      { id: "b6", kind: "text", text: "" },
+    ],
+    open: new Set(),
+    gallery: null,
+    drag: null,
+    over: null,
+    seq: 7,
+  }
+
+  const $ = (id) => document.getElementById(id)
+  const blockText = (b) => (b.kind === "note" ? NOTES[b.nodeId].text : b.text).trim()
+
+  /** The one rule: non-empty blocks, in order, joined by a blank line. */
+  function renderPrompt(blocks) {
+    return blocks.map(blockText).filter((t) => t !== "").join("\n\n")
+  }
+
+  function thumbHtml(i, label, inner = PERSON) {
+    return `<button class="thumb" aria-label="${esc(label)}" style="background:${TONES[i % TONES.length]}">${inner}</button>`
+  }
+
+  function drawRefs() {
+    const slots = SLOTS[state.kind]
+    const multi = slots.length > 1
+    let k = 0
+    const html = slots.map((sl, si) => {
+      const shown = sl.count > 4 ? 3 : sl.count
+      let thumbs = ""
+      for (let i = 0; i < shown; i++) thumbs += thumbHtml(k + i, `${sl.label} ${i + 1}`)
+      k += sl.count
+      const more = sl.count > shown ? `<button class="more" data-slot="${si}">+${sl.count - shown}</button>` : ""
+      const label = multi ? `<span class="slot-label">${esc(sl.label)} <span>${sl.count}</span></span>` : ""
+      return `<div class="slot" data-slot="${si}">${label}<div class="thumbs">${thumbs}${more}</div></div>`
+    }).join("")
+    const total = slots.reduce((a, s) => a + s.count, 0)
+    $("refs").innerHTML = html + `<button class="add-ref" aria-label="Add reference">${PLUS}</button><span class="refs-summary">${total} images</span>`
+    $("refs").querySelectorAll(".slot").forEach((el) =>
+      el.querySelectorAll("button").forEach((b) => b.addEventListener("click", () => openGallery(Number(el.dataset.slot))))
+    )
+    drawGallery()
+  }
+
+  function openGallery(si) { state.gallery = si; drawGallery() }
+
+  function drawGallery() {
+    const g = $("gallery")
+    const slots = SLOTS[state.kind]
+    const sl = state.gallery === null ? null : slots[state.gallery]
+    if (!sl) { g.hidden = true; g.innerHTML = ""; return }
+    let offset = 0
+    for (let i = 0; i < state.gallery; i++) offset += slots[i].count
+    let grid = ""
+    for (let i = 0; i < sl.count; i++) grid += thumbHtml(offset + i, `${sl.label} ${i + 1}`, String(i + 1))
+    g.hidden = false
+    g.innerHTML = `<div class="gallery-head"><strong>${esc(sl.label)}</strong><span class="meta">${sl.count} · sent as ${sl.field}</span><button class="btn" style="height:26px;margin-left:auto;font-size:12px" id="gallery-done">Done</button></div><div class="gallery-grid">${grid}</div>`
+    $("gallery-done").addEventListener("click", () => { state.gallery = null; drawGallery() })
+  }
+
+  function drawBlocks() {
+    const wrap = $("blocks")
+    let n = 0
+    const noop = (idx) => state.drag === idx || state.drag + 1 === idx
+    const html = state.blocks.map((b, i) => {
+      const drop = state.drag !== null && state.over === i && !noop(i) ? '<div class="drop"></div>' : ""
+      const dragging = state.drag === i ? " dragging" : ""
+      const grip = `<span class="grip" draggable="true" title="Drag to move">${GRIP}</span>`
+      if (b.kind === "note") {
+        n += 1
+        const note = NOTES[b.nodeId]
+        const open = state.open.has(b.id) ? " open" : ""
+        const words = note.text.trim().split(/\s+/).length
+        return `<div class="row" data-i="${i}">${drop}<div class="blk note${open}${dragging}" data-id="${b.id}">${grip}<span class="num">${n}</span><span class="note-title">${LINK}${esc(note.title)}</span><span class="note-body">${esc(note.text)}</span><span class="words">${words}w</span><button class="act" data-act="insert" title="Insert text below" aria-label="Insert text below">${PLUS}</button><button class="act" data-act="remove" title="Disconnect (the note stays on the canvas)" aria-label="Disconnect note">${X}</button></div></div>`
+      }
+      const ph = i === state.blocks.length - 1 ? "Type here, or drag a note in…" : "Type…"
+      return `<div class="row" data-i="${i}">${drop}<div class="blk${dragging}" data-id="${b.id}">${grip}<textarea class="tx" rows="1" aria-label="Your text" placeholder="${ph}">${esc(b.text)}</textarea></div></div>`
+    }).join("")
+    const endDrop = state.drag !== null && state.over === state.blocks.length && !noop(state.blocks.length) ? '<div class="drop" style="margin-top:6px"></div>' : ""
+    wrap.innerHTML = html + `<div class="end-zone" data-i="${state.blocks.length}">${endDrop}</div>`
+    bindBlocks()
+    drawFull()
+  }
+
+  function bindBlocks() {
+    const wrap = $("blocks")
+    wrap.querySelectorAll(".row, .end-zone").forEach((row) => {
+      const i = Number(row.dataset.i)
+      row.addEventListener("dragover", (e) => {
+        if (state.drag === null) return
+        e.preventDefault()
+        const r = row.getBoundingClientRect()
+        const idx = row.classList.contains("end-zone") ? i : (e.clientY > r.top + r.height / 2 ? i + 1 : i)
+        if (state.over !== idx) { state.over = idx; drawBlocks() }
+      })
+      row.addEventListener("drop", (e) => {
+        e.preventDefault()
+        const { drag, over } = state
+        if (drag !== null && over !== null && drag !== over && drag + 1 !== over) {
+          const [moved] = state.blocks.splice(drag, 1)
+          state.blocks.splice(over > drag ? over - 1 : over, 0, moved)
+        }
+        state.drag = state.over = null
+        drawBlocks()
+      })
+    })
+    wrap.querySelectorAll(".blk").forEach((el) => {
+      const id = el.dataset.id
+      const i = state.blocks.findIndex((b) => b.id === id)
+      const grip = el.querySelector(".grip")
+      grip.addEventListener("dragstart", (e) => {
+        e.dataTransfer.effectAllowed = "move"
+        e.dataTransfer.setData("text/plain", id)
+        e.dataTransfer.setDragImage(el, 16, 14)
+        // Defer: re-rendering during dragstart cancels the drag.
+        setTimeout(() => { state.drag = i; drawBlocks() }, 0)
+      })
+      grip.addEventListener("dragend", () => { state.drag = state.over = null; drawBlocks() })
+      if (el.classList.contains("note")) {
+        el.addEventListener("click", (e) => {
+          const act = e.target.closest("[data-act]")?.dataset.act
+          if (act === "insert") {
+            const nid = "b" + state.seq++
+            state.blocks.splice(i + 1, 0, { id: nid, kind: "text", text: "" })
+            drawBlocks()
+            document.querySelector(`[data-id="${nid}"] textarea`)?.focus()
+          } else if (act === "remove") {
+            state.blocks.splice(i, 1)
+            drawBlocks()
+          } else {
+            state.open.has(id) ? state.open.delete(id) : state.open.add(id)
+            el.classList.toggle("open")
+          }
+        })
+      } else {
+        el.querySelector("textarea").addEventListener("input", (e) => {
+          state.blocks[i].text = e.target.value
+          drawFull() // not drawBlocks: keep the caret where it is
+        })
+      }
+    })
+  }
+
+  function drawFull() {
+    const parts = state.blocks.filter((b) => blockText(b) !== "")
+    const prompt = renderPrompt(state.blocks)
+    $("rendered").innerHTML = parts.map((b) => `<div class="seg${b.kind === "note" ? " from-note" : ""}">${esc(blockText(b))}</div>`).join("")
+    const slots = SLOTS[state.kind]
+    const images = slots.reduce((a, s) => a + s.count, 0)
+    const words = prompt.trim() === "" ? 0 : prompt.trim().split(/\s+/).length
+    const notes = state.blocks.filter((b) => b.kind === "note").length
+    $("stats").textContent = `${prompt.length} chars · ${words} words · ${notes} notes · ${images} images`
+    $("inputs").innerHTML = slots.map((s, si) => `<button class="input-chip" data-slot="${si}">${s.field} <span>× ${s.count}</span></button>`).join("")
+    $("inputs").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => openGallery(Number(b.dataset.slot))))
+  }
+
+  $("toggle-full").addEventListener("click", (e) => {
+    const full = $("full")
+    full.hidden = !full.hidden
+    e.currentTarget.classList.toggle("on", !full.hidden)
+    e.currentTarget.setAttribute("aria-expanded", String(!full.hidden))
+  })
+  $("highlight").addEventListener("change", (e) => $("rendered").classList.toggle("hl", e.target.checked))
+  $("copy").addEventListener("click", async (e) => {
+    try { await navigator.clipboard.writeText(renderPrompt(state.blocks)) } catch {}
+    e.target.textContent = "Copied"
+    setTimeout(() => (e.target.textContent = "Copy"), 1400)
+  })
+  $("model-kind").addEventListener("change", (e) => {
+    state.kind = e.target.value
+    state.gallery = null
+    $("model-name").textContent = state.kind === "video" ? "Kling 2.1 Pro" : "Flux Kontext Pro"
+    drawRefs()
+    drawFull()
+  })
+
+  drawRefs()
+  drawBlocks()
+</script>
+</body>
+</html>
