@@ -21,11 +21,16 @@
  * Drafts stay in memory while editing. Save prompt explicitly records the
  * prompt, model, settings and count on the node; workflow exports include them.
  *
+ * What a run *is* — mentions, request, quote, batch plan, why it is blocked —
+ * is `useGeneratePlan`, shared with a container page's generate panel. This
+ * file adds what only the canvas has: the node's edges, its per-node draft and
+ * the writes back onto the node.
+ *
  * ⛔ Run is the only thing in this file that spends money, and it spends it
- * once: `useSubmitBatch` is called exactly once per click and the button is
- * disabled while it is in flight. Everything else — the model chip, the
- * settings grid, the count stepper, the cost line — describes a run that has
- * not happened.
+ * once: `useGeneratePlan().run` is called exactly once per click and the
+ * button is disabled while it is in flight. Everything else — the model chip,
+ * the settings grid, the count stepper, the cost line — describes a run that
+ * has not happened.
  */
 import {
   useCallback,
@@ -41,13 +46,10 @@ import {
   SlidersHorizontalIcon,
 } from "@hugeicons/core-free-icons"
 import {
-  planBatch,
   promptRecipeSchema,
   type PromptRecipe,
   type CanvasDto,
   type CanvasNodeDto,
-  type CostQuote,
-  type GenerationReference,
   type ModelKind,
 } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
@@ -60,35 +62,20 @@ import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
 
 import { useAiHelper, useAiTools } from "@/hooks/use-ai"
 import { useContainerTree } from "@/hooks/use-containers"
-import { useSubmitBatch, useCostEstimate } from "@/hooks/use-generations"
 import { useUpdateCanvasEdge, useUpdateCanvasNode } from "@/hooks/use-canvas"
-import { useMentionSubjects } from "@/hooks/use-mentions"
+import { MAX_BATCH, useGeneratePlan } from "@/hooks/use-generate-plan"
 import { useModel } from "@/hooks/use-models"
 import {
   findContainer,
   firstSelectableContainer,
 } from "@/lib/board/sidebar-tree"
-import {
-  composePrompt,
-  edgesToInputs,
-  incomingEdges,
-  isBlocked,
-} from "@/lib/canvas/edges-to-inputs"
+import { edgesToInputs, incomingEdges } from "@/lib/canvas/edges-to-inputs"
 import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
 import type { IconGrid } from "@/lib/canvas/icon-grid"
 import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
 import { frameSize, parseAspectRatio } from "@/lib/canvas/layout"
-import {
-  buildGenerationRequest,
-  costParams,
-  missingRequirements,
-} from "@/lib/create/request"
-import {
-  countBySlot,
-  resolveMentions,
-  type MentionSubject,
-} from "@/lib/mentions/resolve"
-import { schemaDefaults, splitSchema } from "@/lib/schema-form/split-schema"
+import { modelDefaults } from "@/lib/create/draft"
+import { splitSchema } from "@/lib/schema-form/split-schema"
 
 import { HelperMenu } from "@/components/ai/helper-menu"
 import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
@@ -107,13 +94,7 @@ import { SettingsPopover } from "./settings-popover"
  */
 const EMPTY_GRID: IconGrid = { rows: [], fields: [] }
 
-/**
- * The most results one click may ask for. It matches the cap
- * `generations:submitBatch` enforces in main, so the stepper can never ask for
- * a batch the handler would trim — the number on the button is the number of
- * runs that will be queued.
- */
-export const MAX_BATCH = 16
+export { MAX_BATCH }
 
 /** One node's unsubmitted composition. */
 interface PromptDraft {
@@ -224,9 +205,6 @@ function useDraft(
   return [draft, update]
 }
 
-/** Frozen: the empty answer must not be a new array on every render. */
-const NO_SUBJECTS: readonly MentionSubject[] = []
-
 /**
  * The modalities a node of this type may run.
  *
@@ -239,28 +217,6 @@ const IMAGE_KINDS: ModelKind[] = ["image"]
 
 function kindsFor(node: CanvasNodeDto): ModelKind[] {
   return node.type === "video_gen" ? VIDEO_KINDS : IMAGE_KINDS
-}
-
-/** References grouped the way `buildGenerationRequest` takes them. */
-function groupReferences(
-  references: readonly GenerationReference[]
-): Record<string, string[]> {
-  const grouped: Record<string, string[]> = {}
-  for (const reference of [...references].sort(
-    (a, b) => a.position - b.position
-  )) {
-    ;(grouped[reference.slotField] ??= []).push(reference.assetId)
-  }
-  return grouped
-}
-
-/** The quote, as the submitted row records it: no amount when it is unknown. */
-function quoteOf(quote: CostQuote | undefined) {
-  return {
-    estimatedCostUsd:
-      quote && quote.confidence !== "unknown" ? quote.amount : null,
-    costConfidence: quote ? quote.confidence : null,
-  }
 }
 
 export interface PromptBarProps {
@@ -293,7 +249,6 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   /** Stable by node type: the picker keeps it in a hotkey dependency list. */
   const kinds = useMemo(() => kindsFor(node), [node])
   const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [acceptedCostFor, setAcceptedCostFor] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const model = useModel(draft.modelKey)
@@ -363,24 +318,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const seededFor = draft.seededFor
   useEffect(() => {
     if (!descriptor || seededFor === descriptor.key) return
-    const fresh = splitSchema(descriptor)
-    const defaults = schemaDefaults(descriptor)
-    const commonFields = new Set(fresh.common.map((field) => field.field))
-    for (const field of buildIconGrid(descriptor).fields)
-      commonFields.add(field)
-    const slotFields = new Set(fresh.slots.map((slot) => slot.field))
-
-    const common: Record<string, unknown> = {}
-    const advanced: Record<string, unknown> = {}
-    for (const [field, value] of Object.entries(defaults)) {
-      if (slotFields.has(field)) continue
-      if (commonFields.has(field)) common[field] = value
-      else advanced[field] = value
-    }
     updateDraft((current) => ({
       ...current,
-      common,
-      advanced,
+      ...modelDefaults(descriptor),
       seededFor: descriptor.key,
     }))
   }, [descriptor, seededFor, updateDraft])
@@ -399,87 +339,35 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       }),
     [canvas.edges, canvas.nodes, descriptor, node.id]
   )
-  const blockedReason = isBlocked(inputs) ? inputs.blocked : null
 
   /**
-   * Step 2: what `@venkz` means for *this* model.
-   *
-   * It runs between the edges and the request, in the renderer, because the
-   * user must see the plan before they pay for it — the tray's badge, the
-   * downgrade note and the run are all this one computation. ⛔ It is pure and
-   * it submits nothing; main's guards in `generations-submit.ts` are still the
-   * last word on every slot and every asset it names.
+   * Step 2 onwards — mentions, request, quote, batch plan — is the same for
+   * every composer, and it is `useGeneratePlan`'s.
    */
-  const subjects = useMentionSubjects().data ?? NO_SUBJECTS
-  const mentions = useMemo(
-    () =>
-      resolveMentions({
-        prompt: composePrompt(
-          isBlocked(inputs) ? "" : inputs.promptPrefix,
-          draft.prompt
-        ),
-        subjects,
-        slots: descriptor?.referenceSlots ?? [],
-        // The edges the user drew always win: they are an explicit gesture.
-        occupied: countBySlot(isBlocked(inputs) ? [] : inputs.references),
-      }),
-    [descriptor, draft.prompt, inputs, subjects]
-  )
-
-  const request = useMemo(() => {
-    if (!descriptor || isBlocked(inputs)) return null
-    return buildGenerationRequest({
-      descriptor,
-      containerId,
-      values: {
-        // The *resolved* prompt is what is submitted and what the row records:
-        // it is the text the provider was actually given. The raw `@venkz`
-        // stays in the draft, which is what the user keeps editing.
-        prompt: mentions.prompt,
-        common: draft.common,
-        advanced: draft.advanced,
-        // Appended after the edge references, so the user's own wiring keeps
-        // the earlier positions in every slot.
-        references: groupReferences([
-          ...inputs.references,
-          ...mentions.references,
-        ]),
-      },
-      // ⛔ Null on purpose: main mints the batch id, so the renderer cannot
-      // claim two runs are siblings when the handler decided otherwise.
-      batchId: null,
-    })
-  }, [containerId, descriptor, draft, inputs, mentions])
-
-  const quoteParams = useMemo(
-    () => (descriptor && request ? costParams(descriptor, request) : {}),
-    [descriptor, request]
-  )
-  const cost = useCostEstimate(descriptor ? descriptor.key : null, quoteParams)
-
-  const missing = useMemo(
-    () =>
-      descriptor && request ? missingRequirements(descriptor, request) : [],
-    [descriptor, request]
-  )
-
-  /**
-   * How many jobs N results costs, decided by the same `planBatch` main will
-   * run — one prediction with the model's own count field, or N siblings. The
-   * preview id is thrown away; only `runs` is read.
-   */
-  const plan = useMemo(
-    () =>
-      descriptor && request
-        ? planBatch({
-            request,
-            count: draft.count,
-            inputSchema: descriptor.inputSchema,
-            batchId: "preview",
-          })
-        : null,
-    [descriptor, draft.count, request]
-  )
+  const {
+    subjects,
+    mentions,
+    request,
+    cost,
+    total,
+    plan,
+    blockedReason,
+    disabledReason,
+    unknownCost,
+    acceptedUnknownCost,
+    acceptUnknownCost,
+    canRun,
+    submission,
+    run: submitRun,
+  } = useGeneratePlan({
+    draft,
+    descriptor,
+    modelPending: model.isPending,
+    kinds,
+    containerId,
+    inputs,
+    scope: node.id,
+  })
 
   /**
    * The stepper stops at `MAX_BATCH` and nowhere else.
@@ -492,7 +380,6 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
    */
   const maxCount = MAX_BATCH
 
-  const submission = useSubmitBatch()
   const updateNode = useUpdateCanvasNode()
   const updateEdge = useUpdateCanvasEdge()
 
@@ -548,78 +435,22 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     }
   }, [canvas.edges, canvas.nodes, node.id, slots, updateEdgeMutate])
 
-  const disabledReason =
-    blockedReason ??
-    (!draft.modelKey
-      ? "Pick a model to generate with."
-      : model.isPending
-        ? "Loading the model's parameters…"
-        : !descriptor
-          ? "This model's parameters could not be read."
-          : !kinds.includes(descriptor.kind)
-            ? "Choose a model that matches this node’s media type."
-            : missing.length > 0
-              ? `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} still needed.`
-              : null)
-
-  const costIdentity = JSON.stringify([
-    node.id,
-    draft.modelKey,
-    quoteParams,
-    draft.count,
-  ])
-  const unknownCost = !cost.data || cost.data.confidence === "unknown"
-  const acceptsCost = !unknownCost || acceptedCostFor === costIdentity
-  const canRun =
-    disabledReason === null &&
-    request !== null &&
-    !submission.isPending &&
-    !cost.isFetching &&
-    acceptsCost
-
   const run = useCallback(() => {
-    if (!request || !canRun) return
-    const count = Math.max(1, Math.min(maxCount, draft.count))
-    submission.mutate(
-      // The quote is stamped as the user saw it, per run.
-      {
-        request: {
-          ...request,
-          ...quoteOf(cost.data),
-          acceptUnknownCost: unknownCost && acceptsCost,
+    submitRun(({ batchId, generations }) => {
+      updateNode.mutate({
+        id: node.id,
+        patch: {
+          // The batch id is what finds every tile; the generation id is the
+          // run the node *stands for* — the first sibling, which is what
+          // gives the node a container to read from and a model to name
+          // itself with even when the batch is several jobs.
+          batchId,
+          containerId,
+          generationId: generations[0]?.id ?? null,
         },
-        count,
-      },
-      {
-        onSuccess: ({ batchId, generations }) => {
-          updateNode.mutate({
-            id: node.id,
-            patch: {
-              // The batch id is what finds every tile; the generation id is the
-              // run the node *stands for* — the first sibling, which is what
-              // gives the node a container to read from and a model to name
-              // itself with even when the batch is several jobs.
-              batchId,
-              containerId,
-              generationId: generations[0]?.id ?? null,
-            },
-          })
-        },
-      }
-    )
-  }, [
-    canRun,
-    cost.data,
-    draft.count,
-    unknownCost,
-    acceptsCost,
-    containerId,
-    maxCount,
-    node.id,
-    request,
-    submission,
-    updateNode,
-  ])
+      })
+    })
+  }, [containerId, node.id, submitRun, updateNode])
 
   /**
    * A promoted control, written into the draft — and, for the aspect ratio,
@@ -652,16 +483,6 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       count: Math.max(1, Math.min(maxCount, next)),
     }))
   }
-
-  /**
-   * The total: the per-run quote times the number of results asked for. An
-   * unknown rate stays unknown however many times it is multiplied — ⛔ never
-   * `$0.00`.
-   */
-  const total: CostQuote | undefined =
-    cost.data && cost.data.confidence !== "unknown"
-      ? { ...cost.data, amount: cost.data.amount * draft.count }
-      : cost.data
 
   /**
    * The bar is a single row anchored to a node, so at narrow widths it has
@@ -779,10 +600,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         <label className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
           <input
             type="checkbox"
-            checked={acceptedCostFor === costIdentity}
-            onChange={(event) =>
-              setAcceptedCostFor(event.target.checked ? costIdentity : null)
-            }
+            checked={acceptedUnknownCost}
+            onChange={(event) => acceptUnknownCost(event.target.checked)}
           />
           I understand pricing is unavailable for this model. This run may incur
           charges; the provider determines the final cost.
