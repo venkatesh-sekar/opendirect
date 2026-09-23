@@ -11,13 +11,7 @@ import "@testing-library/jest-dom/vitest"
  * Run would send.
  */
 import { useEffect, useState } from "react"
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -274,8 +268,10 @@ describe("PromptBlocks", () => {
     await user.unhover(lens)
     expect(actions.highlightNote).toHaveBeenLastCalledWith(null)
 
-    fireEvent.doubleClick(lens)
+    await user.dblClick(lens)
     expect(actions.selectNode).toHaveBeenCalledWith("n-lens")
+    // One toggle for the pair of clicks, not open-then-shut.
+    expect(lens).toHaveAttribute("aria-expanded", "true")
 
     await user.hover(lens)
     unmount()

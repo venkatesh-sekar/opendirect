@@ -225,7 +225,11 @@ function NoteBlock({
         aria-expanded={expanded}
         aria-label={`Note ${label.number}, ${title}`}
         className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 rounded text-muted-foreground/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-        onClick={() => setExpanded((open) => !open)}
+        // The second click of a double-click is a select, not a toggle.
+        onClick={(event) => {
+          if (event.detail > 1) return
+          setExpanded((open) => !open)
+        }}
         onDoubleClick={onSelect}
         onMouseEnter={() => onHover(block.nodeId)}
         onMouseLeave={() => onHover(null)}
@@ -499,9 +503,14 @@ export function PromptBlocks({
         items={blocks.map((block) => block.id)}
         strategy={verticalListSortingStrategy}
       >
+        {/*
+          `nokey`: React Flow listens for Delete, Backspace and Space on the
+          whole document. A key meant for a block — disconnecting a note,
+          picking one up — must never delete or pan the canvas behind it.
+        */}
         <ol
           aria-label="Prompt blocks"
-          className="flex min-w-48 flex-1 flex-col gap-0.5"
+          className="nokey flex min-w-48 flex-1 flex-col gap-0.5"
         >
           {blocks.map((block) => {
             const label = labels.get(block.id)!

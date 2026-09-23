@@ -661,9 +661,9 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     [createEdge, createNode, deleteNodes, history, updateNode]
   )
 
-  const onEdgesDelete = useCallback(
-    (deleted: CanvasFlowEdge[]) => {
-      const rows = deleted.flatMap((one) => (one.data ? [one.data.edge] : []))
+  /** Deletes edge rows as one undoable step — the Delete key and the composer's ✕. */
+  const deleteEdgeRows = useCallback(
+    (rows: readonly CanvasEdgeDto[]) => {
       if (rows.length === 0) return
 
       let ids = rows.map((one) => one.id)
@@ -690,6 +690,27 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       })
     },
     [createEdge, deleteEdges, history]
+  )
+
+  const onEdgesDelete = useCallback(
+    (deleted: CanvasFlowEdge[]) =>
+      deleteEdgeRows(
+        deleted.flatMap((one) => (one.data ? [one.data.edge] : []))
+      ),
+    [deleteEdgeRows]
+  )
+
+  /** The composer's ✕ on a note: its wire(s) into `targetNodeId`, undoably. */
+  const disconnectNote = useCallback(
+    (noteNodeId: string, targetNodeId: string) =>
+      deleteEdgeRows(
+        latest.current.edges.filter(
+          (edge) =>
+            edge.sourceNodeId === noteNodeId &&
+            edge.targetNodeId === targetNodeId
+        )
+      ),
+    [deleteEdgeRows]
   )
 
   /* ------------------------------------------------------------------ */
@@ -1027,6 +1048,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     branch,
     selectGeneration,
     selectNode,
+    disconnectNote,
   })
   const noteDrafts = useMemo(() => createNoteDrafts(), [])
   useEffect(() => {
@@ -1034,8 +1056,15 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     noteDrafts.retain(live)
   }, [canvas.nodes, noteDrafts])
   useEffect(() => {
-    actions.current = { spawn, pick, branch, selectGeneration, selectNode }
-  }, [spawn, pick, branch, selectGeneration, selectNode])
+    actions.current = {
+      spawn,
+      pick,
+      branch,
+      selectGeneration,
+      selectNode,
+      disconnectNote,
+    }
+  }, [spawn, pick, branch, selectGeneration, selectNode, disconnectNote])
   const surface: CanvasSurface = useMemo(
     () => ({
       containerId,
@@ -1046,6 +1075,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       branch: (...args) => actions.current.branch(...args),
       selectGeneration: (...args) => actions.current.selectGeneration(...args),
       selectNode: (...args) => actions.current.selectNode(...args),
+      disconnectNote: (...args) => actions.current.disconnectNote(...args),
       // A state setter is already stable; no ref needed.
       highlightNote: setHighlightedNote,
     }),

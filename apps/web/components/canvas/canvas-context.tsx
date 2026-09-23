@@ -79,6 +79,11 @@ export interface CanvasSurface {
   highlightNote?: (nodeId: string | null) => void
   /** Select one node, e.g. a note double-clicked in the composer. */
   selectNode?: (nodeId: string) => void
+  /**
+   * Deletes the wire(s) from a note into a node, as one step on the undo
+   * stack — the composer's ✕. The note itself stays on the canvas.
+   */
+  disconnectNote?: (noteNodeId: string, targetNodeId: string) => void
 }
 
 const CanvasSurfaceContext = createContext<CanvasSurface | null>(null)

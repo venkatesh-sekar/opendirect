@@ -11,9 +11,11 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import type { ReactFlowProps, ReactFlowState } from "@xyflow/react"
 import type { CanvasDto, CanvasNodeDto } from "@opendirect/contract"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@workspace/ui/components/tooltip"
 import { queryKeys } from "@/hooks/query-keys"
 import type { CanvasFlowEdge, CanvasFlowNode } from "./nodes/types"
 import { Canvas } from "./canvas"
@@ -272,5 +274,127 @@ describe("canvas interaction persistence", () => {
         moves: [{ id: "b", x: 305, y: 0 }],
       })
     )
+  })
+})
+
+describe("the composer on a real canvas", () => {
+  /** A note wired into a generate node — the pair the composer shows. */
+  async function mountComposer() {
+    const canvas: CanvasDto = {
+      nodes: [
+        { ...row("note", 0), text: "a bellhop opens the lift" },
+        { ...row("gen", 400), type: "video_gen", text: null },
+      ],
+      edges: [
+        {
+          id: "e-note",
+          projectId: "p",
+          sourceNodeId: "note",
+          targetNodeId: "gen",
+          slotField: null,
+          createdAt: 1,
+        },
+      ],
+    }
+    fixture.invoke.mockImplementation((channel: string) => {
+      if (channel === "canvas:get") return Promise.resolve(canvas)
+      if (channel === "canvas:edge:delete") return Promise.resolve({ ok: true })
+      if (channel === "canvas:edge:create")
+        return Promise.resolve({ ...canvas.edges[0], id: "e-again" })
+      if (channel === "generations:list")
+        return Promise.resolve({ items: [], total: 0 })
+      if (channel === "settings:get") return Promise.resolve({})
+      return new Promise(() => {})
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    client.setQueryData(queryKeys.canvas.graph, canvas)
+    const view = render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <DndContext>
+            <Canvas containerId="shelf" />
+          </DndContext>
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    await waitFor(() => expect(fixture.state?.().nodes).toHaveLength(2))
+    act(() => fixture.surface!.selectNode!("gen"))
+    await waitFor(() =>
+      expect(
+        fixture.state!()
+          .nodes.filter((node) => node.selected)
+          .map((node) => node.id)
+      ).toEqual(["gen"])
+    )
+    const note = await screen.findByRole("button", {
+      name: /note 1, a bellhop opens the lift/i,
+    })
+    return { client, note, ...view }
+  }
+
+  function channelCalls(channel: string) {
+    return fixture.invoke.mock.calls.filter(([one]) => one === channel)
+  }
+
+  it("⛔ Delete on a focused note disconnects it and never deletes the selected node", async () => {
+    const user = userEvent.setup()
+    const { note } = await mountComposer()
+
+    note.focus()
+    await user.keyboard("{Delete}")
+
+    await waitFor(() =>
+      expect(channelCalls("canvas:edge:delete")).toHaveLength(1)
+    )
+    expect(channelCalls("canvas:edge:delete")[0]![1]).toEqual({
+      ids: ["e-note"],
+    })
+    expect(channelCalls("canvas:node:delete")).toHaveLength(0)
+    expect(fixture.state!().nodes.map((node) => node.id)).toContain("gen")
+  })
+
+  it("puts the composer's ✕ on the undo stack", async () => {
+    const user = userEvent.setup()
+    await mountComposer()
+
+    // A bare click: user-event's mousedown reaches d3-zoom, which cannot
+    // find a window in jsdom.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Disconnect a bellhop opens the lift",
+      })
+    )
+    await waitFor(() =>
+      expect(channelCalls("canvas:edge:delete")).toHaveLength(1)
+    )
+
+    // jsdom reports no platform, so `mod` is Control.
+    await user.keyboard("{Control>}z{/Control}")
+    await waitFor(() =>
+      expect(channelCalls("canvas:edge:create")).toHaveLength(1)
+    )
+    expect(channelCalls("canvas:edge:create")[0]![1]).toMatchObject({
+      sourceNodeId: "note",
+      targetNodeId: "gen",
+    })
+  })
+
+  it("lights the hovered note and its wire, and clears them after", async () => {
+    const { container } = await mountComposer()
+    const noteNode = () =>
+      container.querySelector('.react-flow__node[data-id="note"]')
+    const wire = () =>
+      container.querySelector('.react-flow__edge[data-id="e-note"]')
+    await waitFor(() => expect(noteNode()).not.toBeNull())
+
+    act(() => fixture.surface!.highlightNote!("note"))
+    expect(noteNode()).toHaveAttribute("data-prompt-highlight")
+    if (wire()) expect(wire()).toHaveAttribute("data-prompt-highlight")
+
+    act(() => fixture.surface!.highlightNote!(null))
+    expect(noteNode()).not.toHaveAttribute("data-prompt-highlight")
+    expect(container.querySelector("[data-prompt-highlight]")).toBeNull()
   })
 })

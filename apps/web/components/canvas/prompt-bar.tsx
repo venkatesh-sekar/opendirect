@@ -449,18 +449,22 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
 
   /**
    * ✕ on a note: the wire goes, the note stays on the canvas, and reconcile
-   * drops its block. ⛔ An edge delete; nothing is run.
+   * drops its block. On a canvas it is the canvas's own undoable edge delete;
+   * a bar rendered on its own (a test, a preview) deletes the edge directly.
+   * ⛔ An edge delete; nothing is run.
    */
   const deleteEdges = useDeleteCanvasEdges()
   const deleteEdgesMutate = deleteEdges.mutate
+  const surfaceDisconnect = surface?.disconnectNote
   const disconnectNote = useCallback(
     (noteNodeId: string) => {
+      if (surfaceDisconnect) return surfaceDisconnect(noteNodeId, node.id)
       const ids = incomingEdges(canvas.edges, node.id)
         .filter((edge) => edge.sourceNodeId === noteNodeId)
         .map((edge) => edge.id)
       if (ids.length > 0) deleteEdgesMutate(ids)
     },
-    [canvas.edges, deleteEdgesMutate, node.id]
+    [canvas.edges, deleteEdgesMutate, node.id, surfaceDisconnect]
   )
 
   /**
