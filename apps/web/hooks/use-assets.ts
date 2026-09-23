@@ -117,7 +117,10 @@ export function useAddAssetToContainer(): UseMutationResult<
   })
 }
 
-/** Unlinks an asset from one board; the file and every other link survive. */
+/**
+ * Unlinks an asset from one board; the file and every other link survive. A
+ * shot whose pick it was loses the pick, and the tree carries picks.
+ */
 export function useRemoveAssetFromContainer(): UseMutationResult<
   { ok: true },
   Error,
@@ -132,6 +135,7 @@ export function useRemoveAssetFromContainer(): UseMutationResult<
         queryKey: ["assets", variables.containerId],
       })
       void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+      void client.invalidateQueries({ queryKey: queryKeys.containers.tree })
       invalidateContainerFacts(client)
     },
   })

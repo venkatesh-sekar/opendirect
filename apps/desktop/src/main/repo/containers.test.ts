@@ -13,12 +13,15 @@ import {
   listContainerSummaries,
   listRelated,
   listTree,
+  moveContainer,
   renameContainer,
   reparentContainer,
   setContainerDescription,
   setContainerHandle,
+  setContainerPick,
+  setContainerReferences,
 } from "./containers"
-import { removeFromContainer } from "./assets"
+import { addToContainer, removeFromContainer } from "./assets"
 import { createGeneration, updateStatus } from "./generations"
 
 const NOW = 1_763_000_000_000
@@ -699,6 +702,53 @@ describe("listRelated", () => {
     expect(scenes(ruiz.id)).toEqual([])
   })
 
+  it("casts only the character when a legacy input is linked to a scene too", () => {
+    const mira = kind("Mira", "character")
+    const hall = kind("Hotel hallway", "scene")
+    const roof = kind("Rooftop", "scene")
+    const sheet = linkedAsset("sheet", mira.id)
+    // The same picture filed under a scene and a folder as well as Mira.
+    handle.db
+      .insert(containerAssets)
+      .values([
+        { containerId: roof.id, assetId: sheet },
+        { containerId: hall.id, assetId: sheet },
+      ])
+      .run()
+    run(hall.id, { inputs: [sheet] })
+    run(hall.id, { inputs: [sheet] })
+
+    expect(cast(hall.id)).toEqual(["Mira"])
+    expect(scenes(mira.id)).toEqual(["Hotel hallway"])
+    expect(scenes(mira.id)).not.toContain("Rooftop")
+  })
+
+  it("counts the runs filed under a scene's shots toward its cast", () => {
+    const mira = kind("Mira", "character")
+    const ruiz = kind("Ruiz", "character")
+    const hall = kind("Hotel hallway", "scene")
+    const shot = createContainer(handle.db, {
+      projectId: PROJECT_ID,
+      parentId: hall.id,
+      kind: "shot",
+      name: "Shot 1",
+      now: NOW,
+    })
+    const sheet = linkedAsset("sheet", ruiz.id)
+    run(shot.id, { mentioned: [mira.id] })
+    run(shot.id, { inputs: [sheet] })
+
+    expect(cast(hall.id)).toEqual(["Mira", "Ruiz"])
+    expect(scenes(mira.id)).toEqual(["Hotel hallway"])
+    const summaries = listContainerSummaries(handle.db, PROJECT_ID)
+    expect(summaries.find((one) => one.id === hall.id)?.castIds).toEqual([
+      mira.id,
+      ruiz.id,
+    ])
+    // A shot is not a scene: it has no cast of its own.
+    expect(summaries.find((one) => one.id === shot.id)?.castIds).toEqual([])
+  })
+
   it("trusts a recorded list over the inputs, even an empty one", () => {
     const mira = kind("Mira", "character")
     const hall = kind("Hotel hallway", "scene")
@@ -732,5 +782,178 @@ describe("listRelated", () => {
       mira.id,
     ])
     expect(summaries.find((one) => one.id === mira.id)?.castIds).toEqual([])
+  })
+})
+
+describe("shots", () => {
+  function scene(name = "Hotel hallway") {
+    return createContainer(handle.db, {
+      projectId: PROJECT_ID,
+      kind: "scene",
+      name,
+      now: NOW,
+    })
+  }
+
+  function shot(parentId: string | null, name = "Shot") {
+    return createContainer(handle.db, {
+      projectId: PROJECT_ID,
+      parentId,
+      kind: "shot",
+      name,
+      now: NOW,
+    })
+  }
+
+  function output(id: string, containerId: string) {
+    handle.db
+      .insert(assets)
+      .values({ id, projectId: PROJECT_ID, kind: "image", createdAt: NOW })
+      .run()
+    addToContainer(handle.db, { containerId, assetId: id })
+    return id
+  }
+
+  function order(parentId: string) {
+    return listTree(handle.db, PROJECT_ID)
+      .find((node) => node.id === parentId)!
+      .children.map((child) => child.name)
+  }
+
+  it("lives under a scene, in order, with no handle and no pick yet", () => {
+    const hall = scene()
+    const one = shot(hall.id, "One")
+    const two = shot(hall.id, "Two")
+    expect([one.position, two.position]).toEqual([0, 1])
+    expect(one.handle).toBeNull()
+    expect(getContainer(handle.db, one.id)?.pickedAssetId).toBeNull()
+    expect(order(hall.id)).toEqual(["One", "Two"])
+  })
+
+  it("refuses to live anywhere but under a scene", () => {
+    const character = createContainer(handle.db, {
+      projectId: PROJECT_ID,
+      kind: "character",
+      name: "Mira",
+      now: NOW,
+    })
+    expect(() => shot(null)).toThrow(/scene/i)
+    expect(() => shot(character.id)).toThrow(/scene/i)
+    expect(() => shot(make("Folder").id)).toThrow(/scene/i)
+  })
+
+  it("holds nothing under itself", () => {
+    const one = shot(scene().id)
+    expect(() => make("Inside", one.id)).toThrow(/shot/i)
+    const loose = make("Loose")
+    expect(() => reparentContainer(handle.db, loose.id, one.id)).toThrow(
+      /shot/i
+    )
+  })
+
+  it("moves only from one scene to another", () => {
+    const hall = scene()
+    const roof = scene("Rooftop")
+    const one = shot(hall.id)
+    expect(reparentContainer(handle.db, one.id, roof.id).parentId).toBe(roof.id)
+    expect(() => reparentContainer(handle.db, one.id, null)).toThrow(/scene/i)
+    expect(() =>
+      reparentContainer(handle.db, one.id, make("Folder").id)
+    ).toThrow(/scene/i)
+  })
+
+  it("cannot be given a handle or references", () => {
+    const one = shot(scene().id)
+    expect(() => setContainerHandle(handle.db, one.id, "shot-1")).toThrow()
+    expect(() => setContainerReferences(handle.db, one.id, [])).toThrow()
+  })
+
+  it("keeps its label as its description", () => {
+    const one = shot(scene().id)
+    expect(
+      setContainerDescription(handle.db, one.id, "Wide — Mira steps out")
+        .description
+    ).toBe("Wide — Mira steps out")
+  })
+
+  it("picks one of its own versions, and clears the pick", () => {
+    const one = shot(scene().id)
+    const v1 = output("v1", one.id)
+    expect(setContainerPick(handle.db, one.id, v1).pickedAssetId).toBe(v1)
+    expect(setContainerPick(handle.db, one.id, null).pickedAssetId).toBeNull()
+  })
+
+  it("refuses a pick that is not one of the shot's own", () => {
+    const hall = scene()
+    const one = shot(hall.id)
+    const elsewhere = output("elsewhere", hall.id)
+    expect(() => setContainerPick(handle.db, one.id, elsewhere)).toThrow(
+      /shot/i
+    )
+    expect(() => setContainerPick(handle.db, one.id, "missing")).toThrow()
+    output("mine", hall.id)
+    expect(() => setContainerPick(handle.db, hall.id, "mine")).toThrow(/shot/i)
+  })
+
+  it("forgets the pick when the asset leaves the shot or the project", () => {
+    const one = shot(scene().id)
+    const v1 = output("v1", one.id)
+    const v2 = output("v2", one.id)
+    setContainerPick(handle.db, one.id, v1)
+    removeFromContainer(handle.db, { containerId: one.id, assetId: v1 })
+    expect(getContainer(handle.db, one.id)?.pickedAssetId).toBeNull()
+
+    setContainerPick(handle.db, one.id, v2)
+    handle.db.delete(assets).where(eq(assets.id, v2)).run()
+    expect(getContainer(handle.db, one.id)?.pickedAssetId).toBeNull()
+  })
+
+  it("covers its card with the pick", () => {
+    const one = shot(scene().id)
+    const v1 = output("v1", one.id)
+    output("v2", one.id)
+    setContainerPick(handle.db, one.id, v1)
+    expect(
+      listContainerSummaries(handle.db, PROJECT_ID).find(
+        (entry) => entry.id === one.id
+      )?.coverAsset?.id
+    ).toBe(v1)
+  })
+
+  it("goes with its scene", () => {
+    const hall = scene()
+    shot(hall.id)
+    deleteContainer(handle.db, hall.id)
+    expect(handle.db.select().from(containers).all()).toEqual([])
+  })
+})
+
+describe("moveContainer", () => {
+  it("puts a container at an index among its siblings", () => {
+    const root = make("Root")
+    const a = make("A", root.id)
+    make("B", root.id)
+    const c = make("C", root.id)
+    const names = () =>
+      listTree(handle.db, PROJECT_ID)[0]!.children.map((child) => child.name)
+
+    moveContainer(handle.db, c.id, 0)
+    expect(names()).toEqual(["C", "A", "B"])
+    moveContainer(handle.db, a.id, 2)
+    expect(names()).toEqual(["C", "B", "A"])
+    // Past the end is the end.
+    moveContainer(handle.db, c.id, 99)
+    expect(names()).toEqual(["B", "A", "C"])
+    expect(
+      listTree(handle.db, PROJECT_ID)[0]!.children.map(
+        (child) => child.position
+      )
+    ).toEqual([0, 1, 2])
+  })
+
+  it("rejects an unknown container and a negative index", () => {
+    expect(() => moveContainer(handle.db, "nope", 0)).toThrow(/not found/i)
+    const a = make("A")
+    expect(() => moveContainer(handle.db, a.id, -1)).toThrow()
   })
 })

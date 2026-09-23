@@ -13,6 +13,7 @@ import {
   findContainer,
   firstSelectableContainer,
   flattenContainers,
+  placesToFile,
 } from "./sidebar-tree"
 
 function container(
@@ -67,6 +68,19 @@ describe("buildSidebarSections", () => {
     expect(sections[1]!.nodes.map((node) => node.id)).toEqual(["the-door"])
   })
 
+  it("leaves a scene's shots out of the sidebar, at any depth", () => {
+    const sections = buildSidebarSections([
+      container("hall", "scene", [
+        container("shot-1", "shot"),
+        container("plates", "folder", [container("stray", "shot")]),
+      ]),
+    ])
+
+    const hall = sections[1]!.nodes[0]!
+    expect(hall.children.map((node) => node.id)).toEqual(["plates"])
+    expect(hall.children[0]!.children).toEqual([])
+  })
+
   it("offers only the three headings that are real containers", () => {
     // "Generations" used to be a fourth, virtual, heading. It rendered an
     // "Every run" row that selected nothing and showed nothing, so it is gone
@@ -96,6 +110,19 @@ describe("tree lookups", () => {
       "root",
       "venkatesh",
       "wardrobe",
+    ])
+  })
+
+  it("offers every place to file into but the project and the shots", () => {
+    const withShots = [
+      container("root", "project", [
+        container("hall", "scene", [container("shot-1", "shot")]),
+        container("plates", "folder"),
+      ]),
+    ]
+    expect(placesToFile(withShots).map((node) => node.id)).toEqual([
+      "hall",
+      "plates",
     ])
   })
 

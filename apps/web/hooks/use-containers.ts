@@ -250,6 +250,43 @@ export function useSetContainerDescription(): UseMutationResult<
 }
 
 /**
+ * Moves a container to `index` among its siblings — a scene's shots, in
+ * storyboard order.
+ */
+export function useReorderContainer(): UseMutationResult<
+  { ok: true },
+  Error,
+  { id: string; index: number }
+> {
+  const onSuccess = useInvalidateTree()
+  return useMutation({
+    mutationFn: (variables: { id: string; index: number }) =>
+      invoke("containers:reorder", variables),
+    onSuccess,
+  })
+}
+
+/**
+ * Picks a shot's version (or clears it). The tree carries the pick, and a
+ * shot's card cover is its summary's — both under `containers.all`.
+ *
+ * ⛔ Picking chooses among versions that exist; it never starts a run.
+ */
+export function useSetContainerPick(): UseMutationResult<
+  ContainerDto,
+  Error,
+  { id: string; assetId: string | null }
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: { id: string; assetId: string | null }) =>
+      invoke("containers:setPick", variables),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: queryKeys.containers.all }),
+  })
+}
+
+/**
  * Deleting a container unlinks its assets but never deletes them, so the asset
  * queries are invalidated too — a board the user was looking at may have been
  * a child of the container that just went away.

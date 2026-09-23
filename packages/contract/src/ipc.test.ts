@@ -94,6 +94,24 @@ describe("project channels", () => {
     expect(input.safeParse({ kind: "scene", name: "" }).success).toBe(false)
   })
 
+  it("creates a shot, and picks and reorders one by id", () => {
+    expect(
+      ipcContract["containers:create"].input.safeParse({
+        kind: "shot",
+        name: "Shot 1",
+        parentId: "hall",
+      }).success
+    ).toBe(true)
+    const pick = ipcContract["containers:setPick"].input
+    expect(pick.safeParse({ id: "s1", assetId: "a1" }).success).toBe(true)
+    expect(pick.safeParse({ id: "s1", assetId: null }).success).toBe(true)
+    expect(pick.safeParse({ id: "s1" }).success).toBe(false)
+    const reorder = ipcContract["containers:reorder"].input
+    expect(reorder.safeParse({ id: "s1", index: 0 }).success).toBe(true)
+    expect(reorder.safeParse({ id: "s1", index: -1 }).success).toBe(false)
+    expect(reorder.safeParse({ id: "s1", index: 1.5 }).success).toBe(false)
+  })
+
   it("requires at least one path to import", () => {
     const { input } = ipcContract["assets:import"]
     expect(input.safeParse({ paths: [] }).success).toBe(false)

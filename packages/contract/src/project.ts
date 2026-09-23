@@ -15,11 +15,17 @@
  */
 import { z } from "zod"
 
+/**
+ * A `shot` is one numbered beat of a scene: a child of the scene, ordered by
+ * `position`, labelled by its `description`, and its versions are the runs
+ * filed under it. It is not `@`-able and not a sidebar row.
+ */
 export const containerKindSchema = z.enum([
   "project",
   "character",
   "scene",
   "folder",
+  "shot",
 ])
 export type ContainerKind = z.output<typeof containerKindSchema>
 
@@ -76,6 +82,12 @@ export const containerSchema = z.object({
    */
   description: z.string().nullable(),
   referenceAssetIds: z.array(z.string()).nullable().optional(),
+  /**
+   * A shot's chosen version: one of the assets its runs made. Null until the
+   * user picks, and again when that asset leaves the shot. Always null for
+   * any other kind.
+   */
+  pickedAssetId: z.string().nullable().optional(),
   createdAt: z.number(),
 })
 export type ContainerDto = z.output<typeof containerSchema>

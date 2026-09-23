@@ -111,19 +111,33 @@ export function addToContainer(db: ProjectDatabase, input: LinkInput): void {
     .run()
 }
 
-/** Unlinks only — the asset and its file stay in the project. */
+/**
+ * Unlinks only — the asset and its file stay in the project. A shot whose pick
+ * this was is left with no pick, since it can only wear its own versions.
+ */
 export function removeFromContainer(
   db: ProjectDatabase,
   input: Pick<LinkInput, "containerId" | "assetId">
 ): void {
-  db.delete(containerAssets)
-    .where(
-      and(
-        eq(containerAssets.containerId, input.containerId),
-        eq(containerAssets.assetId, input.assetId)
+  db.transaction((tx) => {
+    tx.delete(containerAssets)
+      .where(
+        and(
+          eq(containerAssets.containerId, input.containerId),
+          eq(containerAssets.assetId, input.assetId)
+        )
       )
-    )
-    .run()
+      .run()
+    tx.update(containers)
+      .set({ pickedAssetId: null })
+      .where(
+        and(
+          eq(containers.id, input.containerId),
+          eq(containers.pickedAssetId, input.assetId)
+        )
+      )
+      .run()
+  })
 }
 
 export interface ListByContainerInput {

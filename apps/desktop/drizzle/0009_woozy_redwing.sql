@@ -1,0 +1,1 @@
+ALTER TABLE `containers` ADD `picked_asset_id` text REFERENCES assets(id) ON DELETE set null;

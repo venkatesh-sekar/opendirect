@@ -12,6 +12,9 @@
  * root container wrapping everything, others file characters and scenes at the
  * top level. Hoisting a project node's children into the sections means both
  * shapes render identically.
+ *
+ * A `shot` is never a row: it is a beat of its scene, shown on the scene's
+ * page, and listing a scene's twelve shots under it would bury the tree.
  */
 import type { ContainerKind, ContainerNodeDto } from "@opendirect/contract"
 
@@ -27,12 +30,23 @@ export interface SidebarSection {
 }
 
 const SECTION_FOR_KIND: Record<
-  Exclude<ContainerKind, "project">,
+  Exclude<ContainerKind, "project" | "shot">,
   SidebarSectionId
 > = {
   character: "characters",
   scene: "scenes",
   folder: "assets",
+}
+
+/** The node with every shot under it taken out, at any depth. */
+function withoutShots(node: ContainerNodeDto): ContainerNodeDto {
+  if (node.children.length === 0) return node
+  return {
+    ...node,
+    children: node.children
+      .filter((child) => child.kind !== "shot")
+      .map(withoutShots),
+  }
 }
 
 /** Section order is fixed; the product spells it out and users memorise it. */
@@ -51,7 +65,8 @@ export function buildSidebarSections(
         classify(node.children)
         continue
       }
-      buckets[SECTION_FOR_KIND[node.kind]].push(node)
+      if (node.kind === "shot") continue
+      buckets[SECTION_FOR_KIND[node.kind]].push(withoutShots(node))
     }
   }
   classify(tree)
@@ -110,4 +125,15 @@ export function firstSelectableContainer(
     if (first) return first
   }
   return null
+}
+
+/**
+ * Everywhere an asset or a canvas node can be filed from a picker: every
+ * container but the transparent project and the shots. A shot's versions are
+ * made from its scene's page, not filed into from elsewhere.
+ */
+export function placesToFile(tree: ContainerNodeDto[]): ContainerNodeDto[] {
+  return flattenContainers(tree).filter(
+    (node) => node.kind !== "project" && node.kind !== "shot"
+  )
 }

@@ -52,7 +52,7 @@ export const containers = sqliteTable(
         onDelete: "cascade",
       }
     ),
-    /** "project" | "character" | "scene" | "folder" */
+    /** "project" | "character" | "scene" | "folder" | "shot" */
     kind: text("kind").notNull(),
     name: text("name").notNull(),
     position: integer("position").notNull().default(0),
@@ -70,6 +70,16 @@ export const containers = sqliteTable(
     referenceAssetIds: text("reference_asset_ids", { mode: "json" }).$type<
       string[] | null
     >(),
+    /**
+     * A shot's chosen version — one of the assets its runs made. `set null`,
+     * like a canvas node's pick: the asset going away un-picks, it does not
+     * take the shot with it. Unlinking the asset from the shot clears it too
+     * (`removeFromContainer`). Null on every other kind.
+     */
+    pickedAssetId: text("picked_asset_id").references(
+      (): AnySQLiteColumn => assets.id,
+      { onDelete: "set null" }
+    ),
     createdAt: integer("created_at").notNull(),
   },
   (t) => [

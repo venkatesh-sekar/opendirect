@@ -35,6 +35,7 @@ import {
   max,
   ne,
 } from "drizzle-orm"
+import { alias } from "drizzle-orm/sqlite-core"
 
 import type { ProjectDatabase } from "../db/client"
 import {
@@ -128,6 +129,21 @@ function requireParent(
   return parent
 }
 
+/**
+ * Where a kind may live. A shot is a beat of one scene, so it lives directly
+ * under a scene and nowhere else; and nothing lives under a shot — its
+ * versions are runs, not children.
+ */
+function requirePlacement(
+  kind: ContainerKind,
+  parent: ContainerDto | null
+): void {
+  if (parent?.kind === "shot")
+    throw new Error("A shot cannot hold other containers")
+  if (kind === "shot" && parent?.kind !== "scene")
+    throw new Error("A shot must belong to a scene")
+}
+
 function requireName(name: string): string {
   const trimmed = name.trim()
   if (!trimmed) throw new Error("A container name is required")
@@ -163,7 +179,9 @@ export function createContainer(
   const name = requireName(input.name)
   const parentId = input.parentId ?? null
 
-  if (parentId !== null) requireParent(db, parentId, input.projectId)
+  const parent =
+    parentId === null ? null : requireParent(db, parentId, input.projectId)
+  requirePlacement(input.kind, parent)
 
   const row = {
     id: input.id ?? randomUUID(),
@@ -180,6 +198,7 @@ export function createContainer(
       : null,
     description: null,
     referenceAssetIds: null,
+    pickedAssetId: null,
     createdAt: input.now ?? Date.now(),
   }
   db.insert(containers).values(row).run()
@@ -353,11 +372,11 @@ export function reparentContainer(
 ): ContainerDto {
   const container = requireContainer(db, id)
 
-  if (parentId !== null) {
-    requireParent(db, parentId, container.projectId)
-    if (isSelfOrDescendant(db, id, parentId)) {
-      throw new Error("A container cannot be moved inside its own descendant")
-    }
+  const parent =
+    parentId === null ? null : requireParent(db, parentId, container.projectId)
+  requirePlacement(container.kind, parent)
+  if (parentId !== null && isSelfOrDescendant(db, id, parentId)) {
+    throw new Error("A container cannot be moved inside its own descendant")
   }
 
   db.update(containers)
@@ -365,6 +384,79 @@ export function reparentContainer(
       parentId,
       position: nextPosition(db, container.projectId, parentId),
     })
+    .where(eq(containers.id, id))
+    .run()
+  return requireContainer(db, id)
+}
+
+/**
+ * Puts a container at `index` among its siblings — past the end is the end —
+ * and renumbers them all from 0, so positions stay a dense order however
+ * they started.
+ */
+export function moveContainer(
+  db: ProjectDatabase,
+  id: string,
+  index: number
+): void {
+  if (!Number.isInteger(index) || index < 0)
+    throw new Error("A position is a whole number from 0")
+  const container = requireContainer(db, id)
+  db.transaction((tx) => {
+    const siblings = tx
+      .select({ id: containers.id })
+      .from(containers)
+      .where(
+        and(
+          eq(containers.projectId, container.projectId),
+          container.parentId === null
+            ? isNull(containers.parentId)
+            : eq(containers.parentId, container.parentId)
+        )
+      )
+      .orderBy(asc(containers.position), asc(containers.createdAt))
+      .all()
+      .map((row) => row.id)
+      .filter((sibling) => sibling !== id)
+    siblings.splice(Math.min(index, siblings.length), 0, id)
+    siblings.forEach((sibling, position) =>
+      tx
+        .update(containers)
+        .set({ position })
+        .where(eq(containers.id, sibling))
+        .run()
+    )
+  })
+}
+
+/**
+ * Picks a shot's version, or clears the pick. The asset must be linked to the
+ * shot — which is where a run filed under it puts what it made — so a shot can
+ * only ever wear one of its own versions.
+ */
+export function setContainerPick(
+  db: ProjectDatabase,
+  id: string,
+  assetId: string | null
+): ContainerDto {
+  const container = requireContainer(db, id)
+  if (container.kind !== "shot")
+    throw new Error("Only a shot has a picked version")
+  if (assetId !== null) {
+    const linked = db
+      .select({ assetId: containerAssets.assetId })
+      .from(containerAssets)
+      .where(
+        and(
+          eq(containerAssets.containerId, id),
+          eq(containerAssets.assetId, assetId)
+        )
+      )
+      .get()
+    if (!linked) throw new Error("Pick one of this shot's own versions")
+  }
+  db.update(containers)
+    .set({ pickedAssetId: assetId })
     .where(eq(containers.id, id))
     .run()
   return requireContainer(db, id)
@@ -422,14 +514,18 @@ export function listTree(
 /**
  * Every scene's cast, as character ids in `rows` order (tree order).
  *
- * A character is in a scene when a run filed under the scene mentioned it.
- * The stored prompt cannot say so — its `@mira` is already prose — which is
- * why submission records `mentionedContainerIds`. A run from before that
- * column (null) falls back to its inputs: a character is in the scene when
- * one of the character's assets was sent to the model. A recorded list, even
- * an empty one, is trusted over the inputs.
+ * A character is in a scene when a run filed under the scene — or under one
+ * of its shots, whose versions are that scene's runs too — mentioned it. The
+ * stored prompt cannot say so — its `@mira` is already prose — which is why
+ * submission records `mentionedContainerIds`. A run from before that column
+ * (null) falls back to its inputs: a character is in the scene when one of
+ * the character's assets was sent to the model. A recorded list, even an
+ * empty one, is trusted over the inputs.
  *
- * Two queries for the whole project, for the same reason as `listTree`.
+ * Two queries for the whole project, for the same reason as `listTree`. The
+ * kinds are filtered in SQL: runs are joined to the scene or shot they were
+ * filed under, and legacy inputs to the character that holds the asset, so an
+ * input also filed under a scene or a folder never reaches the cast.
  * Scenes with nobody in them are absent from the map.
  */
 function castByScene(
@@ -439,52 +535,64 @@ function castByScene(
 ): Map<string, string[]> {
   const kindOf = new Map(rows.map((row) => [row.id, row.kind]))
   const found = new Map<string, Set<string>>()
+  const sceneOf = (filed: {
+    id: string
+    kind: string
+    parentId: string | null
+  }) => (filed.kind === "scene" ? filed.id : filed.parentId)
   const add = (sceneId: string | null, characterId: string) => {
     if (sceneId === null || kindOf.get(sceneId) !== "scene") return
-    // A deleted container, a scene or a folder is nobody's cast.
-    if (kindOf.get(characterId) !== "character") return
     const cast = found.get(sceneId) ?? new Set<string>()
     cast.add(characterId)
     found.set(sceneId, cast)
   }
+  const filedInScene = and(
+    eq(generations.projectId, projectId),
+    inArray(containers.kind, ["scene", "shot"])
+  )
 
   for (const run of db
     .select({
-      containerId: generations.containerId,
+      id: containers.id,
+      kind: containers.kind,
+      parentId: containers.parentId,
       mentioned: generations.mentionedContainerIds,
     })
     .from(generations)
-    .where(
-      and(
-        eq(generations.projectId, projectId),
-        isNotNull(generations.containerId),
-        isNotNull(generations.mentionedContainerIds)
-      )
-    )
+    .innerJoin(containers, eq(containers.id, generations.containerId))
+    .where(and(filedInScene, isNotNull(generations.mentionedContainerIds)))
     .all()) {
-    for (const id of run.mentioned ?? []) add(run.containerId, id)
+    for (const id of run.mentioned ?? []) {
+      // A deleted container, a scene or a folder is nobody's cast.
+      if (kindOf.get(id) === "character") add(sceneOf(run), id)
+    }
   }
 
+  const character = alias(containers, "character")
   for (const input of db
-    .select({
-      sceneId: generations.containerId,
-      characterId: containerAssets.containerId,
+    .selectDistinct({
+      id: containers.id,
+      kind: containers.kind,
+      parentId: containers.parentId,
+      characterId: character.id,
     })
     .from(generationInputs)
     .innerJoin(generations, eq(generations.id, generationInputs.generationId))
+    .innerJoin(containers, eq(containers.id, generations.containerId))
     .innerJoin(
       containerAssets,
       eq(containerAssets.assetId, generationInputs.assetId)
     )
-    .where(
+    .innerJoin(
+      character,
       and(
-        eq(generations.projectId, projectId),
-        isNotNull(generations.containerId),
-        isNull(generations.mentionedContainerIds)
+        eq(character.id, containerAssets.containerId),
+        eq(character.kind, "character")
       )
     )
+    .where(and(filedInScene, isNull(generations.mentionedContainerIds)))
     .all()) {
-    add(input.sceneId, input.characterId)
+    add(sceneOf(input), input.characterId)
   }
 
   const ordered = new Map<string, string[]>()
@@ -600,8 +708,16 @@ export function listContainerSummaries(
   const coverIds = new Map<string, string>()
   for (const row of rows) {
     const linked = linkedImages.get(row.id) ?? []
+    // A shot wears its pick. The link is checked like a reference's, though
+    // unlinking already clears the pick.
+    const picked =
+      row.pickedAssetId && linked.includes(row.pickedAssetId)
+        ? row.pickedAssetId
+        : undefined
     const id =
-      row.referenceAssetIds?.find((ref) => linked.includes(ref)) ?? linked[0]
+      picked ??
+      row.referenceAssetIds?.find((ref) => linked.includes(ref)) ??
+      linked[0]
     if (id !== undefined) coverIds.set(row.id, id)
   }
   const casts = castByScene(db, projectId, rows)

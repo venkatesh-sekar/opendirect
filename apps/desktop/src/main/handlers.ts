@@ -44,11 +44,13 @@ import {
   listContainerSummaries,
   listRelated,
   listTree,
+  moveContainer,
   renameContainer,
   reparentContainer,
   setContainerDescription,
   setContainerReferences,
   setContainerHandle,
+  setContainerPick,
 } from "./repo/containers"
 import { preflightGeneration } from "./generation-preflight"
 import { estimateCost } from "./providers/cost"
@@ -190,6 +192,16 @@ export function registerProjectHandlers(
       name,
     })
   })
+
+  handle("containers:reorder", ({ id, index }) => {
+    moveContainer(requireProject().db, id, index)
+    return { ok: true as const }
+  })
+
+  /** ⛔ Chooses among a shot's existing versions; it never generates. */
+  handle("containers:setPick", ({ id, assetId }) =>
+    setContainerPick(requireProject().db, id, assetId)
+  )
 
   handle("containers:delete", ({ id }) => {
     deleteContainer(requireProject().db, id)

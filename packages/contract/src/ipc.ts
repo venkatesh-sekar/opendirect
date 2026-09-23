@@ -361,6 +361,22 @@ export const ipcContract = {
     }),
     output: containerSchema,
   },
+  /**
+   * Moves a container to `index` among its siblings (clamped to the end) and
+   * renumbers them — how a scene's shots are reordered.
+   */
+  "containers:reorder": {
+    input: z.object({ id: z.string(), index: z.number().int().min(0) }),
+    output: okSchema,
+  },
+  /**
+   * Picks a shot's version: an asset one of its runs made, or null for none.
+   * ⛔ Picking chooses among what exists; it never generates.
+   */
+  "containers:setPick": {
+    input: z.object({ id: z.string(), assetId: z.string().nullable() }),
+    output: containerSchema,
+  },
   /** Removes the sub-tree and its asset *links*; the assets themselves stay. */
   "containers:delete": {
     input: z.object({ id: z.string() }),
