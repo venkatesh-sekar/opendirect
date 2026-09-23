@@ -230,7 +230,6 @@ Rooftop at dusk" (three names, then "and N more").
 - Top bar: **Open canvas**, then the primary button **Generate in scene**,
   which opens the same `GenerateForm` panel with `containerId = scene`.
 - **Tabs:** **Shots** (Phase 3), **Assets**, **Canvas** (link) and **Notes**.
-  Until shots ship, the first tab is **Generations**.
 
 **As built (Phase 3a).** `scene-page.tsx` replaces the placeholder. The
 character and scene pages share one frame, `SubjectPage` in
@@ -244,16 +243,9 @@ differs. The scene page has:
   `containers:related`. There is no "+ Add" (§6.3). An empty cast says how to
   join it.
 - No stats line, as in the mockup.
-- Tabs **Generations**, **Assets** and **Canvas**. **Notes** is not built:
-  nothing backs it. The description is the only prose a scene has, and it is
-  already in the header.
-
-**Shots seam (Phase 3b).** `SCENE_TABS` in `lib/workspace/container-page.ts`
-gets `"shots"` first. `PageTab` and the frame's `TAB_LABELS` get it too.
-`ScenePage` draws the storyboard and the versions strip through `renderTab`,
-where `SHOTS_SEAM` marks the spot. `castByScene` in main only counts runs
-filed directly under a scene. A shot's versions are filed under the shot, so
-3b must also roll a shot's runs up into its scene's cast.
+- Tabs **Generations**, **Assets** and **Canvas** (Shots came in 3b, below).
+  **Notes** is not built: nothing backs it. The description is the only prose
+  a scene has, and it is already in the header.
 
 **Shots (Phase 3):**
 
@@ -262,6 +254,41 @@ filed directly under a scene. A shot's versions are filed under the shot, so
   The last card is a dashed "New shot".
 - Selecting a shot shows a **versions strip** below. The picked version has an
   amber ring, and clicking a version picks it.
+
+**As built (Phase 3b).** `SCENE_TABS` is now **Shots**, **Generations**,
+**Assets**, and a scene opens on Shots (`shots-tab.tsx`, rules in
+`lib/workspace/shots.ts`):
+
+- A card's number is its place in the scene, not a stored field. Its label is
+  the shot's description ("Untitled shot" until one is typed). It wears the
+  pick, or the newest picture until something is picked; nothing is stored
+  for that stand-in. The badge is the newest version's number, the model is
+  that of the picture shown, and a shot with a run in flight gets the dashed
+  amber outline and progress bar.
+- A version is **one picture** a run filed under the shot made, oldest first,
+  so `v1` never renumbers. A run that made several pictures is several
+  versions. A running, failed or canceled run keeps its number and cannot be
+  picked.
+- The selected shot lives in the query string (`&shot=`); a missing or stale
+  one selects the first. Its strip says "v4 is the pick". Clicking a version
+  picks it, and clicking the pick again clears it.
+- The strip's header row edits the label in place (`containers:setDescription`),
+  moves the shot earlier or later (`containers:reorder`), deletes it behind
+  the sidebar's confirmation dialog, and has **Generate version**. That opens
+  the page's generate panel aimed at the shot: the run is filed under the
+  shot, "Save to" reads "Hotel hallway · Shot 03", and the prompt starts as
+  `@hallway ` plus the label. As everywhere, only the panel's Generate click
+  spends. `SubjectPage.renderTab` passes a `generate` action for this, and
+  `GeneratePanel` takes an optional target.
+- "New shot" creates one at the end, named "Shot N" (the name is not shown
+  anywhere) and selects it.
+- Reordering is by buttons, not drag. The Generations tab still lists only
+  runs filed straight under the scene; a shot's runs are on the Shots tab.
+- `/container/?id=<shot>` replaces itself with the scene's page on Shots with
+  that shot selected (`shotHref`). A shot is never remembered as the canvas's
+  filing container, and the canvas's filing chip and "Add to container" do not
+  offer shots (`placesToFile`).
+- `castByScene` counts a run filed under a shot toward its scene's cast.
 
 ## 6. Data and IPC changes
 
@@ -318,6 +345,30 @@ both sides, and registered in main.
      migration in `apps/desktop/drizzle`, and a `containers:setPick` channel.
    - Shots are not `@`-mentionable (null handle), and `buildSidebarSections`
      must skip them.
+   - **As built.** Migration `0009_woozy_redwing` adds
+     `containers.picked_asset_id`, a foreign key to `assets` with `ON DELETE
+     set null`: deleting the asset un-picks the shot. drizzle-kit's SQLite
+     `ADD COLUMN` leaves the action out, so it was added to the SQL by hand
+     to match the snapshot. Unlinking the asset from the shot
+     (`assets:removeFromContainer`) clears the pick as well.
+   - `containers:setPick {id, assetId | null}` accepts only a shot, and only
+     an asset linked to that shot, which is where its runs file what they
+     make. `containers:reorder {id, index}` moves any container to an index
+     among its siblings and renumbers them; the Shots tab uses it.
+   - Main refuses a shot anywhere but directly under a scene (on create and
+     on reparent), and anything under a shot. A shot has no handle and no
+     references. Its summary's cover is its pick.
+   - The kind audit: the sidebar's kind-to-section map is exhaustive, so it
+     names shots and `buildSidebarSections` drops them at any depth. The
+     character and scene grids, Home and the cast select by kind, so they
+     never see shots. Mention subjects are characters and scenes in SQL.
+     `/container/` sends a shot to its scene (§5). The filing pickers skip
+     shots, and New menus cannot make one.
+   - `castByScene` joins each run to the scene or shot it was filed under,
+     and each legacy input to a character, in SQL. A shot's runs count
+     toward its scene. The legacy join is `selectDistinct`, and an input
+     asset that is also linked to a scene or folder casts only the
+     character.
 
 No other schema changes are needed beyond
 `generations.mentioned_container_ids` (6.3, as built) and 6.4's
@@ -340,6 +391,7 @@ Each phase ships on its own, green: `pnpm test`, lint and typecheck.
    - Build the generate panel (§4.3), or its fallback.
    - Delete `SubjectLibrary`, moving its logic into the page.
 3. **Scene page and shots.** C3 with Cast (channel 6.3), then shots (6.4).
+   Both are built (3a and 3b).
 
 ## 8. Non-goals and notes
 
