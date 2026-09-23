@@ -14,6 +14,9 @@ afterEach(() => forgetReturnRoute())
 describe("route helpers", () => {
   it("builds query-string links, because the static export has no [id] segments", () => {
     expect(containerHref("a b")).toBe("/container/?id=a%20b")
+    expect(containerHref("mira", "generations")).toBe(
+      "/container/?id=mira&tab=generations"
+    )
     expect(canvasHref()).toBe("/canvas/")
     expect(canvasHref("mira")).toBe("/canvas/?focus=mira")
   })

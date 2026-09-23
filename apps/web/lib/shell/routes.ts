@@ -7,9 +7,10 @@
  * call site.
  */
 
-/** A character, scene or folder's own page. */
-export function containerHref(id: string): string {
-  return `/container/?id=${encodeURIComponent(id)}`
+/** A character, scene or folder's own page, optionally on one of its tabs. */
+export function containerHref(id: string, tab?: string | null): string {
+  const base = `/container/?id=${encodeURIComponent(id)}`
+  return tab ? `${base}&tab=${encodeURIComponent(tab)}` : base
 }
 
 /** The canvas, optionally framed on one container's nodes. */
