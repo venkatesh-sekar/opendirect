@@ -17,9 +17,10 @@ import { returnRoute } from "@/lib/shell/routes"
 
 import { AiToolsForm } from "@/components/settings/ai-tools-form"
 import { GeneralSettingsForm } from "@/components/settings/general-settings-form"
+import { ModelsSettings } from "@/components/settings/models/models-settings"
 import { ProviderKeysForm } from "@/components/settings/provider-keys-form"
 
-const TABS = ["providers", "general", "ai"] as const
+const TABS = ["providers", "models", "general", "ai"] as const
 type TabId = (typeof TABS)[number]
 
 /** The tab named in `?tab=`, or the first one when it names nothing real. */
@@ -39,6 +40,9 @@ function SettingsScreen() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tab = tabFromSearch(searchParams.get("tab"))
+  // `?map=<modelKey>`: the model picker's "map this model" link. The Models
+  // tab opens the mapping editor on it once.
+  const mapModelKey = tab === "models" ? searchParams.get("map") : null
 
   useHotkeys(
     "esc",
@@ -77,8 +81,8 @@ function SettingsScreen() {
         <div>
           <h1 className="text-lg font-medium">Settings</h1>
           <p className="text-sm text-muted-foreground">
-            Provider credentials, workspace preferences and AI helpers. Escape
-            goes back.
+            Provider credentials, model mappings, workspace preferences and AI
+            helpers. Escape goes back.
           </p>
         </div>
       </div>
@@ -96,11 +100,20 @@ function SettingsScreen() {
       >
         <TabsList>
           <TabsTrigger value="providers">Providers</TabsTrigger>
+          <TabsTrigger value="models">Models</TabsTrigger>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="ai">AI helpers</TabsTrigger>
         </TabsList>
         <TabsContent value="providers" className="pt-4">
           <ProviderKeysForm />
+        </TabsContent>
+        <TabsContent value="models" className="pt-4">
+          <ModelsSettings
+            mapModelKey={mapModelKey}
+            onEditorClosed={() =>
+              router.replace("/settings?tab=models", { scroll: false })
+            }
+          />
         </TabsContent>
         <TabsContent value="general" className="pt-4">
           <GeneralSettingsForm />

@@ -8,7 +8,8 @@ import "@testing-library/jest-dom/vitest"
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { IpcChannel } from "@opendirect/contract"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { TooltipProvider } from "@workspace/ui/components/tooltip"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -44,7 +45,9 @@ function renderPage() {
   })
   return render(
     <QueryClientProvider client={client}>
-      <SettingsPage />
+      <TooltipProvider>
+        <SettingsPage />
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }
@@ -76,6 +79,26 @@ beforeEach(() => {
           preferred: null,
           detectedAt: 0,
         }
+      case "registry:status":
+        return {
+          format: 1,
+          bundledVersion: 1,
+          activeVersion: 1,
+          activeSource: "bundled",
+          remote: {
+            enabled: true,
+            url: "https://example.test/registry",
+            version: null,
+            fetchedAt: null,
+            error: null,
+          },
+          overrides: 0,
+          families: 0,
+          warnings: [],
+        }
+      case "registry:families":
+      case "registry:overrides:list":
+        return []
       default:
         return { ok: true }
     }
@@ -101,6 +124,36 @@ describe("SettingsPage", () => {
     expect(
       await screen.findByRole("tab", { name: "Providers", selected: true })
     ).toBeVisible()
+  })
+
+  it("opens the Models tab", async () => {
+    route.query = "tab=models"
+    renderPage()
+
+    expect(
+      await screen.findByRole("tab", { name: "Models", selected: true })
+    ).toBeVisible()
+    expect(await screen.findByText("Model registry")).toBeVisible()
+  })
+
+  /**
+   * The model picker links here to map a model it lists. Closing the editor
+   * drops `?map=`, so Back and a re-render do not open it again.
+   */
+  it("opens the mapping editor for the model ?map= names", async () => {
+    const user = userEvent.setup()
+    route.query = "tab=models&map=replicate%3Akwaivgi%2Fkling-v3"
+    renderPage()
+
+    const dialog = await screen.findByRole("dialog", { name: "New mapping" })
+    expect(dialog).toHaveTextContent("replicate:kwaivgi/kling-v3")
+
+    await user.keyboard("{Escape}")
+
+    await waitFor(() =>
+      expect(route.replaced).toEqual(["/settings?tab=models"])
+    )
+    expect(route.pushed).toEqual([])
   })
 
   /** `replace`, not `push`: a tab switch is not a place Back should walk. */
