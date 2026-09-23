@@ -8,8 +8,13 @@
  * job done by the same parts — `ModelPicker`, `AdvancedParams`,
  * `ReferencePicker`, `buildGenerationRequest`, `cost:estimate`. What changes
  * is where the references come from: on the canvas they are the node's
- * incoming edges, read by `edgesToInputs`, so the tray is a view of the graph
- * rather than a second selection the graph does not know about.
+ * incoming edges, read by `edgesToInputs`, so the references strip is a view
+ * of the graph rather than a second selection the graph does not know about.
+ *
+ * One card, top to bottom: the references strip (one group per model input,
+ * with its gallery inline under it), the prompt's blocks, one toolbar row that
+ * never wraps, the Full prompt panel — exactly what is sent — and then the
+ * messages.
  *
  * **Draft state is per node and it lives here.** A prompt half typed on one
  * node must still be there after the user clicks another node and comes back,
@@ -18,8 +23,13 @@
  * `useSyncExternalStore` — the canvas is free to unmount the bar between
  * selections without losing what was typed.
  *
+ * A draft holds the prompt as blocks: the notes wired in and the user's own
+ * text, in the order they are sent (`reconcileBlocks` keeps them in step with
+ * the wires, `renderPromptBlocks` turns them into the prompt).
+ *
  * Drafts stay in memory while editing. Save prompt explicitly records the
- * prompt, model, settings and count on the node; workflow exports include them.
+ * blocks, model, settings and count on the node; workflow exports include
+ * them.
  *
  * What a run *is* — mentions, request, quote, batch plan, why it is blocked —
  * is `useGeneratePlan`, shared with a container page's generate panel. This
@@ -42,6 +52,7 @@ import {
 } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  Bookmark02Icon,
   MinusSignIcon,
   PlusSignIcon,
   SlidersHorizontalIcon,
@@ -700,12 +711,12 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     <>
       <div
         data-testid="count-stepper"
-        className="flex h-9 shrink-0 items-center gap-1 rounded-md border px-1"
+        className="flex h-8 shrink-0 items-center gap-0.5 rounded-md border px-0.5"
       >
         <Button
           variant="ghost"
           size="icon"
-          className="size-7"
+          className="size-6"
           aria-label="One fewer result"
           disabled={draft.count <= 1}
           onClick={() => setCount(draft.count - 1)}
@@ -722,8 +733,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-7"
           aria-label="One more result"
+          className="size-6"
           disabled={draft.count >= maxCount}
           onClick={() => setCount(draft.count + 1)}
         >
@@ -758,6 +769,32 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     ? Object.keys(advancedSchema.properties).length
     : 0
 
+  /**
+   * ⛔ Records the recipe on the node. It saves a composition, not a run.
+   */
+  const save = () => {
+    updateNode.mutate(
+      {
+        id: node.id,
+        patch: {
+          // A legacy draft stays legacy until the user rearranges
+          // something, so saving alone never pins its note order.
+          text: JSON.stringify(
+            promptRecipeSchema.parse({
+              ...draft,
+              blocks: draft.blocks ? blocks : undefined,
+            })
+          ),
+        },
+      },
+      {
+        onSuccess: () =>
+          setNotice("Prompt and settings saved to this project."),
+        onError: (error) => setNotice(error.message),
+      }
+    )
+  }
+
   /*
    * The bar's width is **stated**, not inherited from its content. React Flow
    * anchors it to the node, so its width is its position: a model name
@@ -771,40 +808,38 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       data-node-id={node.id}
       className="pointer-events-auto flex w-[min(52rem,calc(100vw-4rem))] flex-col gap-2 rounded-xl border bg-card/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/85"
     >
-      <div className="flex items-center justify-between gap-2 px-1">
-        <span className="text-xs text-muted-foreground">
-          Compose · select references · review cost · run
-        </span>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={updateNode.isPending}
-          onClick={() => {
-            updateNode.mutate(
-              {
-                id: node.id,
-                patch: {
-                  // A legacy draft stays legacy until the user rearranges
-                  // something, so saving alone never pins its note order.
-                  text: JSON.stringify(
-                    promptRecipeSchema.parse({
-                      ...draft,
-                      blocks: draft.blocks ? blocks : undefined,
-                    })
-                  ),
-                },
-              },
-              {
-                onSuccess: () =>
-                  setNotice("Prompt and settings saved to this project."),
-                onError: (error) => setNotice(error.message),
-              }
-            )
-          }}
-        >
-          Save prompt
-        </Button>
-      </div>
+      {/* A model with no image input and nothing wired in has no strip at
+          all, rather than an empty row. */}
+      {stripGroups.length > 0 ? (
+        <div className="border-b px-1 pb-2">
+          <CanvasReferenceStrip
+            node={node}
+            canvas={canvas}
+            slots={descriptor?.referenceSlots ?? []}
+            containerId={containerId}
+            onNotice={setNotice}
+            mentions={mentions.outcomes}
+            galleryFor={galleryFor}
+            onGalleryChange={setGalleryFor}
+            groups={stripGroups}
+          />
+        </div>
+      ) : null}
+
+      {/* ---- the prompt ------------------------------------------------
+          The notes wired in and the user's own text blocks, in the order
+          they are sent. Each text block is a real <textarea> so the
+          @-mention picker has a caret to read.
+          ----------------------------------------------------------------- */}
+      <PromptBlocks
+        blocks={blocks}
+        notesById={notesById}
+        subjects={subjects}
+        onEdit={editBlocks}
+        onDisconnect={disconnectNote}
+      />
+      {/* ---- end of the prompt ----------------------------------------- */}
+
       {unknownCost && descriptor && !cost.isFetching && (
         <label className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
           <input
@@ -816,50 +851,84 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           charges; the provider determines the final cost.
         </label>
       )}
-      {/* Wraps rather than overflowing: the bar is anchored to a node and a
-          narrow window would otherwise push Run off the viewport. The messages
-          are *below* this row — see the end of the bar. */}
+
+      {/* One row that never wraps: a wrapped row puts Run on a line of its
+          own, under a pointer that was on its way to where Run used to be.
+          Every child keeps its width and Run is always last; below the
+          sidebar's breakpoint the count and cost move into the settings
+          popover instead. The messages are *below* this row — see the end
+          of the bar. */}
       <div
         data-testid="prompt-bar-controls"
-        className="flex flex-wrap items-end gap-2"
+        className="flex min-w-0 flex-nowrap items-center gap-1 border-t pt-2"
       >
-        <CanvasReferenceStrip
-          node={node}
-          canvas={canvas}
-          slots={descriptor?.referenceSlots ?? []}
-          containerId={containerId}
-          onNotice={setNotice}
-          mentions={mentions.outcomes}
-          galleryFor={galleryFor}
-          onGalleryChange={setGalleryFor}
-          groups={stripGroups}
+        <ModelPicker
+          value={draft.modelKey}
+          onChange={(key) =>
+            updateDraft((current) => ({ ...current, modelKey: key }))
+          }
+          kinds={kinds}
+          // Stated so the model's own name cannot move its neighbours. The
+          // one control allowed to give: when every other control is
+          // showing, its name truncates rather than pushing Run off the bar.
+          className="w-44 min-w-24 shrink"
+          // The canvas can show several bars over its lifetime; the palette
+          // chord belongs to the window, not to whichever one is mounted.
+          hotkeys={false}
+          placeholder="Model"
         />
 
-        {/* ---- the prompt ------------------------------------------------
-            The notes wired in and the user's own text blocks, in the order
-            they are sent. Each text block is a real <textarea> so the
-            @-mention picker has a caret to read. It takes `flex-1` inside a
-            bar of stated width, so it absorbs the remaining space instead of
-            setting it.
-            ----------------------------------------------------------------- */}
-        <PromptBlocks
-          blocks={blocks}
-          notesById={notesById}
-          subjects={subjects}
-          onEdit={editBlocks}
-          onDisconnect={disconnectNote}
-        />
-        {/* ---- end of the prompt ----------------------------------------- */}
+        {grid || narrow ? (
+          <SettingsPopover
+            grid={grid ?? EMPTY_GRID}
+            values={draft.common}
+            onChange={setCommon}
+            footer={
+              narrow ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {overflow}
+                </div>
+              ) : null
+            }
+          />
+        ) : null}
+
+        {/* An icon and its count, named by its label and its tooltip: a
+            worded button does not fit the one row beside the stepper and
+            the cost. The width is stated, so a count arriving with the
+            model cannot move its neighbours. */}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Advanced"
+                disabled={!advancedSchema}
+                onClick={() => setAdvancedOpen(true)}
+                className="nokey w-12 shrink-0 justify-start px-2 text-muted-foreground"
+              />
+            }
+          >
+            <HugeiconsIcon icon={SlidersHorizontalIcon} className="size-3.5" />
+            {advancedCount > 0 ? (
+              <span className="font-mono text-xs tabular-nums">
+                {advancedCount}
+              </span>
+            ) : null}
+          </TooltipTrigger>
+          <TooltipContent>Advanced parameters</TooltipContent>
+        </Tooltip>
 
         {/*
-          The ✨ menu, in the same place the creation bar kept it: between the
-          prompt and the model. It is absent entirely when no local CLI was
-          detected, so the "AI helpers" settings tab and this are one feature.
+          The ✨ menu. It is absent entirely when no local CLI was detected,
+          so the "AI helpers" settings tab and this are one feature.
         */}
         <HelperMenu
           tools={aiTools.data}
           helpers={["improve-prompt", "suggest-shots"]}
           disabled={ai.state === "running"}
+          className="size-8 shrink-0"
           onRun={(helper, tool) => {
             setNotice(null)
             if (helper === "improve-prompt") {
@@ -890,51 +959,6 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           }}
         />
 
-        <ModelPicker
-          value={draft.modelKey}
-          onChange={(key) =>
-            updateDraft((current) => ({ ...current, modelKey: key }))
-          }
-          kinds={kinds}
-          // Stated so the model's own name cannot move its neighbours.
-          className="w-44 shrink-0"
-          // The canvas can show several bars over its lifetime; the palette
-          // chord belongs to the window, not to whichever one is mounted.
-          hotkeys={false}
-          placeholder="Model"
-        />
-
-        {grid || narrow ? (
-          <SettingsPopover
-            grid={grid ?? EMPTY_GRID}
-            values={draft.common}
-            onChange={setCommon}
-            footer={
-              narrow ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  {overflow}
-                </div>
-              ) : null
-            }
-          />
-        ) : null}
-
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!advancedSchema}
-          onClick={() => setAdvancedOpen(true)}
-          className="w-28 shrink-0 justify-start text-muted-foreground"
-        >
-          <HugeiconsIcon icon={SlidersHorizontalIcon} className="size-3.5" />
-          Advanced
-          {advancedCount > 0 ? (
-            <span className="font-mono text-xs tabular-nums">
-              {advancedCount}
-            </span>
-          ) : null}
-        </Button>
-
         <Button
           variant="ghost"
           size="sm"
@@ -951,9 +975,35 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             settings popover instead — see `overflow` above. */}
         {narrow ? null : overflow}
 
+        {/* `nokey`, like every button here: React Flow listens for Space on
+            the whole document, and a key meant for Save must not pan the
+            canvas behind it. */}
         <Tooltip>
           <TooltipTrigger
-            render={<span className="inline-flex" data-testid="run-wrapper" />}
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Save prompt"
+                disabled={updateNode.isPending}
+                onClick={save}
+                className="nokey ml-auto shrink-0 text-muted-foreground"
+              />
+            }
+          >
+            <HugeiconsIcon icon={Bookmark02Icon} className="size-4" />
+          </TooltipTrigger>
+          <TooltipContent>Save prompt and settings to this node</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                className="inline-flex shrink-0"
+                data-testid="run-wrapper"
+              />
+            }
           >
             <Button onClick={run} disabled={!canRun}>
               {submission.isPending ? "Queueing…" : "Run"}
@@ -965,8 +1015,19 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         </Tooltip>
       </div>
 
+      {fullPromptOpen ? (
+        <FullPromptPanel
+          id={fullPromptId}
+          prompt={mentions.prompt}
+          segments={segments}
+          noteCount={notes.length}
+          inputs={imageInputs}
+          onOpenInput={setGalleryFor}
+        />
+      ) : null}
+
       {/*
-        The messages, *below* the controls — first what the prompt's mentions
+        The messages, *below* everything — first what the prompt's mentions
         will be (the downgrades, and the handles nobody claims), then the
         notice, the failure and the block.
 
@@ -998,17 +1059,6 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         >
           {blockedReason}
         </p>
-      ) : null}
-
-      {fullPromptOpen ? (
-        <FullPromptPanel
-          id={fullPromptId}
-          prompt={mentions.prompt}
-          segments={segments}
-          noteCount={notes.length}
-          inputs={imageInputs}
-          onOpenInput={setGalleryFor}
-        />
       ) : null}
 
       {/*

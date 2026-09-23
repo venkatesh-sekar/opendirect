@@ -774,6 +774,97 @@ describe("PromptBar", () => {
   })
 
   /**
+   * One toolbar row that never wraps: a wrapped row moves Run to a line of its
+   * own under a pointer that was travelling to it. jsdom lays nothing out, so
+   * the contract is the class and the DOM order — Run is always last.
+   */
+  describe.each([
+    ["wide", false],
+    ["narrow", true],
+  ])("the toolbar at a %s width", (_, narrow) => {
+    let wide = 0
+    beforeEach(() => {
+      wide = window.innerWidth
+      if (narrow) {
+        Object.defineProperty(window, "innerWidth", {
+          configurable: true,
+          value: 500,
+        })
+      }
+    })
+    afterEach(() => {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: wide,
+      })
+    })
+
+    it("stays one row and ends with Run", async () => {
+      renderBar()
+
+      const run = await screen.findByRole("button", { name: "Run" })
+      const controls = screen.getByTestId("prompt-bar-controls")
+      expect(controls).toHaveClass("flex-nowrap")
+      expect(controls).not.toHaveClass("flex-wrap")
+      const picker = screen
+        .getAllByRole("combobox")
+        .find((element) => element.textContent === MODEL_KEY)
+      expect(controls).toContainElement(picker!)
+      expect(controls).toContainElement(
+        screen.getByRole("button", { name: "Full prompt" })
+      )
+      expect(controls).toContainElement(
+        screen.getByRole("button", { name: "Save prompt" })
+      )
+      expect(controls.lastElementChild).toContainElement(run)
+      // Every child keeps its width; the model's name is the one thing that
+      // may truncate, down to a floor, so the row gives there and not at Run.
+      for (const child of controls.children) {
+        if (child === picker) {
+          expect(child).toHaveClass("shrink", "min-w-24")
+        } else {
+          expect(child).toHaveClass("shrink-0")
+        }
+      }
+      expect(Boolean(screen.queryByTestId("count-stepper"))).toBe(!narrow)
+    })
+  })
+
+  it("has no header line above the prompt", async () => {
+    renderBar()
+
+    await screen.findByLabelText("Prompt")
+    expect(screen.queryByText(/Compose · select references/)).toBeNull()
+  })
+
+  it("saves from an icon button with a name and a tooltip", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const save = await screen.findByRole("button", { name: "Save prompt" })
+    // An icon, not a word: the name is its label, not its text.
+    expect(save).toHaveTextContent(/^$/)
+    expect(save).toHaveClass("nokey")
+    await user.hover(save)
+    expect(
+      await screen.findByText("Save prompt and settings to this node")
+    ).toBeInTheDocument()
+  })
+
+  it("hides the strip when the node has no inputs and nothing wired", async () => {
+    const user = userEvent.setup()
+    served = textOnly
+    renderBar(BARE)
+
+    await user.type(await screen.findByLabelText("Prompt"), "a lift")
+    // Run needs the model, so the model — with no image input — has loaded.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Run" })).toBeEnabled()
+    )
+    expect(screen.queryByTestId("canvas-reference-strip")).toBeNull()
+  })
+
+  /**
    * The messages sit *after* the control row in the flow. The toolbar anchors
    * the bar by its top edge, so anything above the row pushes Run downward the
    * moment an error arrives — under a pointer that was already on its way.
@@ -983,6 +1074,56 @@ describe("the prompt's blocks", () => {
     expect(submissions()[0]![1]).toMatchObject({
       request: { prompt: "slowly\n\na bellhop opens the lift" },
     })
+  })
+
+  it("saves a dragged order as blocks, without their ids", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.type(await screen.findByLabelText("Prompt"), "slowly")
+    const rect = stackBlocks()
+    try {
+      screen.getByRole("button", { name: "Move note 1" }).focus()
+      await user.keyboard(" ")
+      await user.keyboard("{ArrowDown}")
+      await user.keyboard(" ")
+    } finally {
+      rect.mockRestore()
+    }
+    const list = screen.getByRole("list", { name: "Prompt blocks" })
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole("listitem")
+          .map((item) => item.dataset.kind)
+      ).toEqual(["text", "note", "text"])
+    )
+
+    await user.click(screen.getByRole("button", { name: "Save prompt" }))
+    await waitFor(() =>
+      expect(
+        invoke.mock.calls.some(
+          ([channel, payload]) =>
+            channel === "canvas:node:update" &&
+            (payload as { patch: { text?: string } }).patch.text
+        )
+      ).toBe(true)
+    )
+    const saved = invoke.mock.calls.find(
+      ([channel, payload]) =>
+        channel === "canvas:node:update" &&
+        (payload as { patch: { text?: string } }).patch.text
+    )!
+    const recipe = JSON.parse(
+      (saved[1] as { patch: { text: string } }).patch.text
+    )
+    // Ids are the draft's, for React and dnd-kit; the recipe never holds one.
+    expect(recipe.blocks).toEqual([
+      { kind: "text", text: "slowly" },
+      { kind: "note", nodeId: "note" },
+      { kind: "text", text: "" },
+    ])
+    expect(submissions()).toHaveLength(0)
   })
 
   it("✕ on a note deletes its edge", async () => {
