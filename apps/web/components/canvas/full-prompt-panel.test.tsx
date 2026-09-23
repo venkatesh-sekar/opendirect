@@ -62,15 +62,16 @@ describe("FullPromptPanel", () => {
   it("wraps its counts between items, never inside one", () => {
     renderPanel({ prompt: "ab cd\n\nef", segments: [], noteCount: 2 })
 
-    // A narrow bar stacks the header; each count stays whole on its line.
+    // A narrow bar stacks the header; each count stays whole on its line,
+    // and its separator trails it, so no wrapped line starts with "·".
     const stats = screen.getByTestId("full-prompt-stats")
     expect(stats).toHaveClass("flex-wrap")
     const pieces = [...stats.children].map((piece) => piece.textContent)
     expect(pieces).toEqual([
-      "9 chars",
-      " · 3 words",
-      " · 2 notes",
-      " · 3 images",
+      "9 chars · ",
+      "3 words · ",
+      "2 notes · ",
+      "3 images",
     ])
     for (const piece of stats.children) {
       expect(piece).toHaveClass("whitespace-nowrap")

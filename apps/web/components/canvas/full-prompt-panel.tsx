@@ -146,7 +146,7 @@ export function FullPromptPanel({
         >
           {stats.map((stat, index) => (
             <span key={stat} className="whitespace-nowrap">
-              {index > 0 ? ` · ${stat}` : stat}
+              {index < stats.length - 1 ? `${stat} · ` : stat}
             </span>
           ))}
         </span>

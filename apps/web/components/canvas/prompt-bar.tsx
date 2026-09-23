@@ -932,11 +932,11 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
                 icon={SlidersHorizontalIcon}
                 className="size-3.5"
               />
-              {advancedCount > 0 && !narrow ? (
+              {narrow ? null : (
                 <span className="font-mono text-xs tabular-nums">
                   {advancedCount}
                 </span>
-              ) : null}
+              )}
             </TooltipTrigger>
             <TooltipContent>{advancedLabel}</TooltipContent>
           </Tooltip>
