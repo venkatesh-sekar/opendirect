@@ -9,7 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 10 }
       - uses: actions/setup-node@v4
         with: { node-version: 22.18, cache: pnpm }
       - run: pnpm install --frozen-lockfile
@@ -35,4 +34,5 @@ jobs:
       # The single line that keeps the test suite off the live, paid APIs.
       # Deleting it would not fail a test; it would silently allow one.
       - name: Assert tests never hit live provider hosts
-        run: grep -q 'onUnhandledRequest: "error"' vitest.setup.ts
+        run: |
+          grep -q 'onUnhandledRequest: "error"' vitest.setup.ts
