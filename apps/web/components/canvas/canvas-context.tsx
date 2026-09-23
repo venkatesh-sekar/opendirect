@@ -84,6 +84,11 @@ export interface CanvasSurface {
    * stack — the composer's ✕. The note itself stays on the canvas.
    */
   disconnectNote?: (noteNodeId: string, targetNodeId: string) => void
+  /**
+   * Deletes these wires as one step on the undo stack — a reference
+   * thumbnail's ✕. The nodes they come from stay on the canvas.
+   */
+  disconnectEdges?: (edgeIds: readonly string[]) => void
 }
 
 const CanvasSurfaceContext = createContext<CanvasSurface | null>(null)

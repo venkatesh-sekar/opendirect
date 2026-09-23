@@ -11,16 +11,25 @@ import "@testing-library/jest-dom/vitest"
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type {
+  AssetDto,
   CanvasDto,
+  CanvasEdgeDto,
   CanvasNodeDto,
   ReferenceSlot,
 } from "@opendirect/contract"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@workspace/ui/components/tooltip"
 
 import type { MentionOutcome } from "@/lib/mentions/resolve"
 
-import { MentionNotes, ReferenceTray } from "./reference-tray"
+import {
+  CanvasReferenceStrip,
+  groupStrip,
+  MentionNotes,
+} from "./reference-tray"
 
 vi.mock("@/lib/ipc", () => ({
   invoke: vi.fn(),
@@ -57,21 +66,25 @@ function renderTray(mentions: MentionOutcome[]) {
   })
   return render(
     <QueryClientProvider client={client}>
-      <ReferenceTray
-        node={NODE}
-        canvas={EMPTY}
-        slots={SLOTS}
-        containerId="c1"
-        mentions={mentions}
-      />
-      <MentionNotes mentions={mentions} />
+      <TooltipProvider>
+        <CanvasReferenceStrip
+          node={NODE}
+          canvas={EMPTY}
+          slots={SLOTS}
+          containerId="c1"
+          mentions={mentions}
+          galleryFor={null}
+          onGalleryChange={vi.fn()}
+        />
+        <MentionNotes mentions={mentions} />
+      </TooltipProvider>
     </QueryClientProvider>
   )
 }
 
 afterEach(cleanup)
 
-describe("ReferenceTray mentions", () => {
+describe("CanvasReferenceStrip mentions", () => {
   it("shows an attached mention with its handle, its slot and no remove button", () => {
     renderTray([
       {
@@ -155,5 +168,310 @@ describe("ReferenceTray mentions", () => {
       "@nobody → no character or scene with that handle"
     )
     expect(note.className).toContain("text-destructive")
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* Groups                                                              */
+/* ------------------------------------------------------------------ */
+
+const FIRST: ReferenceSlot = {
+  field: "first_frame",
+  label: "First Frame",
+  kind: "image",
+  multiple: false,
+  max: null,
+  role: "first_frame",
+}
+
+function picture(id: string): AssetDto {
+  return {
+    id,
+    kind: "image",
+    url: `asset://media/${id}.png`,
+    thumbnailUrl: `asset://media/thumbnails/${id}.webp`,
+    label: id,
+    originalName: `${id}.png`,
+  } as unknown as AssetDto
+}
+
+function mediaNode(id: string): CanvasNodeDto {
+  return {
+    id,
+    type: "media",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 200,
+    assetId: `a-${id}`,
+    asset: picture(`a-${id}`),
+  } as unknown as CanvasNodeDto
+}
+
+function noteNode(id: string): CanvasNodeDto {
+  return {
+    id,
+    type: "text",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 100,
+    text: "a bellhop opens the lift",
+  } as unknown as CanvasNodeDto
+}
+
+function wire(
+  id: string,
+  sourceNodeId: string,
+  slotField: string | null,
+  createdAt: number
+): CanvasEdgeDto {
+  return {
+    id,
+    projectId: "p",
+    sourceNodeId,
+    targetNodeId: NODE.id,
+    slotField,
+    createdAt,
+  }
+}
+
+/** `count` pictures wired into `slotField`, in creation order. */
+function wiredCanvas(count: number, slotField = "reference_images"): CanvasDto {
+  const sources = Array.from({ length: count }, (_, i) => mediaNode(`m${i}`))
+  return {
+    nodes: [NODE, ...sources],
+    edges: sources.map((one, i) => wire(`e${i}`, one.id, slotField, i + 1)),
+  }
+}
+
+const VENKZ: MentionOutcome = {
+  kind: "image",
+  handle: "venkz",
+  containerId: "c-venkz",
+  slotField: "reference_images",
+  assetIds: ["a-venkz"],
+  thumbnailUrls: ["asset://media/thumbnails/a-venkz.webp"],
+  substitution: "Venkz (the person in the reference image)",
+}
+
+describe("groupStrip", () => {
+  it("puts every wired picture of a one-slot model in that slot, in wire order", () => {
+    const groups = groupStrip(NODE, wiredCanvas(3), SLOTS, [])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.slot).toBe(SLOTS[0])
+    expect(groups[0]!.capacity).toBe(4)
+    expect(groups[0]!.full).toBe(false)
+    expect(
+      groups[0]!.items.map((item) => (item.kind === "edge" ? item.edgeId : ""))
+    ).toEqual(["e0", "e1", "e2"])
+  })
+
+  it("gives each of the model's slots its own group, empty ones included", () => {
+    const canvas: CanvasDto = {
+      nodes: [NODE, mediaNode("m0"), mediaNode("m1")],
+      edges: [
+        wire("e0", "m0", "reference_images", 1),
+        wire("e1", "m1", "first_frame", 2),
+      ],
+    }
+
+    const groups = groupStrip(NODE, canvas, [FIRST, ...SLOTS], [])
+
+    expect(groups.map((group) => group.slot?.field)).toEqual([
+      "first_frame",
+      "reference_images",
+    ])
+    expect(groups.map((group) => group.items.length)).toEqual([1, 1])
+    // A single-value slot holds one, and holds it now.
+    expect(groups[0]!.capacity).toBe(1)
+    expect(groups[0]!.full).toBe(true)
+  })
+
+  it("collects edges with no slot, or a slot the model does not declare, under Unassigned", () => {
+    const canvas: CanvasDto = {
+      nodes: [NODE, mediaNode("m0"), mediaNode("m1"), mediaNode("m2")],
+      edges: [
+        wire("e0", "m0", null, 1),
+        wire("e1", "m1", "reference_images", 2),
+        wire("e2", "m2", "end_image", 3),
+      ],
+    }
+
+    const groups = groupStrip(NODE, canvas, SLOTS, [])
+
+    expect(groups.map((group) => group.slot?.field ?? null)).toEqual([
+      "reference_images",
+      null,
+    ])
+    const unassigned = groups[1]!
+    expect(
+      unassigned.items.map((item) => (item.kind === "edge" ? item.edgeId : ""))
+    ).toEqual(["e0", "e2"])
+    expect(unassigned.capacity).toBeNull()
+    expect(unassigned.full).toBe(false)
+  })
+
+  it("counts a mention's picture in the slot it resolved to, after the wires", () => {
+    const groups = groupStrip(NODE, wiredCanvas(3), SLOTS, [
+      VENKZ,
+      { kind: "unresolved", handle: "nobody" },
+    ])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.items.map((item) => item.kind)).toEqual([
+      "edge",
+      "edge",
+      "edge",
+      "mention",
+    ])
+    // Four of four: the mention takes a place a wire would otherwise have.
+    expect(groups[0]!.full).toBe(true)
+  })
+
+  it("leaves text edges out — they are note blocks now", () => {
+    const canvas: CanvasDto = {
+      nodes: [NODE, noteNode("note"), mediaNode("m0")],
+      edges: [
+        wire("e-note", "note", null, 1),
+        wire("e0", "m0", "reference_images", 2),
+      ],
+    }
+
+    const groups = groupStrip(NODE, canvas, SLOTS, [])
+
+    // No Unassigned group: the note's null slot is not a missing slot.
+    expect(groups).toHaveLength(1)
+    expect(groups[0]!.items).toHaveLength(1)
+  })
+})
+
+/* ------------------------------------------------------------------ */
+/* The strip                                                           */
+/* ------------------------------------------------------------------ */
+
+/** The strip with its gallery state held the way `PromptBar` holds it. */
+function Controlled({
+  canvas,
+  slots,
+}: {
+  canvas: CanvasDto
+  slots: ReferenceSlot[]
+}) {
+  const [galleryFor, setGalleryFor] = useState<string | null>(null)
+  return (
+    <CanvasReferenceStrip
+      node={NODE}
+      canvas={canvas}
+      slots={slots}
+      containerId="c1"
+      galleryFor={galleryFor}
+      onGalleryChange={setGalleryFor}
+    />
+  )
+}
+
+function renderStrip(canvas: CanvasDto, slots: ReferenceSlot[] = SLOTS) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <Controlled canvas={canvas} slots={slots} />
+      </TooltipProvider>
+    </QueryClientProvider>
+  )
+}
+
+const UNBOUNDED: ReferenceSlot[] = [{ ...SLOTS[0]!, max: null }]
+
+describe("CanvasReferenceStrip", () => {
+  it("shows 3 of 100 and a +97 that opens the whole slot inline", async () => {
+    const user = userEvent.setup()
+    renderStrip(wiredCanvas(100), UNBOUNDED)
+
+    const strip = screen.getByTestId("canvas-reference-strip")
+    expect(within(strip).getAllByTestId("reference-thumb")).toHaveLength(3)
+    expect(within(strip).getByText("100 images")).toBeInTheDocument()
+    // One slot: no heading to read past.
+    expect(within(strip).queryByText(/^Reference Images \d/)).toBeNull()
+
+    const more = screen.getByRole("button", {
+      name: "Show all 100 Reference Images",
+    })
+    expect(more).toHaveTextContent("+97")
+    expect(
+      screen.queryByRole("region", { name: "Reference Images gallery" })
+    ).toBeNull()
+
+    await user.click(more)
+
+    const gallery = screen.getByRole("region", {
+      name: "Reference Images gallery",
+    })
+    const items = within(gallery).getAllByTestId("gallery-item")
+    expect(items).toHaveLength(100)
+    // Numbered in the order they are sent.
+    expect(items[0]).toHaveTextContent("1")
+    expect(items[99]).toHaveTextContent("100")
+    expect(gallery).toHaveTextContent("sent as reference_images")
+
+    await user.click(within(gallery).getByRole("button", { name: "Done" }))
+    expect(
+      screen.queryByRole("region", { name: "Reference Images gallery" })
+    ).toBeNull()
+  })
+
+  it("shows all four when there are four, with no +N", () => {
+    renderStrip(wiredCanvas(4), UNBOUNDED)
+
+    expect(screen.getAllByTestId("reference-thumb")).toHaveLength(4)
+    expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull()
+  })
+
+  it("opens the gallery from a thumbnail too", async () => {
+    const user = userEvent.setup()
+    renderStrip(wiredCanvas(2), UNBOUNDED)
+
+    await user.click(
+      screen.getAllByRole("button", { name: /^Open .* gallery/ })[1]!
+    )
+
+    expect(
+      screen.getByRole("region", { name: "Reference Images gallery" })
+    ).toBeInTheDocument()
+  })
+
+  it("says a full slot is full and will not take another", () => {
+    renderStrip(wiredCanvas(2), [{ ...SLOTS[0]!, max: 2 }])
+
+    expect(screen.getByText("2 / 2")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Add references to Reference Images" })
+    ).toBeDisabled()
+  })
+
+  it("heads each slot when the model has several, and Unassigned when present", () => {
+    const canvas: CanvasDto = {
+      nodes: [NODE, mediaNode("m0"), mediaNode("m1")],
+      edges: [wire("e0", "m0", "first_frame", 1), wire("e1", "m1", null, 2)],
+    }
+    renderStrip(canvas, [FIRST, ...SLOTS])
+
+    expect(screen.getByText("First Frame 1")).toBeInTheDocument()
+    expect(screen.getByText("Reference Images 0")).toBeInTheDocument()
+    expect(screen.getByText("Unassigned 1")).toBeInTheDocument()
+    // A single-value slot holding its one is full.
+    expect(screen.getByText("1 / 1")).toBeInTheDocument()
+    expect(screen.getByText("0 / 4")).toBeInTheDocument()
+  })
+
+  it("keeps its keys away from the canvas behind it", () => {
+    renderStrip(wiredCanvas(1))
+
+    // React Flow ignores keys whose target sits inside `.nokey`.
+    expect(screen.getByTestId("canvas-reference-strip")).toHaveClass("nokey")
   })
 })

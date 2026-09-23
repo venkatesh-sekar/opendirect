@@ -713,6 +713,15 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     [deleteEdgeRows]
   )
 
+  /** A reference thumbnail's ✕: these wires, undoably. */
+  const disconnectEdges = useCallback(
+    (edgeIds: readonly string[]) => {
+      const ids = new Set(edgeIds)
+      deleteEdgeRows(latest.current.edges.filter((edge) => ids.has(edge.id)))
+    },
+    [deleteEdgeRows]
+  )
+
   /* ------------------------------------------------------------------ */
   /* Adding                                                              */
   /* ------------------------------------------------------------------ */
@@ -1049,6 +1058,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     selectGeneration,
     selectNode,
     disconnectNote,
+    disconnectEdges,
   })
   const noteDrafts = useMemo(() => createNoteDrafts(), [])
   useEffect(() => {
@@ -1063,8 +1073,17 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       selectGeneration,
       selectNode,
       disconnectNote,
+      disconnectEdges,
     }
-  }, [spawn, pick, branch, selectGeneration, selectNode, disconnectNote])
+  }, [
+    spawn,
+    pick,
+    branch,
+    selectGeneration,
+    selectNode,
+    disconnectNote,
+    disconnectEdges,
+  ])
   const surface: CanvasSurface = useMemo(
     () => ({
       containerId,
@@ -1076,6 +1095,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       selectGeneration: (...args) => actions.current.selectGeneration(...args),
       selectNode: (...args) => actions.current.selectNode(...args),
       disconnectNote: (...args) => actions.current.disconnectNote(...args),
+      disconnectEdges: (...args) => actions.current.disconnectEdges(...args),
       // A state setter is already stable; no ref needed.
       highlightNote: setHighlightedNote,
     }),

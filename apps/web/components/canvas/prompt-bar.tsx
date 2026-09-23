@@ -102,7 +102,7 @@ import { ModelPicker } from "@/components/models/model-picker"
 
 import { useCanvasSurface } from "./canvas-context"
 import { PromptBlocks } from "./prompt-blocks"
-import { MentionNotes, ReferenceTray } from "./reference-tray"
+import { CanvasReferenceStrip, MentionNotes } from "./reference-tray"
 import { SettingsPopover } from "./settings-popover"
 
 /**
@@ -319,6 +319,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const kinds = useMemo(() => kindsFor(node), [node])
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  /** Whose gallery is open under the strip — a slot field, or null. */
+  const [galleryFor, setGalleryFor] = useState<string | null>(null)
 
   const model = useModel(draft.modelKey)
   const descriptor = model.data
@@ -749,13 +751,15 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         data-testid="prompt-bar-controls"
         className="flex flex-wrap items-end gap-2"
       >
-        <ReferenceTray
+        <CanvasReferenceStrip
           node={node}
           canvas={canvas}
           slots={descriptor?.referenceSlots ?? []}
           containerId={containerId}
           onNotice={setNotice}
           mentions={mentions.outcomes}
+          galleryFor={galleryFor}
+          onGalleryChange={setGalleryFor}
         />
 
         {/* ---- the prompt ------------------------------------------------

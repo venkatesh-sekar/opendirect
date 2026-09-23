@@ -285,11 +285,28 @@ describe("canvas interaction persistence", () => {
 
 describe("the composer on a real canvas", () => {
   /** A note wired into a generate node — the pair the composer shows. */
-  async function mountComposer() {
+  async function mountComposer({ picture = false } = {}) {
     const canvas: CanvasDto = {
       nodes: [
         { ...row("note", 0), text: "a bellhop opens the lift" },
         { ...row("gen", 400), type: "video_gen", text: null },
+        ...(picture
+          ? [
+              {
+                ...row("pic", 0),
+                type: "media" as const,
+                text: null,
+                assetId: "a-lobby",
+                asset: {
+                  id: "a-lobby",
+                  kind: "image",
+                  label: "lobby",
+                  url: "asset://media/a-lobby.png",
+                  thumbnailUrl: null,
+                } as unknown as CanvasNodeDto["asset"],
+              },
+            ]
+          : []),
       ],
       edges: [
         {
@@ -300,6 +317,18 @@ describe("the composer on a real canvas", () => {
           slotField: null,
           createdAt: 1,
         },
+        ...(picture
+          ? [
+              {
+                id: "e-pic",
+                projectId: "p",
+                sourceNodeId: "pic",
+                targetNodeId: "gen",
+                slotField: "reference_images",
+                createdAt: 2,
+              },
+            ]
+          : []),
       ],
     }
     fixture.invoke.mockImplementation((channel: string) => {
@@ -325,7 +354,9 @@ describe("the composer on a real canvas", () => {
         </TooltipProvider>
       </QueryClientProvider>
     )
-    await waitFor(() => expect(fixture.state?.().nodes).toHaveLength(2))
+    await waitFor(() =>
+      expect(fixture.state?.().nodes).toHaveLength(canvas.nodes.length)
+    )
     act(() => fixture.surface!.selectNode!("gen"))
     await waitFor(() =>
       expect(
@@ -384,6 +415,31 @@ describe("the composer on a real canvas", () => {
     expect(channelCalls("canvas:edge:create")[0]![1]).toMatchObject({
       sourceNodeId: "note",
       targetNodeId: "gen",
+    })
+  })
+
+  it("puts a thumbnail's ✕ on the undo stack", async () => {
+    const user = userEvent.setup()
+    await mountComposer({ picture: true })
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Disconnect lobby" })
+    )
+    await waitFor(() =>
+      expect(channelCalls("canvas:edge:delete")).toHaveLength(1)
+    )
+    expect(channelCalls("canvas:edge:delete")[0]![1]).toEqual({
+      ids: ["e-pic"],
+    })
+
+    await user.keyboard("{Control>}z{/Control}")
+    await waitFor(() =>
+      expect(channelCalls("canvas:edge:create")).toHaveLength(1)
+    )
+    expect(channelCalls("canvas:edge:create")[0]![1]).toMatchObject({
+      sourceNodeId: "pic",
+      targetNodeId: "gen",
+      slotField: "reference_images",
     })
   })
 

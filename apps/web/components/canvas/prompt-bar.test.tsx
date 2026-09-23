@@ -377,14 +377,28 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe("PromptBar", () => {
-  it("shows one thumbnail per incoming edge, labelled with its slot", async () => {
+  it("shows the picture as a thumbnail and the note only as a block", async () => {
     renderBar()
 
-    const thumbs = await screen.findAllByTestId("reference-thumb")
-    expect(thumbs.map((thumb) => thumb.dataset.slot)).toEqual([
-      "",
-      "reference_images",
-    ])
+    const strip = await screen.findByTestId("canvas-reference-strip")
+    await waitFor(() =>
+      expect(
+        within(strip)
+          .getAllByTestId("reference-thumb")
+          .map((thumb) => thumb.dataset.edgeId)
+      ).toEqual(["e-media"])
+    )
+    expect(
+      within(strip)
+        .getAllByTestId("reference-thumb")
+        .map((thumb) => thumb.dataset.slot)
+    ).toEqual(["reference_images"])
+    // The note is in the prompt, not in the strip.
+    expect(
+      await screen.findByRole("button", {
+        name: /note 1, a bellhop opens the lift/i,
+      })
+    ).toBeInTheDocument()
   })
 
   it("builds the request from the node's edges and submits it once", async () => {
