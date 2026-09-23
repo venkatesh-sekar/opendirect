@@ -177,6 +177,21 @@ describe("reconcileBlocks", () => {
     expect(ids).toHaveLength(3)
     expect(new Set(ids).size).toBe(3)
   })
+
+  it("gives a colliding block the same fresh id on every call", () => {
+    const input = {
+      blocks: [
+        { id: "text:2", kind: "text", text: "x" },
+        { id: "note:a", kind: "note", nodeId: "a" },
+      ] as DraftBlock[],
+      prompt: "",
+      noteIds: ["a"],
+    }
+    const first = reconcileBlocks(input).map((block) => block.id)
+    const second = reconcileBlocks(input).map((block) => block.id)
+    expect(second).toEqual(first)
+    expect(new Set(first).size).toBe(3)
+  })
 })
 
 describe("legacy parity", () => {

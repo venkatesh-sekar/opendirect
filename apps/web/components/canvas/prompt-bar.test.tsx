@@ -887,6 +887,25 @@ describe("PromptBar", () => {
     expect(screen.queryByText(/Compose · select references/)).toBeNull()
   })
 
+  it("keeps Space on its controls away from the canvas behind it", async () => {
+    renderBar()
+
+    const run = await screen.findByRole("button", { name: "Run" })
+    const picker = screen
+      .getAllByRole("combobox")
+      .find((element) => element.textContent === MODEL_KEY)!
+    // React Flow ignores keys whose target sits inside `.nokey`.
+    for (const control of [
+      run,
+      picker,
+      screen.getByRole("button", { name: "One more result" }),
+      screen.getByRole("button", { name: "One fewer result" }),
+      screen.getByTestId("settings-chip"),
+    ]) {
+      expect(control.closest(".nokey")).not.toBeNull()
+    }
+  })
+
   it("saves from an icon button with a name and a tooltip", async () => {
     const user = userEvent.setup()
     renderBar()
@@ -1174,6 +1193,67 @@ describe("the prompt's blocks", () => {
       { kind: "text", text: "" },
     ])
     expect(submissions()).toHaveLength(0)
+  })
+
+  it("keeps the trailing block typable after a note moves past it and another goes", async () => {
+    const user = userEvent.setup()
+    const notes = (edges: CanvasDto["edges"]): CanvasDto => ({
+      nodes: [
+        TARGET,
+        node({ id: "a", type: "text", text: "a lift", x: 0, y: 0 }),
+        node({ id: "b", type: "text", text: "a lobby", x: 0, y: 100 }),
+      ],
+      edges,
+    })
+    const edgeA = edge({ id: "e-a", sourceNodeId: "a", createdAt: 1 })
+    const edgeB = edge({ id: "e-b", sourceNodeId: "b", createdAt: 2 })
+    const view = renderBar(notes([edgeA, edgeB]))
+
+    // Note a goes to the end: note b, the text, note a, a new empty text.
+    await screen.findByRole("button", { name: "Move note 1" })
+    const rect = stackBlocks()
+    try {
+      screen.getByRole("button", { name: "Move note 1" }).focus()
+      await user.keyboard(" ")
+      await user.keyboard("{ArrowDown}")
+      await user.keyboard("{ArrowDown}")
+      await user.keyboard(" ")
+    } finally {
+      rect.mockRestore()
+    }
+    const list = screen.getByRole("list", { name: "Prompt blocks" })
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole("listitem")
+          .map((item) => item.dataset.kind)
+      ).toEqual(["note", "text", "note", "text"])
+    )
+
+    // Note b's edge goes: the new trailing block's default id is now taken.
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TooltipProvider>
+          <PromptBar
+            node={TARGET}
+            canvas={notes([edgeA])}
+            defaultModelKey={MODEL_KEY}
+          />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole("listitem")
+          .map((item) => item.dataset.kind)
+      ).toEqual(["text", "note", "text"])
+    )
+
+    await user.click(screen.getByLabelText("Prompt"))
+    await user.keyboard("slowly")
+    expect(screen.getByLabelText("Prompt")).toHaveValue("slowly")
+    expect(screen.getByLabelText("Prompt")).toHaveFocus()
   })
 
   it("✕ on a note deletes its edge", async () => {

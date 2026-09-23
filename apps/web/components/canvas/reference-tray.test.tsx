@@ -472,9 +472,12 @@ describe("CanvasReferenceStrip", () => {
     }
     renderStrip(canvas, [FIRST, ...SLOTS])
 
-    expect(screen.getByText("First Frame 1")).toBeInTheDocument()
-    expect(screen.getByText("Reference Images 0")).toBeInTheDocument()
+    // One count per heading: `n / max` when the slot has a max, else just n.
+    expect(screen.getByText("First Frame")).toBeInTheDocument()
+    expect(screen.getByText("Reference Images")).toBeInTheDocument()
     expect(screen.getByText("Unassigned 1")).toBeInTheDocument()
+    expect(screen.queryByText("First Frame 1")).not.toBeInTheDocument()
+    expect(screen.queryByText("Reference Images 0")).not.toBeInTheDocument()
     // A single-value slot holding its one is full.
     expect(screen.getByText("1 / 1")).toBeInTheDocument()
     expect(screen.getByText("0 / 4")).toBeInTheDocument()

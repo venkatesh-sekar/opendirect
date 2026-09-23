@@ -713,7 +713,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     <>
       <div
         data-testid="count-stepper"
-        className="flex h-8 shrink-0 items-center gap-0.5 rounded-md border px-0.5"
+        // `nokey`, like every control on the bar: React Flow listens for
+        // Space on the whole canvas and would take a press meant for these.
+        className="nokey flex h-8 shrink-0 items-center gap-0.5 rounded-md border px-0.5"
       >
         <Button
           variant="ghost"
@@ -883,7 +885,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           // one control allowed to give: when every other control is
           // showing, its name truncates (the full name is its title) rather
           // than pushing Run off the bar.
-          className={cn("w-44 shrink", narrow ? "min-w-12" : "min-w-24")}
+          className={cn("nokey w-44 shrink", narrow ? "min-w-12" : "min-w-24")}
           // The canvas can show several bars over its lifetime; the palette
           // chord belongs to the window, not to whichever one is mounted.
           hotkeys={false}
@@ -896,6 +898,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             values={draft.common}
             onChange={setCommon}
             compact={narrow}
+            className="nokey"
             footer={
               narrow ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -1074,7 +1077,10 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
               onClick={run}
               disabled={!canRun}
               aria-busy={submission.isPending || undefined}
-              className={cn(narrow && submission.isPending && "animate-pulse")}
+              className={cn(
+                "nokey",
+                narrow && submission.isPending && "animate-pulse"
+              )}
             >
               {submission.isPending && !narrow ? "Queueing…" : "Run"}
             </Button>

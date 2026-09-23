@@ -43,8 +43,11 @@ import {
 } from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { useCreateCanvasEdge, useCreateCanvasNode } from "@/hooks/use-canvas"
-import { useDeleteCanvasEdges } from "@/hooks/use-canvas"
+import {
+  useCreateCanvasEdge,
+  useCreateCanvasNode,
+  useDeleteCanvasEdges,
+} from "@/hooks/use-canvas"
 import { queryKeys } from "@/hooks/query-keys"
 import { incomingEdges } from "@/lib/canvas/edges-to-inputs"
 import {
@@ -522,12 +525,16 @@ export function CanvasReferenceStrip({
               >
                 {headed ? (
                   <div className="flex items-baseline gap-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                    <span>{`${label} ${count}`}</span>
                     {group.capacity !== null ? (
-                      <span className="font-mono tabular-nums">
-                        {`${count} / ${group.capacity}`}
-                      </span>
-                    ) : null}
+                      <>
+                        <span>{label}</span>
+                        <span className="font-mono tabular-nums">
+                          {`${count} / ${group.capacity}`}
+                        </span>
+                      </>
+                    ) : (
+                      <span>{`${label} ${count}`}</span>
+                    )}
                   </div>
                 ) : null}
                 <div className="flex items-center gap-1.5">

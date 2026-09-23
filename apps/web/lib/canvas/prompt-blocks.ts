@@ -121,12 +121,14 @@ export function reconcileBlocks(input: {
 
   // A default id can already belong to a block that has moved since it got
   // it (`text:2` dragged to the top), and two blocks sharing an id would
-  // share a React key and a dnd-kit handle. Such a block gets a fresh one.
+  // share a React key and a dnd-kit handle. Such a block gets the next free
+  // `text:<n>` instead, so the same input always yields the same ids: the
+  // bar reconciles once to render and again to edit, and they must agree.
   const taken = new Set(kept.flatMap((block) => block.id ?? []))
   return kept.map((block, index) => {
     if (block.id !== undefined) return block as DraftBlock
     let id = defaultId(block, index)
-    if (taken.has(id)) id = `t-${++counter}`
+    for (let n = kept.length; taken.has(id); n += 1) id = `text:${n}`
     taken.add(id)
     return { ...block, id }
   })
