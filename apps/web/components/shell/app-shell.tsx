@@ -1,7 +1,13 @@
 "use client"
 
-import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useHotkeys } from "react-hotkeys-hook"
 import {
   DndContext,
@@ -46,6 +52,25 @@ function ShellSkeleton() {
 }
 
 /**
+ * Remembers every route but Settings, query string included, as the way back
+ * out of Settings — `/container/?id=b` must come back as `?id=b` even though
+ * `?id=a` had the same pathname, and whether Settings was reached by ⌘, the
+ * menu or the sidebar's plain link.
+ *
+ * Its own component, under its own `Suspense`, because `useSearchParams`
+ * suspends during the static export's prerender and must not take the rest of
+ * the window with it.
+ */
+function RouteMemory() {
+  const pathname = usePathname()
+  const search = useSearchParams().toString()
+  useEffect(() => {
+    rememberRoute(pathname ?? "/", search ? `?${search}` : "")
+  }, [pathname, search])
+  return null
+}
+
+/**
  * The window: sidebar, the route's content, and the drag context that joins
  * them.
  *
@@ -67,31 +92,9 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const dnd = useAssetDnd()
   const [switching, setSwitching] = useState(false)
 
-  /**
-   * Every route but Settings is remembered as the way back out of it, query
-   * string included — `/canvas/?focus=mira` should come back framed on Mira.
-   * Read from `location` rather than `useSearchParams`, which would suspend
-   * the whole window during the static export's prerender.
-   */
-  useEffect(() => {
-    rememberRoute(pathname ?? "/", window.location.search)
-  }, [pathname])
-
-  /**
-   * Leaving for Settings re-reads the query string too: `/container/?id=a` to
-   * `?id=b` changes no pathname, so the effect above never saw it.
-   */
-  const leaveFor = useCallback(
-    (path: string) => {
-      rememberRoute(pathname ?? "/", window.location.search)
-      router.push(path)
-    },
-    [router, pathname]
-  )
-
   const toSettings = useCallback(
-    () => (onSettings ? router.push(returnRoute()) : leaveFor("/settings")),
-    [router, onSettings, leaveFor]
+    () => router.push(onSettings ? returnRoute() : "/settings"),
+    [router, onSettings]
   )
 
   /**
@@ -130,10 +133,9 @@ export function AppShell({ children }: { children?: ReactNode }) {
     if (!isBridgeAvailable()) return
     return subscribe("shell:navigate", ({ path, toggle }) => {
       const current = pathname ?? "/"
-      if (toggle && current.startsWith(path)) router.push(returnRoute())
-      else leaveFor(path)
+      router.push(toggle && current.startsWith(path) ? returnRoute() : path)
     })
-  }, [router, pathname, leaveFor])
+  }, [router, pathname])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -191,11 +193,18 @@ export function AppShell({ children }: { children?: ReactNode }) {
       onDragEnd={dnd.onDragEnd}
       onDragCancel={dnd.onDragCancel}
     >
+      <Suspense fallback={null}>
+        <RouteMemory />
+      </Suspense>
       <SidebarProvider>
-        <ProjectSidebar
-          project={project.data}
-          onSwitchProject={() => setSwitching(true)}
-        />
+        {/* The sidebar reads `?id=` to mark the open container's row, and
+            `useSearchParams` wants a boundary for the static export. */}
+        <Suspense fallback={null}>
+          <ProjectSidebar
+            project={project.data}
+            onSwitchProject={() => setSwitching(true)}
+          />
+        </Suspense>
         <SidebarInset className="flex min-h-svh min-w-0 flex-col">
           {/*
             Whichever route is mounted — Home, a grid, the canvas, Settings —

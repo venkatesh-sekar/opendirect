@@ -11,11 +11,16 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ThemeProvider } from "@/components/theme-provider"
 
-const route = vi.hoisted(() => ({ pathname: "/", pushed: [] as string[] }))
+const route = vi.hoisted(() => ({
+  pathname: "/",
+  search: "",
+  pushed: [] as string[],
+}))
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: (path: string) => route.pushed.push(path) }),
   usePathname: () => route.pathname,
+  useSearchParams: () => new URLSearchParams(route.search),
 }))
 
 // `next/link` wants the App Router's context, which no unit test mounts.
@@ -129,6 +134,7 @@ afterEach(() => {
   bridge.responses = {}
   bridge.listeners = {}
   route.pathname = "/"
+  route.search = ""
   route.pushed = []
   forgetReturnRoute()
   document.body.innerHTML = ""
@@ -333,6 +339,36 @@ describe("AppShell", () => {
 
     act(() => emit("shell:navigate", { path: "/settings", toggle: true }))
     expect(route.pushed).toEqual(["/"])
+  })
+
+  /**
+   * `/container/?id=a` to `?id=b` changes no pathname. Settings has to come
+   * back to b however it was opened — including from the sidebar's link,
+   * which the shell never sees being clicked.
+   */
+  it("returns to the query string it left, not only the pathname", async () => {
+    bridge.present = true
+    bridge.responses = {
+      "project:current": { project: { name: "Nikita", path: "/tmp/nikita" } },
+      "containers:tree": [],
+    }
+    route.pathname = "/container/"
+    route.search = "?id=a"
+    const view = render(<Shell />)
+    await screen.findByText("Nikita")
+
+    route.search = "?id=b"
+    view.rerender(<Shell />)
+    await screen.findByText("Nikita")
+
+    // Arriving on Settings by the sidebar link: a plain navigation.
+    route.pathname = "/settings/"
+    route.search = ""
+    view.rerender(<Shell />)
+    await screen.findByText("Nikita")
+
+    press()
+    expect(route.pushed).toEqual(["/container/?id=b"])
   })
 
   it("goes to Settings from Home on the same menu item", async () => {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import type { ContainerNodeDto, ProjectRefDto } from "@opendirect/contract"
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react"
 import {
@@ -180,6 +180,13 @@ export function ProjectSidebar({
 }: ProjectSidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
+  // Needs a `Suspense` boundary above it for the static export; the shell
+  // gives it one.
+  const searchParams = useSearchParams()
+  /** The container whose page is open, so its row reads as where you are. */
+  const activeId = isOnRoute(pathname, "/container/")
+    ? searchParams.get("id")
+    : null
   const tree = useContainerTree()
   const generations = useProjectGenerations({ limit: 1 })
   const createContainer = useCreateContainer()
@@ -210,7 +217,7 @@ export function ProjectSidebar({
     nodes.length === 0 ? null : (
       <ContainerTree
         nodes={nodes}
-        selectedId={null}
+        selectedId={activeId}
         onSelect={(node) => router.push(containerHref(node.id))}
         autoRenameId={autoRenameId}
         onAutoRenameDone={() => setAutoRenameId(null)}
@@ -369,7 +376,7 @@ export function ProjectSidebar({
             ) : (
               <ContainerTree
                 nodes={folders.nodes}
-                selectedId={null}
+                selectedId={activeId}
                 onSelect={(node) => router.push(containerHref(node.id))}
                 autoRenameId={autoRenameId}
                 onAutoRenameDone={() => setAutoRenameId(null)}

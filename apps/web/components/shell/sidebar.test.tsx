@@ -31,9 +31,11 @@ vi.mock("@/lib/ipc", () => ({
 }))
 
 const pushed = vi.hoisted(() => [] as string[])
+const location = vi.hoisted(() => ({ pathname: "/", search: "" }))
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/",
+  usePathname: () => location.pathname,
+  useSearchParams: () => new URLSearchParams(location.search),
   useRouter: () => ({ push: (path: string) => pushed.push(path) }),
 }))
 
@@ -168,6 +170,8 @@ afterEach(() => {
   invoke.mockReset()
   pushed.length = 0
   jobs = []
+  location.pathname = "/"
+  location.search = ""
 })
 
 describe("the sidebar's navigation", () => {
@@ -217,6 +221,27 @@ describe("the sidebar's navigation", () => {
 
     expect(pushed).toEqual(["/container/?id=mira"])
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("marks the row of the container whose page is open", async () => {
+    location.pathname = "/container/"
+    location.search = "?id=ruiz"
+    mount([
+      character({ id: "mira", name: "Mira", handle: "mira" }),
+      character({ id: "ruiz", name: "Ruiz", handle: "ruiz" }),
+    ])
+
+    const row = (name: RegExp) =>
+      screen
+        .getByRole("button", { name })
+        .closest('[role="treeitem"]') as HTMLElement
+    await screen.findByRole("button", { name: /^ruiz/i })
+    expect(row(/^ruiz/i)).toHaveAttribute("aria-selected", "true")
+    expect(row(/^mira/i)).toHaveAttribute("aria-selected", "false")
+    // Home is not the page that is open.
+    expect(screen.getByRole("link", { name: /^home/i })).not.toHaveAttribute(
+      "data-active"
+    )
   })
 
   it("lists folders under their own heading, and navigates to them too", async () => {
