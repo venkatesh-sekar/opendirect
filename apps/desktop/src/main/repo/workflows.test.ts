@@ -71,3 +71,51 @@ it("rolls the entire import back when a connection cannot be created", () => {
   expect(() => importWorkflow(handle.db, "p", invalid)).toThrow()
   expect(getCanvas(handle.db, "p").nodes).toHaveLength(0)
 })
+it("rewrites note block node ids through the import's id map", () => {
+  const source = workflowSchema.parse({
+    format: "opendirect-workflow",
+    version: 1,
+    name: "Notes",
+    nodes: [
+      {
+        id: "gen",
+        type: "image_gen",
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 400,
+        text: null,
+        recipe: {
+          prompt: "after",
+          modelKey: null,
+          blocks: [
+            { kind: "text", text: "before" },
+            { kind: "note", nodeId: "note" },
+            { kind: "note", nodeId: "gone" },
+            { kind: "text", text: "after" },
+          ],
+        },
+      },
+      {
+        id: "note",
+        type: "text",
+        x: -500,
+        y: 0,
+        width: 200,
+        height: 200,
+        text: "Lighting",
+        recipe: null,
+      },
+    ],
+    edges: [{ sourceNodeId: "note", targetNodeId: "gen", slotField: null }],
+  })
+  const canvas = importWorkflow(handle.db, "p", source)
+  const note = canvas.nodes.find((n) => n.type === "text")!
+  const gen = canvas.nodes.find((n) => n.type === "image_gen")!
+  expect(JSON.parse(gen.text!).blocks).toEqual([
+    { kind: "text", text: "before" },
+    { kind: "note", nodeId: note.id },
+    // A block for a node that is not in the workflow is dropped, not kept dangling.
+    { kind: "text", text: "after" },
+  ])
+})
