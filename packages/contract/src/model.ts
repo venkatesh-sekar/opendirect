@@ -21,7 +21,16 @@ export const modelKindSchema = z.enum([
 ])
 export type ModelKind = z.output<typeof modelKindSchema>
 
-/** What an asset dropped into a slot is used for by the model. */
+/**
+ * What an asset dropped into a slot is used for by the model.
+ *
+ * A role answers one question — what does this input control in the output? —
+ * and the list is closed. Before adding a role, read the rules in
+ * `docs/plans/2026-09-24-model-registry-design.md` (section 2): a role never
+ * encodes the media kind, detail belongs in the slot label, and a new role
+ * must pass all three tests or it is `reference`. (The values below predate
+ * that design and are being migrated to its ten roles.)
+ */
 export const referenceRoleSchema = z.enum([
   "reference",
   "first_frame",

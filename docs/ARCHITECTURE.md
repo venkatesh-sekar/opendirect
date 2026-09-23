@@ -174,6 +174,11 @@ provider fails, the previous cache is kept rather than replaced with nothing.
 > ⛔ The catalog only ever calls free listing endpoints. So does key
 > verification.
 
+Slot **roles** (`first_frame`, `character`, `style`, …) are a closed list with
+rules for extending it, and model-to-provider field mappings are moving to a
+curated, layered registry. Both are specified in
+[`plans/2026-09-24-model-registry-design.md`](plans/2026-09-24-model-registry-design.md).
+
 ## The generation path
 
 This is the only part of the app that spends money, so it is the part with the
