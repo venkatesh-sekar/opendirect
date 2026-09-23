@@ -100,6 +100,52 @@ describe("checkEndpointAgainstSchema", () => {
     ])
   })
 
+  it("compares control values after the same type coercion translation applies", () => {
+    // Translation coerces a string to the property's type ("5" → 5 for an
+    // integer, "true" → true for a boolean), so the check must agree.
+    const schema = {
+      type: "object",
+      properties: {
+        duration: { type: "integer", enum: [5, 10] },
+        resolution: { type: "string", enum: ["720p"] },
+        generate_audio: { type: "boolean", enum: [true] },
+      },
+    }
+    const map = (controls: Record<string, unknown>) =>
+      mappingEndpointSchema.parse({
+        provider: "replicate",
+        model: "a/b",
+        controls,
+      })
+
+    expect(
+      checkEndpointAgainstSchema(
+        map({
+          duration: { field: "duration", values: { "5": "5", "10": 10 } },
+          generate_audio: { field: "generate_audio", values: { on: "true" } },
+        }),
+        schema
+      )
+    ).toEqual([])
+
+    // Real mismatches still fail, coerced or not.
+    expect(
+      checkEndpointAgainstSchema(
+        map({
+          duration: { field: "duration", values: { "7": "7", five: "five" } },
+          resolution: { field: "resolution", values: { hd: 720 } },
+          generate_audio: { field: "generate_audio", values: { off: "false" } },
+        }),
+        schema
+      ).map((issue) => issue.path)
+    ).toEqual([
+      "controls.duration.values.7",
+      "controls.duration.values.five",
+      "controls.resolution.values.hd",
+      "controls.generate_audio.values.off",
+    ])
+  })
+
   it("flags max > 1 on a single-URL field", () => {
     const issues = checkEndpointAgainstSchema(
       endpoint((base) => ({

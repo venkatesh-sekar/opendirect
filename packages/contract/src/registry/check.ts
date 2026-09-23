@@ -33,6 +33,26 @@ function isUriArray(schema: unknown): boolean {
   return isArray(schema) && isUriString((schema as JsonObject).items)
 }
 
+/**
+ * The value translation actually sends: a string is coerced to the
+ * property's JSON-Schema type (`"5"` → 5 for integer/number when numeric,
+ * `"true"`/`"false"` → boolean); anything else is left untouched. The check
+ * compares after this, so `"5"` fits an enum of `[5]` exactly when
+ * translation would send 5.
+ */
+function coerceToSchemaType(value: unknown, property: JsonObject): unknown {
+  if (typeof value !== "string") return value
+  const type = property.type
+  if ((type === "integer" || type === "number") && value.trim() !== "") {
+    const number = Number(value)
+    if (Number.isFinite(number)) return number
+  }
+  if (type === "boolean" && (value === "true" || value === "false")) {
+    return value === "true"
+  }
+  return value
+}
+
 export function checkEndpointAgainstSchema(
   endpoint: MappingEndpoint,
   inputSchema: unknown
@@ -97,10 +117,11 @@ export function checkEndpointAgainstSchema(
       })
       continue
     }
-    const allowed = isObject(property) ? property.enum : undefined
+    if (!isObject(property)) continue
+    const allowed = property.enum
     if (!Array.isArray(allowed) || control.values === undefined) continue
     for (const [canonical, value] of Object.entries(control.values)) {
-      if (!allowed.includes(value)) {
+      if (!allowed.includes(coerceToSchemaType(value, property))) {
         issues.push({
           path: `${path}.values.${canonical}`,
           message: `${JSON.stringify(value)} is not a value "${control.field}" accepts. It accepts: ${allowed.map((v) => JSON.stringify(v)).join(", ")}.`,
