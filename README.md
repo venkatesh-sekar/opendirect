@@ -173,19 +173,19 @@ bundled licence file are listed in
 which is packaged next to the app. Today that is `elkjs` (EPL-2.0), used for
 the canvas migration layout.
 
-### Character and scene libraries
+### Project workspace
 
-Click a character or scene in the sidebar to open its library. Preview images,
-import additional assets, edit the handle and description, and select which
-images a prompt may use as references. Save the selection to the project.
-Automatic selection preserves the previous ranking behavior; an explicit empty
-selection uses the description instead of an image. Explicit selections retain
-their order and are limited by the chosen model's reference capacity.
+Opening a project lands on **Home**: recent runs to continue, your characters
+and scenes, and what is generating now. The canvas lives at `/canvas/`, one
+place among several rather than the front door.
 
-“Generate for character/scene” creates and focuses an image composition tied to
-that subject. It does not run a model. Choose a model, edit the prompt, review
-references and cost, then press Run. “Save prompt” persists the prompt, model,
-settings, and output count in the project; unsaved edits remain session drafts.
+Each character and scene has a page of its own. A character page shows its
+reference images (drag to reorder; the first is its sheet), its generations,
+assets and the scenes it appears in. "Generate with @handle" opens a panel that
+shows the model, references and cost; nothing runs until you press Generate.
+A scene page shows its cast (characters mentioned in the scene's runs) and its
+**shots**: an ordered storyboard where each shot keeps its versions and one
+picked take.
 
 ### Portable workflow templates
 
