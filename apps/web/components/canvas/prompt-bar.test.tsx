@@ -1004,6 +1004,103 @@ describe("the prompt's blocks", () => {
   })
 })
 
+describe("the full prompt panel", () => {
+  /** A second generate node with the same note wired in. */
+  const OTHER = node({ id: "other", type: "video_gen", x: 600, y: 400 })
+  const OTHER_CANVAS: CanvasDto = {
+    nodes: [
+      OTHER,
+      node({ id: "note", type: "text", text: "a bellhop opens the lift" }),
+    ],
+    edges: [
+      edge({ id: "e-other", sourceNodeId: "note", targetNodeId: "other" }),
+    ],
+  }
+
+  it("is open for a node with a note and shows the prompt that is sent", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    const toggle = await screen.findByRole("button", { name: "Full prompt" })
+    expect(toggle).toHaveAttribute("aria-pressed", "true")
+    const panel = screen.getByTestId("full-prompt-panel")
+    expect(toggle).toHaveAttribute("aria-controls", panel.id)
+
+    const run = screen.getByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.type(await screen.findByLabelText("Prompt"), "slowly")
+    await user.click(run)
+
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    const sent = (submissions()[0]![1] as { request: { prompt: string } })
+      .request.prompt
+    expect(sent).toBe("a bellhop opens the lift\n\nslowly")
+    expect(screen.getByTestId("full-prompt").textContent).toBe(sent)
+  })
+
+  it("shows a mention substituted, and the note still marked", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.type(await screen.findByLabelText("Prompt"), "a shot of @venkz")
+
+    const box = screen.getByTestId("full-prompt")
+    await waitFor(() =>
+      expect(box.textContent).toBe(
+        "a bellhop opens the lift\n\na shot of Venkz (the person in reference image 2)"
+      )
+    )
+    expect(box.textContent).not.toContain("@venkz")
+    const fromNote = box.querySelectorAll("[data-from-note]")
+    expect([...fromNote].map((piece) => piece.textContent)).toEqual([
+      "a bellhop opens the lift",
+    ])
+    // Two pictures in one input: the wire and the mention.
+    expect(screen.getByTestId("full-prompt-stats")).toHaveTextContent(
+      "1 notes · 2 images"
+    )
+  })
+
+  it("opens an input's gallery from its chip", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.click(
+      await screen.findByRole("button", { name: /^reference_images × 1/ })
+    )
+
+    expect(
+      await screen.findByRole("region", { name: "Reference Images gallery" })
+    ).toBeInTheDocument()
+  })
+
+  it("is closed for a node with no note", async () => {
+    renderBar(BARE)
+
+    const toggle = await screen.findByRole("button", { name: "Full prompt" })
+    expect(toggle).toHaveAttribute("aria-pressed", "false")
+    expect(screen.queryByTestId("full-prompt-panel")).not.toBeInTheDocument()
+  })
+
+  it("keeps the user's choice for every node in the window", async () => {
+    const user = userEvent.setup()
+    const first = renderBar()
+
+    await user.click(await screen.findByRole("button", { name: "Full prompt" }))
+    expect(screen.queryByTestId("full-prompt-panel")).not.toBeInTheDocument()
+    first.unmount()
+
+    renderBar(OTHER_CANVAS, OTHER)
+    const toggle = await screen.findByRole("button", { name: "Full prompt" })
+    // The other node has a note too, and still opens closed.
+    expect(
+      await screen.findByRole("button", { name: /note 1, a bellhop/i })
+    ).toBeInTheDocument()
+    expect(toggle).toHaveAttribute("aria-pressed", "false")
+    expect(screen.queryByTestId("full-prompt-panel")).not.toBeInTheDocument()
+  })
+})
+
 describe("saved prompts and unknown pricing", () => {
   it("persists the complete recipe without submitting a paid run", async () => {
     const user = userEvent.setup()

@@ -35,6 +35,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -44,6 +45,7 @@ import {
   MinusSignIcon,
   PlusSignIcon,
   SlidersHorizontalIcon,
+  ViewIcon,
 } from "@hugeicons/core-free-icons"
 import {
   promptRecipeSchema,
@@ -81,6 +83,7 @@ import {
 } from "@/lib/canvas/edges-to-inputs"
 import {
   appendText,
+  mapRangesThroughMentions,
   reconcileBlocks,
   renderPromptBlocks,
   replaceText,
@@ -101,8 +104,13 @@ import { CostBadge } from "@/components/create/cost-badge"
 import { ModelPicker } from "@/components/models/model-picker"
 
 import { useCanvasSurface } from "./canvas-context"
+import { FullPromptPanel, type FullPromptPanelProps } from "./full-prompt-panel"
 import { PromptBlocks } from "./prompt-blocks"
-import { CanvasReferenceStrip, MentionNotes } from "./reference-tray"
+import {
+  CanvasReferenceStrip,
+  groupStrip,
+  MentionNotes,
+} from "./reference-tray"
 import { SettingsPopover } from "./settings-popover"
 
 /**
@@ -229,9 +237,18 @@ function legacyText(
   return matches && last.kind === "text" ? last.text : null
 }
 
+/**
+ * Whether the Full prompt panel is open, as the user last chose — for every
+ * node, until the window reloads. Null until they choose: the panel is then
+ * open exactly when the node has a note, because that is when the prompt sent
+ * is no longer just what was typed.
+ */
+let fullPromptPreference: boolean | null = null
+
 /** Test seam: a fresh canvas between tests must not inherit yesterday's draft. */
 export function clearPromptDrafts(): void {
   drafts.clear()
+  fullPromptPreference = null
   emit()
 }
 
@@ -321,6 +338,11 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const [notice, setNotice] = useState<string | null>(null)
   /** Whose gallery is open under the strip — a slot field, or null. */
   const [galleryFor, setGalleryFor] = useState<string | null>(null)
+  /** Mirrors `fullPromptPreference`, so choosing re-renders this bar. */
+  const [fullPromptChoice, setFullPromptChoice] = useState(
+    () => fullPromptPreference
+  )
+  const fullPromptId = useId()
 
   const model = useModel(draft.modelKey)
   const descriptor = model.data
@@ -498,6 +520,50 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     prompt: rendered.prompt,
     scope: node.id,
   })
+
+  /**
+   * The Full prompt panel reads the plan rather than rendering again: the
+   * string is `mentions.prompt`, the one the request carries, and the block
+   * ranges are moved through the same substitutions that produced it.
+   */
+  const fullPromptOpen = fullPromptChoice ?? notes.length > 0
+  const toggleFullPrompt = () => {
+    fullPromptPreference = !fullPromptOpen
+    setFullPromptChoice(!fullPromptOpen)
+  }
+  const segments = useMemo(
+    () =>
+      mapRangesThroughMentions(
+        rendered.prompt,
+        rendered.ranges,
+        mentions.outcomes
+      ).map((range) => ({
+        start: range.start,
+        end: range.end,
+        kind: blocks[range.blockIndex]!.kind,
+      })),
+    [blocks, mentions.outcomes, rendered]
+  )
+  const imageInputs = useMemo<FullPromptPanelProps["inputs"]>(
+    () =>
+      groupStrip(
+        node,
+        canvas,
+        descriptor?.referenceSlots ?? [],
+        mentions.outcomes
+      ).flatMap((group) =>
+        group.slot && group.items.length > 0
+          ? [
+              {
+                field: group.slot.field,
+                label: group.slot.label,
+                count: group.items.length,
+              },
+            ]
+          : []
+      ),
+    [canvas, descriptor, mentions.outcomes, node]
+  )
 
   /**
    * The stepper stops at `MAX_BATCH` and nowhere else.
@@ -862,6 +928,18 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           ) : null}
         </Button>
 
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={fullPromptOpen}
+          aria-controls={fullPromptId}
+          onClick={toggleFullPrompt}
+          className="nokey shrink-0 text-muted-foreground aria-pressed:text-foreground"
+        >
+          <HugeiconsIcon icon={ViewIcon} className="size-3.5" />
+          Full prompt
+        </Button>
+
         {/* Below the sidebar's own breakpoint these three live in the
             settings popover instead — see `overflow` above. */}
         {narrow ? null : overflow}
@@ -913,6 +991,17 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         >
           {blockedReason}
         </p>
+      ) : null}
+
+      {fullPromptOpen ? (
+        <FullPromptPanel
+          id={fullPromptId}
+          prompt={mentions.prompt}
+          segments={segments}
+          noteCount={notes.length}
+          inputs={imageInputs}
+          onOpenInput={setGalleryFor}
+        />
       ) : null}
 
       {/*
