@@ -194,6 +194,27 @@ generate node on `/canvas/?focus=<id>`, seeded with `@mira`, which is what
 `SubjectLibrary` does today. Ship the fallback first if needed and replace it
 later.
 
+**As built (Phase 2).** The panel shipped, not the fallback. What is shared
+is `useGeneratePlan` (mentions → request → quote → batch plan → submit),
+which `PromptBar` and `GenerateForm` both call; `PromptBar` does not render
+`GenerateForm`. The panel submits through `generations:submitBatch` with a
+count of 1, the canvas's path, so its runs carry a batch id. Known gaps:
+
+- "Save to" names only the container; there is no "+ scene" yet, because
+  there is no way to arrive from a scene until the scene page's cast lands.
+- Duration, aspect ratio and resolution sit in the settings popover the
+  canvas uses (plus Advanced), not in an inline row of chips.
+- References in the panel are what the prompt's mentions resolve to for the
+  chosen model. They are edited on the page, not in the panel.
+
+**"Appears in" is not built, and §6.3's derivation does not work as
+written.** `generations.prompt` stores the *resolved* prompt — `@mira` is
+already replaced by "Mira (the person in reference image 1)" or by the
+description — so no stored prompt contains `@handle`. Phase 3 will record the
+container ids a run mentioned when it is submitted and derive Cast and
+"Appears in" from those. Until then the character page has no "Appears in"
+tab and its stats line has no "in Hotel hallway, …" clause.
+
 ## 5. Scene page (C3)
 
 `/container/?id=` for a `scene`. The layout mirrors the character page:
