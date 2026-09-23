@@ -265,25 +265,40 @@ differs. The scene page has:
   for that stand-in. The badge is the newest version's number, the model is
   that of the picture shown, and a shot with a run in flight gets the dashed
   amber outline and progress bar.
-- A version is **one picture** a run filed under the shot made, oldest first,
-  so `v1` never renumbers. A run that made several pictures is several
-  versions. A running, failed or canceled run keeps its number and cannot be
-  picked.
+- A version is **one picture** a run filed under the shot made, oldest first.
+  It is numbered by its run's place among all the shot's runs (from the
+  list's total, so reading only the newest 200 runs does not shift them): a
+  run's first picture is `v3`, its later ones `v3.2`, `v3.3`. A running,
+  failed or canceled run keeps its number and cannot be picked.
 - The selected shot lives in the query string (`&shot=`); a missing or stale
   one selects the first. Its strip says "v4 is the pick". Clicking a version
   picks it, and clicking the pick again clears it.
 - The strip's header row edits the label in place (`containers:setDescription`),
   moves the shot earlier or later (`containers:reorder`), deletes it behind
   the sidebar's confirmation dialog, and has **Generate version**. That opens
-  the page's generate panel aimed at the shot: the run is filed under the
-  shot, "Save to" reads "Hotel hallway · Shot 03", and the prompt starts as
-  `@hallway ` plus the label. As everywhere, only the panel's Generate click
-  spends. `SubjectPage.renderTab` passes a `generate` action for this, and
-  `GeneratePanel` takes an optional target.
+  the page's generate panel aimed at the **selected** shot: the run is filed
+  under the shot, "Save to" reads "Hotel hallway · Shot 03", and the prompt
+  starts as `@hallway ` plus the label. The aim is worked out from the scene
+  on every render (`shotAim`), not captured when the panel opens, so
+  selecting another shot, reordering or deleting re-aims the panel (and
+  resets its draft), and it closes when the scene has no shots left. As
+  everywhere, only the panel's Generate click spends. `SubjectPage` takes
+  this as `otherAim`, and `GeneratePanel` takes an optional target.
 - "New shot" creates one at the end, named "Shot N" (the name is not shown
   anywhere) and selects it.
 - Reordering is by buttons, not drag. The Generations tab still lists only
-  runs filed straight under the scene; a shot's runs are on the Shots tab.
+  runs filed straight under the scene, and its count is those alone; when
+  the shots have runs, a "N more in shots →" link above the list goes to
+  the Shots tab.
+- The scene's summary rolls its shots up: `generationCount` and
+  `lastActivityAt` include the shots' runs, and a scene with no picture of
+  its own wears its first picked shot image, else its shots' newest image.
+  The asset count stays the scene's own library, the one its Assets tab
+  lists.
+- Deleting a scene from the sidebar says "and its N shots (their runs stay
+  on Generations)". The row it was opened from has its shots stripped, so
+  the count comes from the tree already in the query cache; nothing is
+  fetched before the user confirms.
 - `/container/?id=<shot>` replaces itself with the scene's page on Shots with
   that shot selected (`shotHref`). A shot is never remembered as the canvas's
   filing container, and the canvas's filing chip and "Add to container" do not
@@ -357,7 +372,9 @@ both sides, and registered in main.
      among its siblings and renumbers them; the Shots tab uses it.
    - Main refuses a shot anywhere but directly under a scene (on create and
      on reparent), and anything under a shot. A shot has no handle and no
-     references. Its summary's cover is its pick.
+     references. Its summary's cover is its pick. A scene's summary includes
+     its shots' runs and activity, and falls back to their pictures for a
+     cover (§5).
    - The kind audit: the sidebar's kind-to-section map is exhaustive, so it
      names shots and `buildSidebarSections` drops them at any depth. The
      character and scene grids, Home and the cast select by kind, so they
