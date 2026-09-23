@@ -47,7 +47,7 @@ import { AssetTile } from "@/components/canvas/nodes/asset-tile"
 import { AssetLibrary } from "./asset-library"
 import { ContainerDetailsForm } from "./container-details"
 import { ContainerRuns } from "./container-runs"
-import { GeneratePanel } from "./generate-panel"
+import { GeneratePanel, ownTarget, type GenerateTarget } from "./generate-panel"
 import { ReferenceStrip } from "./reference-strip"
 import { WorkspacePage } from "./workspace-page"
 
@@ -65,6 +65,7 @@ export interface SubjectCopy {
 }
 
 const TAB_LABELS: Record<PageTab, string> = {
+  shots: "Shots",
   assets: "Assets",
   generations: "Generations",
   "appears-in": "Appears in",
@@ -226,9 +227,16 @@ export interface SubjectPageProps {
   details?: ReactNode
   /**
    * The body of a tab beyond Assets and Generations, which the frame draws
-   * itself — a character's Appears in; a scene's shots, when they land.
+   * itself — a character's Appears in, a scene's shots. `generate` opens the
+   * panel aimed somewhere else (a shot); `whenQueued` is where the page goes
+   * once that run is queued.
    */
-  renderTab?: (tab: PageTab) => ReactNode
+  renderTab?: (tab: PageTab, actions: SubjectPageActions) => ReactNode
+}
+
+export interface SubjectPageActions {
+  /** Opens the generate panel for `target`. Spends nothing by itself. */
+  generate: (target: GenerateTarget, whenQueued: string) => void
 }
 
 export function SubjectPage({
@@ -246,7 +254,16 @@ export function SubjectPage({
   const router = useRouter()
   const tab = parseTab(rawTab, tabs)
   const [editing, setEditing] = useState(false)
-  const [generating, setGenerating] = useState(false)
+  /** The open panel's aim, and where the page goes once its run is queued. */
+  const [generating, setGenerating] = useState<{
+    target: GenerateTarget
+    whenQueued: string
+  } | null>(null)
+  const openOwn = () =>
+    setGenerating({
+      target: ownTarget(node),
+      whenQueued: containerHref(node.id, "generations"),
+    })
   const references = useSetContainerReferences()
   const face = useFace(node, summary)
 
@@ -265,7 +282,7 @@ export function SubjectPage({
         <ContainerRuns
           containerId={node.id}
           empty={
-            <Button size="sm" onClick={() => setGenerating(true)}>
+            <Button size="sm" onClick={openOwn}>
               {generateLabel}
             </Button>
           }
@@ -284,7 +301,11 @@ export function SubjectPage({
       )
       break
     default:
-      body = renderTab?.(tab) ?? null
+      body =
+        renderTab?.(tab, {
+          generate: (target, whenQueued) =>
+            setGenerating({ target, whenQueued }),
+        }) ?? null
   }
 
   return (
@@ -306,8 +327,8 @@ export function SubjectPage({
           </Button>
           <Button
             size="sm"
-            aria-pressed={generating}
-            onClick={() => setGenerating(true)}
+            aria-pressed={generating?.target.containerId === node.id}
+            onClick={openOwn}
           >
             <HugeiconsIcon icon={MagicWand01Icon} className="size-4" />
             {generateLabel}
@@ -319,11 +340,10 @@ export function SubjectPage({
           <GeneratePanel
             node={node}
             cover={face}
-            onClose={() => setGenerating(false)}
+            target={generating.target}
+            onClose={() => setGenerating(null)}
             onSubmitted={() =>
-              router.replace(containerHref(node.id, "generations"), {
-                scroll: false,
-              })
+              router.replace(generating.whenQueued, { scroll: false })
             }
           />
         ) : null

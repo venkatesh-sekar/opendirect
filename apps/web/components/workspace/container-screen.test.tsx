@@ -73,6 +73,23 @@ function responses(): Record<string, unknown> {
         kind: "scene",
         handle: "hallway",
         description: "Long corridor, flickering sodium light",
+        children: [
+          container({
+            id: "shot-a",
+            parentId: "hall",
+            kind: "shot",
+            name: "Shot 1",
+            description: "Wide — Mira steps out of the lift",
+            pickedAssetId: "take-1",
+          }),
+          container({
+            id: "shot-b",
+            parentId: "hall",
+            kind: "shot",
+            name: "Shot 2",
+            position: 1,
+          }),
+        ],
       }),
       container({ id: "roof", name: "Rooftop", kind: "scene" }),
     ],
@@ -105,6 +122,13 @@ function responses(): Record<string, unknown> {
       nextOffset: null,
     },
     "containers:setReferences": container({ id: "mira" }),
+    "containers:setPick": container({ id: "shot-a", kind: "shot" }),
+    "containers:reorder": { ok: true },
+    "containers:create": container({
+      id: "shot-c",
+      kind: "shot",
+      parentId: "hall",
+    }),
     "containers:rename": container({ id: "mira" }),
     "containers:setHandle": container({ id: "mira" }),
     "containers:setDescription": container({ id: "mira" }),
@@ -133,26 +157,62 @@ function related(id: string | undefined) {
   }
 }
 
-function mount(id: string | null, tab: string | null = null) {
+/** Shot A has two takes, the first picked; shot B has none yet. */
+const TAKE_1 = asset({ id: "take-1", generationId: "g-a1", createdAt: 1 })
+const TAKE_2 = asset({ id: "take-2", generationId: "g-a2", createdAt: 2 })
+
+function shotRuns(containerId: string) {
+  if (containerId !== "shot-a")
+    return { items: [], outputs: [], total: 0, nextOffset: null }
+  return {
+    items: [
+      generation({
+        id: "g-a2",
+        containerId,
+        modelSlug: "bytedance/seedance-2.5",
+        createdAt: 2_000,
+      }),
+      generation({ id: "g-a1", containerId, createdAt: 1_000 }),
+    ],
+    outputs: [TAKE_1, TAKE_2],
+    total: 2,
+    nextOffset: null,
+  }
+}
+
+function mount(
+  id: string | null,
+  tab: string | null = null,
+  shot: string | null = null
+) {
   const table = responses()
-  invoke.mockImplementation((channel: string, payload?: { id?: string }) => {
-    if (channel === "containers:related")
-      return Promise.resolve(related(payload?.id))
-    if (channel === "assets:get") {
-      const found = ASSETS.find((one) => one.id === payload?.id)
-      return found ? Promise.resolve(found) : Promise.reject(new Error("gone"))
+  invoke.mockImplementation(
+    (channel: string, payload?: { id?: string; containerId?: string }) => {
+      if (channel === "containers:related")
+        return Promise.resolve(related(payload?.id))
+      if (
+        channel === "generations:list" &&
+        payload?.containerId?.startsWith("shot")
+      )
+        return Promise.resolve(shotRuns(payload.containerId))
+      if (channel === "assets:get") {
+        const found = ASSETS.find((one) => one.id === payload?.id)
+        return found
+          ? Promise.resolve(found)
+          : Promise.reject(new Error("gone"))
+      }
+      return channel in table
+        ? Promise.resolve(table[channel])
+        : new Promise(() => {})
     }
-    return channel in table
-      ? Promise.resolve(table[channel])
-      : new Promise(() => {})
-  })
+  )
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <ContainerScreen id={id} tab={tab} />
+        <ContainerScreen id={id} tab={tab} shot={shot} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -594,7 +654,7 @@ describe("a folder's page", () => {
 })
 
 describe("a scene's page", () => {
-  it("generates in the scene, opens the canvas and opens on its generations", async () => {
+  it("generates in the scene, opens the canvas and opens on its shots", async () => {
     mount("hall")
 
     await screen.findByRole("heading", { level: 2, name: "Hotel hallway" })
@@ -620,9 +680,14 @@ describe("a scene's page", () => {
     ).toBeVisible()
 
     const tabs = screen.getByRole("navigation", { name: /sections/i })
+    const shots = within(tabs).getByRole("link", { name: /shots/i })
+    expect(shots).toHaveAttribute("aria-current", "page")
+    expect(shots).toHaveTextContent("2")
     expect(
-      within(tabs).getByRole("link", { name: /generations/i })
-    ).toHaveAttribute("aria-current", "page")
+      within(tabs)
+        .getAllByRole("link")
+        .map((link) => link.textContent?.replace(/[\d↗]/g, ""))
+    ).toEqual(["Shots", "Generations", "Assets", "Canvas"])
     expect(within(tabs).queryByRole("link", { name: /appears in/i })).toBeNull()
   })
 
@@ -642,6 +707,149 @@ describe("a scene's page", () => {
     expect(
       await screen.findByText(/mention a character in a prompt here/i)
     ).toBeVisible()
+  })
+})
+
+describe("a scene's shots", () => {
+  it("lays out the storyboard in order, each card numbered and labelled", async () => {
+    mount("hall")
+
+    const first = await screen.findByRole("link", {
+      name: "Shot 01: Wide — Mira steps out of the lift",
+    })
+    expect(first).toHaveAttribute(
+      "href",
+      "/container/?id=hall&tab=shots&shot=shot-a"
+    )
+    expect(first).toHaveAttribute("aria-current", "true")
+    // The newest version's number, and the model of the picture it wears.
+    expect(await within(first).findByText("v2")).toBeVisible()
+    expect(within(first).getByText("nano-banana-2")).toBeVisible()
+    expect(
+      screen.getByRole("link", { name: "Shot 02: Untitled shot" })
+    ).toBeVisible()
+    expect(screen.getByRole("button", { name: /new shot/i })).toBeVisible()
+  })
+
+  it("shows the selected shot's versions, the pick pressed", async () => {
+    mount("hall", "shots", "shot-a")
+
+    const strip = await screen.findByRole("region", {
+      name: "Shot 01 versions",
+    })
+    const v1 = await within(strip).findByRole("button", { name: "v1" })
+    expect(v1).toHaveAttribute("aria-pressed", "true")
+    expect(within(strip).getByRole("button", { name: "v2" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    )
+    expect(within(strip).getByText(/v1 is the pick/)).toBeVisible()
+  })
+
+  it("picks a version with a click, and spends nothing", async () => {
+    const user = userEvent.setup()
+    mount("hall", "shots", "shot-a")
+
+    const strip = await screen.findByRole("region", {
+      name: "Shot 01 versions",
+    })
+    await user.click(await within(strip).findByRole("button", { name: "v2" }))
+    await waitFor(() => expect(calls("containers:setPick")).toHaveLength(1))
+    expect(calls("containers:setPick")[0]![1]).toEqual({
+      id: "shot-a",
+      assetId: "take-2",
+    })
+    expect(calls("generations:submit")).toEqual([])
+    expect(calls("generations:submitBatch")).toEqual([])
+  })
+
+  it("adds a shot to the scene and selects it", async () => {
+    const user = userEvent.setup()
+    mount("hall")
+
+    await user.click(await screen.findByRole("button", { name: /new shot/i }))
+    await waitFor(() => expect(calls("containers:create")).toHaveLength(1))
+    expect(calls("containers:create")[0]![1]).toEqual({
+      kind: "shot",
+      parentId: "hall",
+      name: "Shot 3",
+    })
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "/container/?id=hall&tab=shots&shot=shot-c",
+        { scroll: false }
+      )
+    )
+  })
+
+  it("renames, reorders and asks before deleting a shot", async () => {
+    const user = userEvent.setup()
+    mount("hall", "shots", "shot-b")
+
+    const strip = await screen.findByRole("region", {
+      name: "Shot 02 versions",
+    })
+    const label = within(strip).getByRole("textbox", {
+      name: "Shot 02 label",
+    })
+    await user.type(label, "Close — the hand on the door{Enter}")
+    await waitFor(() =>
+      expect(calls("containers:setDescription")).toHaveLength(1)
+    )
+    expect(calls("containers:setDescription")[0]![1]).toEqual({
+      id: "shot-b",
+      description: "Close — the hand on the door",
+    })
+
+    expect(
+      within(strip).getByRole("button", { name: "Move Shot 02 later" })
+    ).toBeDisabled()
+    await user.click(
+      within(strip).getByRole("button", { name: "Move Shot 02 earlier" })
+    )
+    await waitFor(() => expect(calls("containers:reorder")).toHaveLength(1))
+    expect(calls("containers:reorder")[0]![1]).toEqual({
+      id: "shot-b",
+      index: 0,
+    })
+
+    await user.click(
+      within(strip).getByRole("button", { name: "Delete Shot 02" })
+    )
+    expect(await screen.findByRole("alertdialog")).toBeVisible()
+    expect(calls("containers:delete")).toEqual([])
+  })
+
+  it("aims the generate panel at the shot, and spends nothing opening it", async () => {
+    const user = userEvent.setup()
+    mount("hall", "shots", "shot-a")
+
+    const strip = await screen.findByRole("region", {
+      name: "Shot 01 versions",
+    })
+    await user.click(
+      within(strip).getByRole("button", { name: /generate version/i })
+    )
+    const panel = await screen.findByRole("complementary", {
+      name: "Generate a version of Shot 01",
+    })
+    expect(within(panel).getByText("Hotel hallway · Shot 01")).toBeVisible()
+    expect(within(panel).getByLabelText("Prompt")).toHaveValue(
+      "@hallway Wide — Mira steps out of the lift"
+    )
+    expect(calls("generations:submit")).toEqual([])
+    expect(calls("generations:submitBatch")).toEqual([])
+  })
+
+  it("sends a shot's own address to its scene, with the shot selected", async () => {
+    mount("shot-a")
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "/container/?id=hall&tab=shots&shot=shot-a",
+        { scroll: false }
+      )
+    )
+    expect(lastFilingContainer()).toBeNull()
   })
 })
 

@@ -9,9 +9,9 @@
  * cast needs a column of its own (§6.3), and until then the way into a cast is
  * a prompt.
  *
- * Shots (Phase 3b) are not here yet. When they land, `SCENE_TABS` gains
- * "shots" first, and `renderTab` below draws the storyboard and its versions
- * strip for it — see `SHOTS_SEAM`.
+ * The page opens on its shots (`shots-tab.tsx`): the storyboard, and the
+ * selected shot's versions. A shot's "Generate version" aims this page's
+ * generate panel at the shot, so its run is filed under the shot.
  */
 import type {
   ContainerDto,
@@ -27,9 +27,11 @@ import {
 } from "@/hooks/use-containers"
 import { containerHref } from "@/lib/shell/routes"
 import { SCENE_TABS } from "@/lib/workspace/container-page"
+import { shotsOf } from "@/lib/workspace/shots"
 
 import { Avatar } from "./container-card"
 import { OpenCanvasButton } from "./home"
+import { ShotsTab } from "./shots-tab"
 import { SubjectPage, type SubjectCopy } from "./subject-page"
 
 const COPY: SubjectCopy = {
@@ -97,10 +99,13 @@ export function ScenePage({
   node,
   summary,
   tab,
+  shot = null,
 }: {
   node: ContainerNodeDto
   summary: ContainerSummaryDto | null
   tab: string | null
+  /** `&shot=` — the selected shot on the Shots tab. */
+  shot?: string | null
 }) {
   const related = useRelatedContainers(node.id)
   const cast =
@@ -113,6 +118,7 @@ export function ScenePage({
       tab={tab}
       tabs={SCENE_TABS}
       counts={{
+        shots: shotsOf(node).length,
         assets: summary?.assetCount,
         generations: summary?.generationCount,
       }}
@@ -122,11 +128,11 @@ export function ScenePage({
       details={
         <Cast sceneId={node.id} cast={cast} pending={related.isPending} />
       }
-      // SHOTS_SEAM (Phase 3b): the storyboard of numbered shot cards and the
-      // picked shot's versions strip render here for a "shots" tab, which
-      // goes first in `SCENE_TABS`. Until then a scene has only the frame's
-      // own Generations and Assets tabs.
-      renderTab={() => null}
+      renderTab={(open, { generate }) =>
+        open === "shots" ? (
+          <ShotsTab scene={node} selectedId={shot} onGenerate={generate} />
+        ) : null
+      }
     />
   )
 }

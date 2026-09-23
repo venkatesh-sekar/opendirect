@@ -32,10 +32,13 @@ describe("the tab in the query string", () => {
     expect(parseTab("appears-in", CHARACTER_TABS)).toBe("appears-in")
   })
 
-  it("opens a scene on what was made in it, and has no Appears in", () => {
-    expect(parseTab(null, SCENE_TABS)).toBe("generations")
+  it("opens a scene on its shots, and has no Appears in", () => {
+    expect(parseTab(null, SCENE_TABS)).toBe("shots")
     expect(parseTab("assets", SCENE_TABS)).toBe("assets")
-    expect(parseTab("appears-in", SCENE_TABS)).toBe("generations")
+    expect(parseTab("generations", SCENE_TABS)).toBe("generations")
+    expect(parseTab("appears-in", SCENE_TABS)).toBe("shots")
+    // A character has no shots.
+    expect(parseTab("shots", CHARACTER_TABS)).toBe("assets")
   })
 })
 

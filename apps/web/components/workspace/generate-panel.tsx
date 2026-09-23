@@ -16,13 +16,39 @@ export function referenceSummary(count: number): string {
   return `sheet + ${rest} ref${rest === 1 ? "" : "s"}`
 }
 
+/**
+ * Where a run from the panel goes when it is not the page's own container: a
+ * scene's shot, whose new version is filed under the shot.
+ */
+export interface GenerateTarget {
+  containerId: string
+  /** The panel's name for itself: "Generate a version of Shot 03". */
+  label: string
+  /** The "Save to" line: "Hotel hallway · Shot 03". */
+  destination: string
+  /** What the prompt starts as. */
+  initialPrompt: string
+}
+
 export interface GeneratePanelProps {
   node: ContainerNodeDto
   /** The character's face for the identity row. */
   cover: AssetDto | null
+  /** Somewhere other than `node` to file the run; `node` itself by default. */
+  target?: GenerateTarget | null
   onClose: () => void
   /** A run was queued — the page shows it on the Generations tab. */
   onSubmitted?: () => void
+}
+
+/** The panel for the page's own container: `@mira ` in the prompt. */
+export function ownTarget(node: ContainerNodeDto): GenerateTarget {
+  return {
+    containerId: node.id,
+    label: node.handle ? `Generate with @${node.handle}` : "Generate",
+    destination: node.name,
+    initialPrompt: node.handle ? `@${node.handle} ` : (node.description ?? ""),
+  }
 }
 
 /**
@@ -31,16 +57,20 @@ export interface GeneratePanelProps {
  * watched arriving on it.
  *
  * The form starts from the character — `@mira ` in the prompt, and so its
- * references attached — and files the run under it. Opening the panel spends
- * nothing; its Generate button is the only thing that does.
+ * references attached — and files the run under it. A scene's page can aim it
+ * at one of its shots instead (`target`): the identity row is still the scene,
+ * but the run is filed under the shot and becomes its newest version. Opening
+ * the panel spends nothing; its Generate button is the only thing that does.
  */
 export function GeneratePanel({
   node,
   cover,
+  target,
   onClose,
   onSubmitted,
 }: GeneratePanelProps) {
-  const label = node.handle ? `Generate with @${node.handle}` : "Generate"
+  const aim = target ?? ownTarget(node)
+  const label = aim.label
   const refs = node.referenceAssetIds?.length ?? 0
 
   return (
@@ -74,13 +104,11 @@ export function GeneratePanel({
       </div>
 
       <GenerateForm
-        // A different character is a different composition.
-        key={node.id}
-        containerId={node.id}
-        destination={node.name}
-        initialPrompt={
-          node.handle ? `@${node.handle} ` : (node.description ?? "")
-        }
+        // A different character, or shot, is a different composition.
+        key={aim.containerId}
+        containerId={aim.containerId}
+        destination={aim.destination}
+        initialPrompt={aim.initialPrompt}
         onSubmitted={onSubmitted}
       />
     </aside>

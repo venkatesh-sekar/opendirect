@@ -11,7 +11,12 @@ import { continueTiles, type RunTile } from "./home"
  * The tabs that have content on a page. Canvas is not one of them: it is a
  * link to `/canvas/?focus=`, never an embedded canvas.
  */
-export const PAGE_TABS = ["assets", "generations", "appears-in"] as const
+export const PAGE_TABS = [
+  "shots",
+  "assets",
+  "generations",
+  "appears-in",
+] as const
 export type PageTab = (typeof PAGE_TABS)[number]
 
 /** A character's tabs, in order: what it is made of, then what it made. */
@@ -22,10 +27,10 @@ export const CHARACTER_TABS: readonly PageTab[] = [
 ]
 
 /**
- * A scene's tabs. Until shots ship, a scene opens on what has been made in
- * it (§5); shots will go first.
+ * A scene's tabs: its storyboard of shots first (§5), then the runs filed
+ * straight under the scene, then its assets.
  */
-export const SCENE_TABS: readonly PageTab[] = ["generations", "assets"]
+export const SCENE_TABS: readonly PageTab[] = ["shots", "generations", "assets"]
 
 /** `&tab=` as the page reads it; anything the page lacks is its first tab. */
 export function parseTab(
