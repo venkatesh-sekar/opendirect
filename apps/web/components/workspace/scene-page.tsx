@@ -27,7 +27,7 @@ import {
 } from "@/hooks/use-containers"
 import { containerHref } from "@/lib/shell/routes"
 import { SCENE_TABS } from "@/lib/workspace/container-page"
-import { shotsOf } from "@/lib/workspace/shots"
+import { shotAim, shotsOf } from "@/lib/workspace/shots"
 
 import { Avatar } from "./container-card"
 import { OpenCanvasButton } from "./home"
@@ -108,8 +108,23 @@ export function ScenePage({
   shot?: string | null
 }) {
   const related = useRelatedContainers(node.id)
+  const summaries = useContainerSummaries()
   const cast =
     related.data?.kind === "scene" ? related.data.characters : NO_CAST
+  const shots = shotsOf(node)
+  // The scene's summary counts its shots' runs too; the Generations tab
+  // lists only the runs filed straight under the scene.
+  const inShots = shots.reduce(
+    (sum, one) =>
+      sum +
+      (summaries.data?.find((entry) => entry.id === one.id)?.generationCount ??
+        0),
+    0
+  )
+  const direct =
+    summary === null
+      ? undefined
+      : Math.max(0, summary.generationCount - inShots)
 
   return (
     <SubjectPage
@@ -118,9 +133,9 @@ export function ScenePage({
       tab={tab}
       tabs={SCENE_TABS}
       counts={{
-        shots: shotsOf(node).length,
+        shots: shots.length,
         assets: summary?.assetCount,
-        generations: summary?.generationCount,
+        generations: direct,
       }}
       copy={COPY}
       generateLabel="Generate in scene"
@@ -128,9 +143,22 @@ export function ScenePage({
       details={
         <Cast sceneId={node.id} cast={cast} pending={related.isPending} />
       }
-      renderTab={(open, { generate }) =>
+      otherAim={shotAim(node, shot)}
+      generationsNote={
+        inShots > 0 ? (
+          <Link
+            href={containerHref(node.id, "shots")}
+            replace
+            scroll={false}
+            className="self-start text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+          >
+            {inShots} more in shots →
+          </Link>
+        ) : null
+      }
+      renderTab={(open, { generateOther }) =>
         open === "shots" ? (
-          <ShotsTab scene={node} selectedId={shot} onGenerate={generate} />
+          <ShotsTab scene={node} selectedId={shot} onGenerate={generateOther} />
         ) : null
       }
     />

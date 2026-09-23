@@ -95,7 +95,13 @@ function responses(): Record<string, unknown> {
     ],
     "containers:summaries": [
       summary({ id: "mira", assetCount: 12, generationCount: 38 }),
-      summary({ id: "hall", assetCount: 4, castIds: ["mira"] }),
+      summary({
+        id: "hall",
+        assetCount: 4,
+        generationCount: 5,
+        castIds: ["mira"],
+      }),
+      summary({ id: "shot-a", generationCount: 2 }),
     ],
     "assets:list": { items: ASSETS, total: ASSETS.length, nextOffset: null },
     "jobs:list": [
@@ -209,13 +215,20 @@ function mount(
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return render(
+  const tree = (at: string | null, open: string | null, on: string | null) => (
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <ContainerScreen id={id} tab={tab} shot={shot} />
+        <ContainerScreen id={at} tab={open} shot={on} />
       </TooltipProvider>
     </QueryClientProvider>
   )
+  const result = render(tree(id, tab, shot))
+  return {
+    ...result,
+    /** The same page after the query string changed. */
+    navigate: (at: string | null, open: string | null, on: string | null) =>
+      result.rerender(tree(at, open, on)),
+  }
 }
 
 function calls(channel: string) {
@@ -839,6 +852,47 @@ describe("a scene's shots", () => {
     )
     expect(calls("generations:submit")).toEqual([])
     expect(calls("generations:submitBatch")).toEqual([])
+  })
+
+  it("keeps the open panel aimed at the selected shot as the selection moves", async () => {
+    const user = userEvent.setup()
+    const page = mount("hall", "shots", "shot-a")
+
+    const strip = await screen.findByRole("region", {
+      name: "Shot 01 versions",
+    })
+    await user.click(
+      within(strip).getByRole("button", { name: /generate version/i })
+    )
+    await screen.findByRole("complementary", {
+      name: "Generate a version of Shot 01",
+    })
+
+    page.navigate("hall", "shots", "shot-b")
+    const panel = await screen.findByRole("complementary", {
+      name: "Generate a version of Shot 02",
+    })
+    expect(within(panel).getByText("Hotel hallway · Shot 02")).toBeVisible()
+    expect(within(panel).getByLabelText("Prompt")).toHaveValue("@hallway ")
+    expect(
+      screen.queryByRole("complementary", {
+        name: "Generate a version of Shot 01",
+      })
+    ).toBeNull()
+  })
+
+  it("counts only the scene's own runs on Generations, and points at the rest", async () => {
+    mount("hall", "generations")
+
+    const tabs = await screen.findByRole("navigation", { name: /sections/i })
+    await waitFor(() =>
+      expect(
+        within(tabs).getByRole("link", { name: /generations/i })
+      ).toHaveTextContent("3")
+    )
+    expect(
+      await screen.findByRole("link", { name: "2 more in shots →" })
+    ).toHaveAttribute("href", "/container/?id=hall&tab=shots")
   })
 
   it("sends a shot's own address to its scene, with the shot selected", async () => {

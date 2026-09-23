@@ -45,6 +45,7 @@ import {
   coverVersion,
   pickLine,
   pickedVersion,
+  selectedShot,
   shotNumber,
   shotTitle,
   shotVersions,
@@ -55,7 +56,6 @@ import {
 import { AssetTile } from "@/components/canvas/nodes/asset-tile"
 import { DeleteContainerDialog } from "@/components/shell/container-tree"
 
-import type { GenerateTarget } from "./generate-panel"
 import { ProgressBar } from "./run-tile"
 
 /** The newest runs a shot's versions are read from. */
@@ -68,6 +68,7 @@ function useShotVersions(shotId: string) {
   const versions = shotVersions({
     shotId,
     generations: generations.data?.items ?? [],
+    total: generations.data?.total,
     outputs: generations.data?.outputs ?? [],
     jobs: jobs.data ?? [],
   })
@@ -379,19 +380,20 @@ export interface ShotsTabProps {
   scene: ContainerNodeDto
   /** `&shot=` — anything that is not one of the scene's shots selects the first. */
   selectedId: string | null
-  /** Opens the page's generate panel aimed at a shot. Spends nothing. */
-  onGenerate: (target: GenerateTarget, whenQueued: string) => void
+  /**
+   * Opens the page's generate panel on the selected shot (`shotAim`), which
+   * follows the selection from then on. Spends nothing.
+   */
+  onGenerate: () => void
 }
 
 export function ShotsTab({ scene, selectedId, onGenerate }: ShotsTabProps) {
   const router = useRouter()
   const create = useCreateContainer()
   const shots = shotsOf(scene)
-  const index = Math.max(
-    0,
-    shots.findIndex((shot) => shot.id === selectedId)
-  )
-  const selected = shots[index] ?? null
+  const current = selectedShot(scene, selectedId)
+  const selected = current?.shot ?? null
+  const index = current?.index ?? 0
 
   const addShot = () =>
     create.mutate(
@@ -402,22 +404,6 @@ export function ShotsTab({ scene, selectedId, onGenerate }: ShotsTabProps) {
         onError: (error) => toast.error(error.message),
       }
     )
-
-  const generateFor = (shot: ContainerNodeDto, at: number) => {
-    const title = shotTitle(at)
-    const label = shot.description ?? ""
-    onGenerate(
-      {
-        containerId: shot.id,
-        label: `Generate a version of ${title}`,
-        destination: `${scene.name} · ${title}`,
-        // The scene's handle brings its location references; the label is
-        // what the shot is.
-        initialPrompt: scene.handle ? `@${scene.handle} ${label}` : label,
-      },
-      shotHref(scene.id, shot.id)
-    )
-  }
 
   return (
     <div className="flex flex-col gap-5.5">
@@ -448,7 +434,7 @@ export function ShotsTab({ scene, selectedId, onGenerate }: ShotsTabProps) {
           shot={selected}
           index={index}
           count={shots.length}
-          onGenerate={() => generateFor(selected, index)}
+          onGenerate={onGenerate}
         />
       ) : (
         <p className="text-sm text-muted-foreground">

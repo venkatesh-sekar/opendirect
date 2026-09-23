@@ -40,6 +40,7 @@ import {
   parseTab,
   toggleReference,
   type PageTab,
+  type PanelAim,
 } from "@/lib/workspace/container-page"
 
 import { AssetTile } from "@/components/canvas/nodes/asset-tile"
@@ -47,7 +48,7 @@ import { AssetTile } from "@/components/canvas/nodes/asset-tile"
 import { AssetLibrary } from "./asset-library"
 import { ContainerDetailsForm } from "./container-details"
 import { ContainerRuns } from "./container-runs"
-import { GeneratePanel, ownTarget, type GenerateTarget } from "./generate-panel"
+import { GeneratePanel, ownTarget } from "./generate-panel"
 import { ReferenceStrip } from "./reference-strip"
 import { WorkspacePage } from "./workspace-page"
 
@@ -226,17 +227,24 @@ export interface SubjectPageProps {
   /** Below the description, above the references: counts, a cast. */
   details?: ReactNode
   /**
+   * The panel's other aim — a scene's selected shot — as the page is *now*.
+   * Passed every render rather than captured when the panel opens, so the
+   * panel follows the selection and never files into a shot that moved or
+   * went away; null closes a panel that was aimed there.
+   */
+  otherAim?: PanelAim | null
+  /** Above the Generations tab's runs: a scene's "N more in shots →". */
+  generationsNote?: ReactNode
+  /**
    * The body of a tab beyond Assets and Generations, which the frame draws
-   * itself — a character's Appears in, a scene's shots. `generate` opens the
-   * panel aimed somewhere else (a shot); `whenQueued` is where the page goes
-   * once that run is queued.
+   * itself — a character's Appears in, a scene's shots. `generateOther`
+   * opens the panel on `otherAim`; it spends nothing by itself.
    */
   renderTab?: (tab: PageTab, actions: SubjectPageActions) => ReactNode
 }
 
 export interface SubjectPageActions {
-  /** Opens the generate panel for `target`. Spends nothing by itself. */
-  generate: (target: GenerateTarget, whenQueued: string) => void
+  generateOther: () => void
 }
 
 export function SubjectPage({
@@ -249,21 +257,26 @@ export function SubjectPage({
   generateLabel,
   actions,
   details,
+  otherAim = null,
+  generationsNote,
   renderTab,
 }: SubjectPageProps) {
   const router = useRouter()
   const tab = parseTab(rawTab, tabs)
   const [editing, setEditing] = useState(false)
-  /** The open panel's aim, and where the page goes once its run is queued. */
-  const [generating, setGenerating] = useState<{
-    target: GenerateTarget
-    whenQueued: string
-  } | null>(null)
-  const openOwn = () =>
-    setGenerating({
-      target: ownTarget(node),
-      whenQueued: containerHref(node.id, "generations"),
-    })
+  /** Which panel is open: the page's own, the other aim's, or none. */
+  const [panel, setPanel] = useState<"own" | "other" | null>(null)
+  if (panel === "other" && !otherAim) setPanel(null)
+  const generating: PanelAim | null =
+    panel === "own"
+      ? {
+          target: ownTarget(node),
+          whenQueued: containerHref(node.id, "generations"),
+        }
+      : panel === "other"
+        ? otherAim
+        : null
+  const openOwn = () => setPanel("own")
   const references = useSetContainerReferences()
   const face = useFace(node, summary)
 
@@ -279,14 +292,17 @@ export function SubjectPage({
   switch (tab) {
     case "generations":
       body = (
-        <ContainerRuns
-          containerId={node.id}
-          empty={
-            <Button size="sm" onClick={openOwn}>
-              {generateLabel}
-            </Button>
-          }
-        />
+        <div className="flex flex-col gap-4">
+          {generationsNote}
+          <ContainerRuns
+            containerId={node.id}
+            empty={
+              <Button size="sm" onClick={openOwn}>
+                {generateLabel}
+              </Button>
+            }
+          />
+        </div>
       )
       break
     case "assets":
@@ -302,10 +318,7 @@ export function SubjectPage({
       break
     default:
       body =
-        renderTab?.(tab, {
-          generate: (target, whenQueued) =>
-            setGenerating({ target, whenQueued }),
-        }) ?? null
+        renderTab?.(tab, { generateOther: () => setPanel("other") }) ?? null
   }
 
   return (
@@ -325,11 +338,7 @@ export function SubjectPage({
             <HugeiconsIcon icon={Edit02Icon} className="size-4" />
             Edit
           </Button>
-          <Button
-            size="sm"
-            aria-pressed={generating?.target.containerId === node.id}
-            onClick={openOwn}
-          >
+          <Button size="sm" aria-pressed={panel === "own"} onClick={openOwn}>
             <HugeiconsIcon icon={MagicWand01Icon} className="size-4" />
             {generateLabel}
           </Button>
@@ -341,7 +350,7 @@ export function SubjectPage({
             node={node}
             cover={face}
             target={generating.target}
-            onClose={() => setGenerating(null)}
+            onClose={() => setPanel(null)}
             onSubmitted={() =>
               router.replace(generating.whenQueued, { scroll: false })
             }

@@ -6,7 +6,11 @@ import type { AssetDto, ContainerNodeDto } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
 
 import { AssetTile } from "@/components/canvas/nodes/asset-tile"
+import type { GenerateTarget } from "@/lib/workspace/container-page"
+
 import { GenerateForm } from "@/components/create/generate-form"
+
+export type { GenerateTarget }
 
 /** "sheet + 3 refs", "sheet only", or "no references yet". */
 export function referenceSummary(count: number): string {
@@ -14,20 +18,6 @@ export function referenceSummary(count: number): string {
   if (count === 1) return "sheet only"
   const rest = count - 1
   return `sheet + ${rest} ref${rest === 1 ? "" : "s"}`
-}
-
-/**
- * Where a run from the panel goes when it is not the page's own container: a
- * scene's shot, whose new version is filed under the shot.
- */
-export interface GenerateTarget {
-  containerId: string
-  /** The panel's name for itself: "Generate a version of Shot 03". */
-  label: string
-  /** The "Save to" line: "Hotel hallway · Shot 03". */
-  destination: string
-  /** What the prompt starts as. */
-  initialPrompt: string
 }
 
 export interface GeneratePanelProps {

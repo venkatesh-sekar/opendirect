@@ -11,6 +11,8 @@ import {
   coverVersion,
   pickLine,
   pickedVersion,
+  selectedShot,
+  shotAim,
   shotNumber,
   shotTitle,
   shotVersions,
@@ -51,7 +53,7 @@ describe("numbering", () => {
 })
 
 describe("shotVersions", () => {
-  it("makes one version per picture, oldest first", () => {
+  it("numbers versions by run, oldest first, a run's extra pictures after a dot", () => {
     const versions = shotVersions({
       shotId: SHOT,
       generations: [run("g2", 20), run("g1", 10)],
@@ -60,9 +62,21 @@ describe("shotVersions", () => {
     })
     expect(versions.map((one) => [one.label, one.asset?.id])).toEqual([
       ["v1", "a1"],
-      ["v2", "a2"],
-      ["v3", "b"],
+      ["v1.2", "a2"],
+      ["v2", "b"],
     ])
+  })
+
+  it("keeps numbers stable when only the newest runs were read", () => {
+    // 250 runs in all; the page holds the newest two.
+    const versions = shotVersions({
+      shotId: SHOT,
+      generations: [run("g250", 250), run("g249", 249)],
+      total: 250,
+      outputs: [made("x", "g249"), made("y", "g250")],
+      jobs: [],
+    })
+    expect(versions.map((one) => one.label)).toEqual(["v249", "v250"])
   })
 
   it("keeps a failed run's number, with no picture", () => {
@@ -137,5 +151,40 @@ describe("picks", () => {
     expect(pickLine(versions, "b")).toMatch(/^v2 is the pick/)
     expect(pickLine(versions, null)).toMatch(/no pick yet/i)
     expect(pickLine([], null)).toBe("No versions yet")
+  })
+})
+
+describe("the selected shot and the panel's aim", () => {
+  const scene = container({
+    id: "hall",
+    name: "Hotel hallway",
+    kind: "scene",
+    handle: "hallway",
+    children: [
+      container({ id: "a", kind: "shot", description: "Wide" }),
+      container({ id: "b", kind: "shot", description: null }),
+    ],
+  })
+
+  it("selects the asked-for shot, else the first, else none", () => {
+    expect(selectedShot(scene, "b")).toMatchObject({ index: 1 })
+    expect(selectedShot(scene, "b")?.shot.id).toBe("b")
+    expect(selectedShot(scene, "gone")?.shot.id).toBe("a")
+    expect(selectedShot(scene, null)?.shot.id).toBe("a")
+    expect(selectedShot({ ...scene, children: [] }, "a")).toBeNull()
+  })
+
+  it("aims at the selected shot, by its place and label", () => {
+    expect(shotAim(scene, "b")).toEqual({
+      target: {
+        containerId: "b",
+        label: "Generate a version of Shot 02",
+        destination: "Hotel hallway · Shot 02",
+        initialPrompt: "@hallway ",
+      },
+      whenQueued: "/container/?id=hall&tab=shots&shot=b",
+    })
+    expect(shotAim(scene, "a")?.target.initialPrompt).toBe("@hallway Wide")
+    expect(shotAim({ ...scene, children: [] }, null)).toBeNull()
   })
 })

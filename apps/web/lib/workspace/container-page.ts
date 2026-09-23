@@ -19,6 +19,26 @@ export const PAGE_TABS = [
 ] as const
 export type PageTab = (typeof PAGE_TABS)[number]
 
+/**
+ * Where a run from the generate panel goes when it is not the page's own
+ * container: a scene's shot, whose new version is filed under the shot.
+ */
+export interface GenerateTarget {
+  containerId: string
+  /** The panel's name for itself: "Generate a version of Shot 03". */
+  label: string
+  /** The "Save to" line: "Hotel hallway · Shot 03". */
+  destination: string
+  /** What the prompt starts as. */
+  initialPrompt: string
+}
+
+/** A panel's target, and where the page goes once its run is queued. */
+export interface PanelAim {
+  target: GenerateTarget
+  whenQueued: string
+}
+
 /** A character's tabs, in order: what it is made of, then what it made. */
 export const CHARACTER_TABS: readonly PageTab[] = [
   "assets",

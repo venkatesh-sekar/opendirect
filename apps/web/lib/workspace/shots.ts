@@ -3,10 +3,12 @@
  * they are numbered, what a shot's versions are, and which one its card wears.
  *
  * A shot is a child container of its scene. Its versions are the pictures the
- * runs filed under it made — one per output, oldest first, so `v1` is the
- * first thing ever made for the shot and numbers never shift as more arrive.
- * A run still in flight is a version too, drawn as running, and a run that
- * made nothing (failed, canceled) keeps its number so the count reads true.
+ * runs filed under it made, oldest first. A version is numbered by its run —
+ * `v1` is the shot's first run — and a run's second and later pictures are
+ * `v3.2`, `v3.3`. The number is the run's place among all of the shot's runs
+ * (from the list's `total`), so it never shifts as more arrive or when only
+ * the newest runs were read. A run still in flight is a version too, drawn
+ * as running, and a run that made nothing (failed, canceled) keeps its number.
  */
 import type {
   AssetDto,
@@ -16,6 +18,9 @@ import type {
 } from "@opendirect/contract"
 
 import { isJobActive } from "@/hooks/use-jobs"
+import { shotHref } from "@/lib/shell/routes"
+
+import type { PanelAim } from "./container-page"
 
 /** A scene's shots, in storyboard order (the tree is ordered by position). */
 export function shotsOf(scene: ContainerNodeDto): ContainerNodeDto[] {
@@ -32,10 +37,52 @@ export function shotTitle(index: number): string {
   return `Shot ${shotNumber(index)}`
 }
 
+/** `&shot=`'s shot — anything that is not one of the scene's is the first. */
+export function selectedShot(
+  scene: ContainerNodeDto,
+  id: string | null
+): { shot: ContainerNodeDto; index: number } | null {
+  const shots = shotsOf(scene)
+  const index = Math.max(
+    0,
+    shots.findIndex((shot) => shot.id === id)
+  )
+  const shot = shots[index]
+  return shot ? { shot, index } : null
+}
+
+/**
+ * The generate panel aimed at the selected shot. Worked out from the scene as
+ * it is now, every render, so selecting another shot, reordering or deleting
+ * re-aims the panel rather than leaving it filing into a stale shot under a
+ * stale name. Null — the panel closes — when the scene has no shots.
+ */
+export function shotAim(
+  scene: ContainerNodeDto,
+  id: string | null
+): PanelAim | null {
+  const selected = selectedShot(scene, id)
+  if (!selected) return null
+  const { shot, index } = selected
+  const title = shotTitle(index)
+  const label = shot.description ?? ""
+  return {
+    target: {
+      containerId: shot.id,
+      label: `Generate a version of ${title}`,
+      destination: `${scene.name} · ${title}`,
+      // The scene's handle brings its location references; the label is
+      // what the shot is.
+      initialPrompt: scene.handle ? `@${scene.handle} ${label}` : label,
+    },
+    whenQueued: shotHref(scene.id, shot.id),
+  }
+}
+
 export interface ShotVersion {
   /** Stable across refetches: the asset, or the run while it has none. */
   key: string
-  /** `v1`, `v2` … oldest first. */
+  /** `v1`, `v2`, `v2.2` … by run, oldest first. */
   label: string
   generation: GenerationDto
   /** The picture; null while running, or when the run made nothing. */
@@ -48,6 +95,8 @@ export interface ShotVersion {
 /**
  * Every version of one shot, oldest first.
  *
+ * `generations` may be only the newest page of the shot's runs; `total` (the
+ * list's own count, all of them) is what keeps the numbers right then.
  * `jobs` should be the project's job list; only the active ones filed under
  * `shotId` count. The job list is the authority on what is running, as on
  * Home, and a run it knows about before the generations list has refetched is
@@ -56,6 +105,8 @@ export interface ShotVersion {
 export function shotVersions(input: {
   shotId: string
   generations: readonly GenerationDto[]
+  /** How many runs the shot has in all; the listed ones by default. */
+  total?: number
   outputs: readonly AssetDto[]
   jobs: readonly JobDto[]
 }): ShotVersion[] {
@@ -84,43 +135,36 @@ export function shotVersions(input: {
     .filter((job) => !listed.has(job.generationId))
     .map((job) => job.generation)
 
-  const versions: Omit<ShotVersion, "label">[] = []
-  for (const generation of [...runs, ...unlisted]) {
+  // The oldest listed run's place among all of them.
+  const first = Math.max(0, (input.total ?? runs.length) - runs.length) + 1
+  const versions: ShotVersion[] = []
+  ;[...runs, ...unlisted].forEach((generation, at) => {
+    const number = `v${first + at}`
     const job = active.get(generation.id)
-    if (job) {
-      versions.push({
-        key: generation.id,
-        generation,
-        asset: null,
-        running: true,
-        progress: job.progress,
-      })
-      continue
-    }
-    const made = byRun.get(generation.id) ?? []
+    const made = job ? [] : (byRun.get(generation.id) ?? [])
     if (made.length === 0) {
       versions.push({
         key: generation.id,
+        label: number,
         generation,
         asset: null,
-        running: false,
-        progress: null,
+        running: job !== undefined,
+        progress: job?.progress ?? null,
       })
-      continue
+      return
     }
-    for (const asset of made)
+    made.forEach((asset, picture) =>
       versions.push({
         key: asset.id,
+        label: picture === 0 ? number : `${number}.${picture + 1}`,
         generation,
         asset,
         running: false,
         progress: null,
       })
-  }
-  return versions.map((version, index) => ({
-    ...version,
-    label: `v${index + 1}`,
-  }))
+    )
+  })
+  return versions
 }
 
 /** The version the user picked, if it is still one of the shot's. */
