@@ -10,7 +10,7 @@ import {
 } from "@workspace/ui/components/select"
 
 import { useContainerTree } from "@/hooks/use-containers"
-import { findContainer, flattenContainers } from "@/lib/board/sidebar-tree"
+import { findContainer, placesToFile } from "@/lib/board/sidebar-tree"
 import { filingContainerId, rememberFilingContainer } from "@/lib/canvas/filing"
 import { requestCanvasFocus } from "@/lib/canvas/focus-request"
 
@@ -47,10 +47,7 @@ export function CanvasScreen({ focus }: { focus: string | null }) {
     if (focus) requestCanvasFocus(focus)
   }, [focus])
 
-  const options = useMemo(
-    () => flattenContainers(nodes).filter((node) => node.kind !== "project"),
-    [nodes]
-  )
+  const options = useMemo(() => placesToFile(nodes), [nodes])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">

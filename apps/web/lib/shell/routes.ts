@@ -13,6 +13,14 @@ export function containerHref(id: string, tab?: string | null): string {
   return tab ? `${base}&tab=${encodeURIComponent(tab)}` : base
 }
 
+/**
+ * A shot has no page of its own: it is its scene's page, on the Shots tab,
+ * with that shot selected.
+ */
+export function shotHref(sceneId: string, shotId: string): string {
+  return `${containerHref(sceneId, "shots")}&shot=${encodeURIComponent(shotId)}`
+}
+
 /** The canvas, optionally framed on one container's nodes. */
 export function canvasHref(focus?: string | null): string {
   return focus ? `/canvas/?focus=${encodeURIComponent(focus)}` : "/canvas/"

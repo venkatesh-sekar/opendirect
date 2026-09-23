@@ -40,7 +40,7 @@ import { Button } from "@workspace/ui/components/button"
 
 import { useAddAssetToContainer } from "@/hooks/use-assets"
 import { useContainerTree } from "@/hooks/use-containers"
-import { flattenContainers } from "@/lib/board/sidebar-tree"
+import { placesToFile } from "@/lib/board/sidebar-tree"
 
 type IconDefinition = HugeiconsIconProps["icon"]
 
@@ -227,10 +227,7 @@ export function AddToContainerDialog({
   const [added, setAdded] = useState<string | null>(null)
 
   const containers = useMemo<ContainerNodeDto[]>(
-    () =>
-      flattenContainers(tree.data ?? []).filter(
-        (node) => node.kind !== "project"
-      ),
+    () => placesToFile(tree.data ?? []),
     [tree.data]
   )
 

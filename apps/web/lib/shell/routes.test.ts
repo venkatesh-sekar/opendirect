@@ -7,6 +7,7 @@ import {
   isOnRoute,
   rememberRoute,
   returnRoute,
+  shotHref,
 } from "./routes"
 
 afterEach(() => forgetReturnRoute())
@@ -16,6 +17,9 @@ describe("route helpers", () => {
     expect(containerHref("a b")).toBe("/container/?id=a%20b")
     expect(containerHref("mira", "generations")).toBe(
       "/container/?id=mira&tab=generations"
+    )
+    expect(shotHref("hall", "s 1")).toBe(
+      "/container/?id=hall&tab=shots&shot=s%201"
     )
     expect(canvasHref()).toBe("/canvas/")
     expect(canvasHref("mira")).toBe("/canvas/?focus=mira")
