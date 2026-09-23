@@ -77,13 +77,17 @@ export interface ResolvedMentions {
  *
  * ⛔ A frame or a motion reference carries timing semantics the user wires
  * deliberately — quietly making a character sheet the first frame of a video
- * would be a paid surprise. A mention downgrades to prose instead.
+ * would be a paid surprise. A mask, a pose/depth map or a soundtrack is just
+ * as deliberate. A mention downgrades to prose instead.
  */
-const RESERVED_ROLES = new Set([
+const RESERVED_ROLES = new Set<ReferenceSlot["role"]>([
+  "source",
+  "mask",
   "first_frame",
   "last_frame",
+  "structure",
   "motion",
-  "source",
+  "soundtrack",
 ])
 
 /** Slots whose contents the provider receives as images, mention or not. */
@@ -95,11 +99,13 @@ function isMentionable(slot: ReferenceSlot): boolean {
   return isImageSlot(slot) && !RESERVED_ROLES.has(slot.role)
 }
 
-/** `reference` first, then `unknown`, then whatever else takes an image. */
+/**
+ * A mapped `reference` first, then a guessed one, then whatever else takes an
+ * image.
+ */
 function rolePreference(slot: ReferenceSlot): number {
-  if (slot.role === "reference") return 0
-  if (slot.role === "unknown") return 1
-  return 2
+  if (slot.role !== "reference") return 2
+  return slot.verified ? 0 : 1
 }
 
 /** `[2]` → `"2"`, `[1, 2]` → `"1 and 2"`, `[1, 2, 3]` → `"1, 2 and 3"`. */

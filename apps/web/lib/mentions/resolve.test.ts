@@ -68,6 +68,25 @@ const FRAMES_AND_REFERENCES: ReferenceSlot[] = deriveReferenceSlots({
   },
 })
 
+/** A hand-built single-image slot, for the roles no name hint produces. */
+function imageSlot(
+  field: string,
+  role: ReferenceSlot["role"],
+  verified: boolean
+): ReferenceSlot {
+  return {
+    field,
+    label: field,
+    kind: "image",
+    multiple: false,
+    max: null,
+    role,
+    verified,
+    required: false,
+    shape: null,
+  }
+}
+
 function subject(
   over: Partial<MentionSubjectDto> & Pick<MentionSubjectDto, "handle">
 ): MentionSubjectDto {
@@ -100,6 +119,9 @@ describe("deriveReferenceSlots fixtures", () => {
         multiple: true,
         max: 4,
         role: "reference",
+        verified: false,
+        required: false,
+        shape: null,
       },
     ])
     expect(TEXT_ONLY).toEqual([])
@@ -339,6 +361,41 @@ describe("resolveMentions — downgrading to prose", () => {
     expect(result.references).toEqual([
       { slotField: "reference_images", assetId: "a1", position: 0 },
     ])
+  })
+
+  it.each(["mask", "structure", "soundtrack"] as const)(
+    "never lands in a %s slot",
+    (role) => {
+      const result = resolveMentions({
+        prompt: "@venkz running",
+        subjects: [VENKZ],
+        slots: [imageSlot("control", role, true)],
+        occupied: {},
+      })
+      expect(result.references).toEqual([])
+      expect(result.outcomes[0]).toMatchObject({
+        kind: "text",
+        reason: "no-image-slot",
+      })
+    }
+  )
+
+  it("prefers a verified reference, then an unverified one, then any other role", () => {
+    const slots = [
+      imageSlot("style_images", "style", true),
+      imageSlot("guessed_refs", "reference", false),
+      imageSlot("curated_refs", "reference", true),
+    ]
+    const pick = (candidates: ReferenceSlot[]) =>
+      resolveMentions({
+        prompt: "@venkz",
+        subjects: [VENKZ],
+        slots: candidates,
+        occupied: {},
+      }).references[0]?.slotField
+    expect(pick(slots)).toBe("curated_refs")
+    expect(pick(slots.slice(0, 2))).toBe("guessed_refs")
+    expect(pick(slots.slice(0, 1))).toBe("style_images")
   })
 
   it("numbers around an image an edge put in a frame slot", () => {

@@ -52,6 +52,9 @@ const SLOTS: ReferenceSlot[] = [
     multiple: true,
     max: 4,
     role: "reference",
+    verified: false,
+    required: false,
+    shape: null,
   },
 ]
 
@@ -188,6 +191,9 @@ const FIRST: ReferenceSlot = {
   multiple: false,
   max: null,
   role: "first_frame",
+  verified: false,
+  required: false,
+  shape: null,
 }
 
 function picture(id: string): AssetDto {

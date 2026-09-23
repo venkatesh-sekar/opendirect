@@ -9,9 +9,9 @@
  *
  * Two rules this module never breaks:
  *
- * 1. **No property is ever discarded.** A URI field that matches no hint is
- *    still a slot, with `role: "unknown"`; everything that is neither a slot
- *    nor a common control is rendered under "Advanced" by the generated form.
+ * 1. **No property is ever discarded.** A slot that matches no hint is
+ *    `reference`, unverified; everything that is neither a slot nor a
+ *    common control is rendered under "Advanced" by the generated form.
  * 2. **Never guess a value, only a role.** Bounds come from `maxItems`, or
  *    from an explicit "up to N" the model itself states in its description.
  *
@@ -82,7 +82,7 @@ function roleOf(field: string): ReferenceRole {
   for (const [pattern, role] of ROLE_HINTS) {
     if (pattern.test(field)) return role
   }
-  return "unknown"
+  return "reference"
 }
 
 /** `contentMediaType` on the property, or on an array's items. */
@@ -160,6 +160,10 @@ export function deriveReferenceSlots(inputSchema: unknown): ReferenceSlot[] {
       multiple,
       max: multiple ? maxOf(raw, description) : null,
       role: roleOf(field),
+      // A name guess is never a verified role; only a registry mapping is.
+      verified: false,
+      required: false,
+      shape: null,
     })
   }
   return slots

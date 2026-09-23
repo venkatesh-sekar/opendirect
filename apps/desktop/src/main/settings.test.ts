@@ -195,7 +195,28 @@ describe("settings store", () => {
       maxConcurrentJobs: 2,
       pollIntervalMs: 3000,
       preferredAiTool: null,
+      providerOrder: ["replicate", "openrouter"],
+      remoteRegistry: true,
+      registryUrl: null,
+      includeUnverified: false,
     })
+  })
+
+  it("reads a blob saved before the registry settings existed", () => {
+    const store = fakeStore()
+    store.set("settings", { theme: "dark", maxConcurrentJobs: 3 })
+    expect(createSettings(store).get()).toMatchObject({
+      theme: "dark",
+      maxConcurrentJobs: 3,
+      providerOrder: ["replicate", "openrouter"],
+      includeUnverified: false,
+    })
+  })
+
+  it("round trips a provider order", () => {
+    const store = fakeStore()
+    createSettings(store).set({ providerOrder: ["openrouter"] })
+    expect(createSettings(store).get().providerOrder).toEqual(["openrouter"])
   })
 
   it("merges a partial patch and persists it", () => {

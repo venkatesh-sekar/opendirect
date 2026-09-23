@@ -45,6 +45,9 @@ function descriptor(overrides: Partial<ModelDescriptor> = {}): ModelDescriptor {
         multiple: true,
         max: 12,
         role: "reference",
+        verified: false,
+        required: false,
+        shape: null,
       },
       {
         field: "last_frame_image",
@@ -53,6 +56,9 @@ function descriptor(overrides: Partial<ModelDescriptor> = {}): ModelDescriptor {
         multiple: false,
         max: null,
         role: "last_frame",
+        verified: false,
+        required: false,
+        shape: null,
       },
     ],
     commonControls: {

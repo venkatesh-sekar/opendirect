@@ -36,6 +36,9 @@ const descriptor: ModelDescriptor = {
       multiple: true,
       max: 12,
       role: "reference",
+      verified: false,
+      required: false,
+      shape: null,
     },
   ],
   commonControls: {

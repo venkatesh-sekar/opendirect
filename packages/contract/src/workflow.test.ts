@@ -59,6 +59,12 @@ describe("portable workflows", () => {
       ).toBe(false)
     }
   })
+  it("accepts a family model key and still rejects a malformed one", () => {
+    const parse = (modelKey: string) =>
+      promptRecipeSchema.safeParse({ prompt: "", modelKey }).success
+    expect(parse("family:seedance-2-5")).toBe(true)
+    expect(parse("nope")).toBe(false)
+  })
   it("parses a recipe without blocks and round trips one with blocks", () => {
     expect(workflowSchema.safeParse(workflow).success).toBe(true)
     const withBlocks = {

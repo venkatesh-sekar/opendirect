@@ -67,6 +67,9 @@ function slot(overrides: Partial<ReferenceSlot> = {}): ReferenceSlot {
     multiple: true,
     max: 12,
     role: "reference",
+    verified: false,
+    required: false,
+    shape: null,
     ...overrides,
   }
 }

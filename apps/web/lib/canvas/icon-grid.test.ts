@@ -88,7 +88,10 @@ function slotsOf(inputSchema: Json) {
       kind: "any" as const,
       multiple: schema.type === "array",
       max: null,
-      role: "unknown" as const,
+      role: "reference" as const,
+      verified: false,
+      required: false,
+      shape: null,
     }))
 }
 

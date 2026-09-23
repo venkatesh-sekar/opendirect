@@ -22,32 +22,47 @@ export const modelKindSchema = z.enum([
 export type ModelKind = z.output<typeof modelKindSchema>
 
 /**
- * What an asset dropped into a slot is used for by the model.
- *
- * A role answers one question — what does this input control in the output? —
- * and the list is closed. Before adding a role, read the rules in
- * `docs/plans/2026-09-24-model-registry-design.md` (section 2): a role never
- * encodes the media kind, detail belongs in the slot label, and a new role
- * must pass all three tests or it is `reference`. (The values below predate
- * that design and are being migrated to its ten roles.)
+ * What an input controls in the output. ONE closed list. Rules (design §2,
+ * docs/plans/2026-09-24-model-registry-design.md, and CONTRIBUTING.md):
+ *  1. A role never encodes the media kind (`soundtrack`, not `audio`).
+ *  2. Detail goes in the slot label, never a new role (no `face`).
+ *  3. A new role must pass all three tests — controls something no other
+ *     role does; ≥2 models from different vendors have it; the UX would
+ *     filter or route it differently — otherwise it is `reference`.
+ *  4. When unsure, `reference`.
+ *  5. Changing this list is a contract change: bump REGISTRY_FORMAT and
+ *     cite these rules in the PR.
  */
 export const referenceRoleSchema = z.enum([
-  "reference",
+  "source",
+  "mask",
   "first_frame",
   "last_frame",
+  "character",
+  "style",
+  "structure",
   "motion",
-  "source",
-  "unknown",
+  "soundtrack",
+  "reference",
 ])
 export type ReferenceRole = z.output<typeof referenceRoleSchema>
+export const REFERENCE_ROLES = referenceRoleSchema.options
+
+/** Pre-registry caches said "unknown"; it now reads as unverified `reference`. */
+const legacyRole = (value: unknown) =>
+  value === "unknown" ? "reference" : value
 
 /**
  * An input field that accepts an Asset rather than a scalar — the drop targets
  * the board drags assets onto. Derived from the model's own input schema, so a
- * model we have never seen still gets working slots.
+ * model we have never seen still gets working slots. The three flags default,
+ * so a descriptor cached before they existed still parses.
  */
 export const referenceSlotSchema = z.object({
-  /** Input field name, e.g. `reference_images`. */
+  /**
+   * Input field name, e.g. `reference_images` — or, on a family descriptor,
+   * the slot key (`reference`, `reference:2`).
+   */
   field: z.string(),
   /** Human label, e.g. `Reference Images`. */
   label: z.string(),
@@ -55,7 +70,13 @@ export const referenceSlotSchema = z.object({
   multiple: z.boolean(),
   /** Upper bound on items when `multiple`; null when the model states none. */
   max: z.number().nullable(),
-  role: referenceRoleSchema,
+  role: z.preprocess(legacyRole, referenceRoleSchema),
+  /** True only when a registry mapping (not a name guess) set the role. */
+  verified: z.boolean().default(false),
+  /** Whether the chosen endpoint requires this input. */
+  required: z.boolean().default(false),
+  /** Named payload shape from the contract's SHAPES; null = plain URL(s). */
+  shape: z.string().nullable().default(null),
 })
 export type ReferenceSlot = z.output<typeof referenceSlotSchema>
 
@@ -223,6 +244,29 @@ export function parseModelKey(
   const slug = key.slice(separator + 1)
   if (!provider.success || slug.length === 0) return null
   return { provider: provider.data, slug }
+}
+
+/**
+ * A curated model family, chosen as one model whatever provider runs it
+ * (`family:seedance-2-5`). Nodes, workflow recipes and the default-model
+ * settings may hold either this or a `provider:slug` key.
+ */
+export const FAMILY_KEY_PREFIX = "family:"
+
+export function familyKey(id: string): string {
+  return `${FAMILY_KEY_PREFIX}${id}`
+}
+
+/** `"family:x"` → `"x"`; null for a provider key or an empty id. */
+export function parseFamilyKey(key: string): string | null {
+  if (!key.startsWith(FAMILY_KEY_PREFIX)) return null
+  const id = key.slice(FAMILY_KEY_PREFIX.length)
+  return id.length > 0 ? id : null
+}
+
+/** A key a node can run: a `provider:slug` or a family key. */
+export function isRunnableModelKey(key: string): boolean {
+  return parseModelKey(key) !== null || parseFamilyKey(key) !== null
 }
 
 /** A descriptor with no usable price — the honest default. */

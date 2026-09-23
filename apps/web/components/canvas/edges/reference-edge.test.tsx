@@ -21,6 +21,9 @@ function slot(overrides: Partial<ReferenceSlot> = {}): ReferenceSlot {
     multiple: false,
     max: null,
     role: "first_frame",
+    verified: false,
+    required: false,
+    shape: null,
     ...overrides,
   }
 }

@@ -86,14 +86,28 @@ describe("deriveReferenceSlots", () => {
     expect(slot?.role).toBe(role)
   })
 
-  it("keeps an unrecognised URI field as a slot with an unknown role", () => {
+  it("keeps an unrecognised URI field as an unverified reference slot", () => {
     const [slot] = deriveReferenceSlots(schema({ weird_ref_thing: uri() }))
     expect(slot).toMatchObject({
       field: "weird_ref_thing",
       label: "Weird Ref Thing",
       kind: "any",
-      role: "unknown",
+      role: "reference",
+      verified: false,
     })
+  })
+
+  it("marks every inferred slot unverified, optional and unshaped", () => {
+    const slots = deriveReferenceSlots(
+      schema({ first_frame: uri(), reference_images: uriArray() })
+    )
+    for (const slot of slots) {
+      expect(slot).toMatchObject({
+        verified: false,
+        required: false,
+        shape: null,
+      })
+    }
   })
 
   it("infers the asset kind from the field name", () => {

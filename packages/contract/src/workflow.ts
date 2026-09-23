@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { canvasNodeTypeSchema } from "./canvas"
-import { parseModelKey } from "./model"
+import { isRunnableModelKey } from "./model"
 
 export const promptBlockSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("text"), text: z.string().max(100_000) }),
@@ -19,7 +19,7 @@ export const promptRecipeSchema = z.object({
   blocks: z.array(promptBlockSchema).max(500).optional(),
   modelKey: z
     .string()
-    .refine((key) => parseModelKey(key) !== null, "Invalid model key")
+    .refine(isRunnableModelKey, "Invalid model key")
     .nullable(),
   common: z.record(z.string(), z.unknown()).default({}),
   advanced: z.record(z.string(), z.unknown()).default({}),

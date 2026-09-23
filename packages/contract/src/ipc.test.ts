@@ -325,6 +325,23 @@ describe("settings channels", () => {
     expect(settingsSchema.parse(settingsDefaults)).toEqual(settingsDefaults)
     expect(settingsDefaults.maxConcurrentJobs).toBe(2)
     expect(settingsDefaults.pollIntervalMs).toBe(3000)
+    expect(settingsDefaults).toMatchObject({
+      providerOrder: ["replicate", "openrouter"],
+      remoteRegistry: true,
+      registryUrl: null,
+      includeUnverified: false,
+    })
+  })
+
+  it("accepts a provider order patch and rejects an unknown provider", () => {
+    const { input } = ipcContract["settings:set"]
+    expect(input.parse({ providerOrder: ["openrouter"] })).toEqual({
+      providerOrder: ["openrouter"],
+    })
+    expect(input.safeParse({ providerOrder: ["midjourney"] }).success).toBe(
+      false
+    )
+    expect(input.safeParse({ registryUrl: "not a url" }).success).toBe(false)
   })
 
   it("rejects out-of-range settings", () => {

@@ -82,6 +82,17 @@ export const settingsSchema = z.object({
    * machine with neither never sees an AI menu at all.
    */
   preferredAiTool: aiToolIdSchema.nullable(),
+  /**
+   * Which provider runs a family model first. A configured provider missing
+   * from the list is tried after the listed ones, never skipped.
+   */
+  providerOrder: z.array(providerIdSchema).max(8),
+  /** Whether a newer registry is fetched from GitHub (a free `GET`). */
+  remoteRegistry: z.boolean(),
+  /** Base URL of the remote registry; null means the default. */
+  registryUrl: z.string().url().nullable(),
+  /** Whether the picker lists models whose inputs no mapping has verified. */
+  includeUnverified: z.boolean(),
 })
 export type Settings = z.output<typeof settingsSchema>
 
@@ -94,6 +105,10 @@ export const settingsDefaults: Settings = {
   maxConcurrentJobs: 2,
   pollIntervalMs: 3000,
   preferredAiTool: null,
+  providerOrder: ["replicate", "openrouter"],
+  remoteRegistry: true,
+  registryUrl: null,
+  includeUnverified: false,
 }
 
 export const okSchema = z.object({ ok: z.literal(true) })
