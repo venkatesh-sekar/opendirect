@@ -207,6 +207,75 @@ invalidates the catalog in main and the `["models"]` queries in the renderer.
 
 > ⛔ The catalog only ever calls the providers' free listing endpoints.
 
+## Model registry
+
+The registry maps each model family's inputs to roles and to each provider's
+field names (see [`ARCHITECTURE.md`](ARCHITECTURE.md#the-model-registry) for
+the design, and [`CONTRIBUTING.md`](../CONTRIBUTING.md#adding-or-fixing-a-model-mapping)
+for the file format). The code is in two places:
+
+- `packages/contract/src/registry/`: the format (`schema.ts`), shapes,
+  merge, endpoint choice, translation, the schema check (`check.ts`) and the
+  canonical formatter (`format.ts`). All pure.
+- `apps/desktop/src/main/model-registry/`: the layers. `bundled.ts` imports
+  the files under `registry/`, `remote.ts` fetches and caches the remote
+  copy, `overrides.ts` stores user mappings, `registry.ts` merges them, and
+  `registry-service.ts` wires it to Electron and IPC.
+
+Where things are kept on disk:
+
+| What | Where |
+| --- | --- |
+| Remote registry cache | `<userData>/model-registry.json`, next to `model-catalog.json` |
+| User mappings | The settings store (`<userData>/opendirect.json`), key `modelRegistry.overrides` |
+
+Deleting the cache file is safe: the app falls back to the bundled registry
+until the next reload. Registry annotation is applied when a descriptor is
+read and never written into `model-catalog.json`, so you do not need to
+refresh the catalog after changing a mapping.
+
+### Adding a mapping
+
+1. Write `registry/models/<id>.json`, or build it in Settings → Models and
+   export it. The file name must match `id`.
+2. For a new family, list the id in `registry/index.json` and import the
+   file in `apps/desktop/src/main/model-registry/bundled.ts`.
+3. Bump `registryVersion` in `registry/index.json`.
+4. Record a schema fixture for each endpoint that does not have one
+   (`test/fixtures/replicate/model-<name>.json`, or the OpenRouter listings
+   in `test/fixtures/openrouter/`).
+
+`pnpm dev:desktop` picks up bundled changes on the next build of main. While
+iterating, it is quicker to save the mapping as a user override in Settings →
+Models, which takes effect immediately.
+
+### Testing a mapping
+
+```bash
+pnpm vitest run apps/desktop/src/main/model-registry
+```
+
+`bundled.test.ts` is the drift guard. It parses every file, checks that named
+shapes exist, checks every mapped field against the recorded fixture with
+`checkEndpointAgainstSchema`, checks `max` against the schema's `maxItems`,
+checks that the index, the files and `bundled.ts` agree, and requires each
+file to equal `formatFamilyJson` of itself byte for byte.
+
+Fixtures go stale. To compare the mappings with what the providers publish
+today:
+
+```bash
+pnpm --filter @opendirect/desktop verify:providers -- --registry
+pnpm --filter @opendirect/desktop verify:providers -- --registry --file path/to/family.json
+```
+
+It reads keys from `.env.local`, makes one free `GET` per endpoint through
+the adapters' `getModel`, and prints `family · provider:model` with `OK`, the
+issues, or `skipped (no REPLICATE_API_TOKEN)`. `--file` adds a family, or
+replaces the bundled one with the same id. It exits with 1 when any endpoint
+has issues or cannot be read; skips do not count. The pure part lives in
+`model-registry/verify.ts` so the test suite covers it.
+
 ## Packaging and releases
 
 `apps/desktop/electron-builder.yml` packages the app. The Next.js static export

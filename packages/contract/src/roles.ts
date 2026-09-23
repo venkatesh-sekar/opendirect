@@ -8,7 +8,8 @@ import { z } from "zod"
 
 /**
  * What an input controls in the output. ONE closed list. Rules (design §2,
- * docs/plans/2026-09-24-model-registry-design.md, and CONTRIBUTING.md):
+ * docs/plans/2026-09-24-model-registry-design.md; the contributor copy with
+ * the role table is CONTRIBUTING.md#roles):
  *  1. A role never encodes the media kind (`soundtrack`, not `audio`).
  *  2. Detail goes in the slot label, never a new role (no `face`).
  *  3. A new role must pass all three tests — controls something no other

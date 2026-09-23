@@ -8,9 +8,10 @@ A validated design (brainstormed 2026-09-24). The user asked:
 > to give a character reference, only show the models that have it… the model
 > names can all be different, but maybe we can have mappings."
 
-Sections 1–4 were reviewed and agreed. Section 5 (request translation) and
-section 7 (migration) are the proposed continuation; they were not walked
-through, so treat them as the first thing to review before planning.
+Sections 1–4 were reviewed and agreed. Sections 5 (request translation) and
+7 (migration) were reviewed while writing the implementation plan
+(`2026-09-24-model-registry-plan.md`) and are **accepted** as written there;
+the plan's "Decisions made while planning" fill in the details.
 
 ---
 
@@ -153,7 +154,7 @@ and the lower layer stays in force. It never fails silently.
 
 ---
 
-## 5. Request translation (proposed, not yet reviewed)
+## 5. Request translation (accepted)
 
 The canvas composes a canonical request against the family:
 
@@ -200,7 +201,7 @@ time. These make the rules mechanical:
 - `CONTRIBUTING.md` documents the mapping format and the three-test rule for
   roles.
 
-## 7. Migration from today (proposed, not yet reviewed)
+## 7. Migration from today (accepted)
 
 - `referenceRoleSchema`: `unknown` becomes `reference` plus a `verified: false`
   flag on the slot; `motion` and the frame roles keep their names; `character`,
@@ -217,5 +218,19 @@ time. These make the rules mechanical:
 - Trained identities (Soul ID, LoRAs, saved characters) are a different
   primitive from a per-request `character` image: created once, referenced by
   id. Out of scope here, but the role list should not have to change for it.
-- Where the remote registry is hosted: this repo's `registry/` on `main`, or a
-  separate repo so it can release faster than the app.
+- Exclusive inputs within one endpoint. Some endpoints forbid certain
+  combinations of their own inputs (Seedance: a last frame "cannot be combined
+  with reference images"). The format has no exclusivity rule, so this is
+  documented and not modelled: the slot label says it, and the provider
+  rejects the run at submit with its own message. Section 5.3's dimming only
+  covers combinations no endpoint supports at all.
+
+## Decided
+
+- **Hosting.** The remote registry is this repo's `registry/` on `main`,
+  fetched from
+  `https://raw.githubusercontent.com/venkatesh-sekar/opendirect/main/registry`
+  (overridable in settings). A merged registry PR reaches users without an app
+  release, which removes the reason for a separate repo; the app still only
+  takes a copy whose `registryVersion` beats the bundled one and whose
+  `format` it reads.

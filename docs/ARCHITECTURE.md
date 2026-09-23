@@ -174,10 +174,79 @@ provider fails, the previous cache is kept rather than replaced with nothing.
 > ⛔ The catalog only ever calls free listing endpoints. So does key
 > verification.
 
-Slot **roles** (`first_frame`, `character`, `style`, …) are a closed list with
-rules for extending it, and model-to-provider field mappings are moving to a
-curated, layered registry. Both are specified in
-[`plans/2026-09-24-model-registry-design.md`](plans/2026-09-24-model-registry-design.md).
+### The model registry
+
+A descriptor says what fields a model takes; it cannot say what they *mean*.
+`start_image` is obviously a first frame, but nothing in Kling's schema says
+`elements` is a character reference. The registry supplies that meaning. The
+full design is in
+[`plans/2026-09-24-model-registry-design.md`](plans/2026-09-24-model-registry-design.md),
+and the file format is documented for contributors in
+[`CONTRIBUTING.md`](../CONTRIBUTING.md).
+
+**Roles.** Every media input has a role from one closed list of ten
+(`source`, `mask`, `first_frame`, `last_frame`, `character`, `style`,
+`structure`, `motion`, `soundtrack`, `reference`), defined in
+`packages/contract/src/roles.ts` with the rules for changing it. A role is
+meaning only and is never enforced; the slot's *kind* (image, video, audio)
+is.
+
+**Families.** The unit of a mapping is a model *family* that spans providers:
+`registry/models/<id>.json` lists its endpoints (`provider` + model slug), and
+for each one maps slot keys (a role, plus `:2`…`:9` when a role repeats) and
+the canonical controls (`prompt`, `aspect_ratio`, `duration`, …) to that
+provider's field names. The format's zod schemas and every rule over it
+(merge, endpoint choice, slot availability, translation, schema checks) are
+pure functions in `packages/contract/src/registry/`, so main and the
+renderer run the same code.
+
+**Layers.** Main builds the registry from three layers; a later layer
+replaces a family by id, wholesale:
+
+1. **Bundled**: `registry/` compiled into the app (`model-registry/bundled.ts`),
+   so it works offline.
+2. **Remote**: the same folder fetched from this repo's `main` on GitHub (URL
+   overridable in settings), cached at `<userData>/model-registry.json`, and
+   used only when its `format` is one this build reads and its
+   `registryVersion` is higher than the bundled one. It is fetched by
+   **Reload registry** or a background refresh at most once a day, never at
+   startup.
+3. **User overrides**: mappings written in Settings → Models, kept raw in the
+   settings store under `modelRegistry.overrides`, so an entry that stops
+   validating is listed with its issues rather than lost.
+
+A layer entry that fails validation is dropped with a visible warning and the
+layer below stays in force. Models no family maps keep today's name-based
+inference; their slots work but are marked **unverified** and are left out of
+capability filters unless "include unverified" is on.
+
+**Family keys.** A mapped model is picked as `family:<id>` rather than
+`provider:slug`. `models:get` answers a family key with a family descriptor,
+an ordinary `ModelDescriptor` built from the endpoint the app would choose
+(settings' provider order filtered to configured keys, or a per-node
+override, then the first endpoint that takes every connected slot). Its slots
+are keyed by slot key and its controls by canonical name, so the canvas,
+forms, mentions and batching work on it without knowing about families.
+Annotation is applied when a descriptor is read, never written into
+`model-catalog.json`, so a reload takes effect at once.
+
+**Translation point.** A request whose `modelKey` is a family key is
+translated in main, in `generations-submit.ts`, into a concrete
+`provider:slug` request with the provider's field names and values, *before*
+the `queued` row is written. What SQLite records is exactly what is sent, and
+the runner, retries and replay never see a family. An input the chosen
+endpoint cannot take, an advanced field that would overwrite a mapped one, or
+a value with no mapping is an error, never a silent drop.
+
+**Shapes.** A few providers want a nested payload rather than a URL list
+(Kling's `elements`). A mapping may only *name* a shape from `SHAPES` in
+`packages/contract/src/registry/shapes.ts`, so a remote file can never run
+code. The runner applies the shape after uploading, because only then are
+the final URLs known.
+
+> ⛔ The registry, its remote fetch and `verify:providers -- --registry` only
+> make free `GET`s. Translation adds no request; `provider.submit` in the job
+> runner is still the one paid call.
 
 ## The generation path
 
