@@ -33,6 +33,12 @@ export const queryKeys = {
   containers: {
     all: ["containers"] as const,
     tree: ["containers", "tree"] as const,
+    /**
+     * Under `containers` on purpose: every tree mutation invalidates
+     * `containers.all`, and a rename, a new reference or a delete changes a
+     * card as surely as it changes the tree.
+     */
+    summaries: ["containers", "summaries"] as const,
   },
   assets: {
     all: ["assets"] as const,
@@ -86,6 +92,9 @@ export const queryKeys = {
     all: ["generations"] as const,
     byContainer: (containerId: string, options?: PageKey) =>
       ["generations", containerId, page(options)] as const,
+    /** Every run in the open project, whatever it was filed under. */
+    project: (options?: PageKey) =>
+      ["generations", "project", page(options)] as const,
     detail: (id: string) => ["generations", "detail", id] as const,
     lineage: (id: string) => ["generations", "lineage", id] as const,
   },

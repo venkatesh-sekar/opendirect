@@ -54,6 +54,7 @@ describe("project channels", () => {
       "project:open",
       "project:choose",
       "containers:tree",
+      "containers:summaries",
       "containers:create",
       "containers:rename",
       "containers:reparent",
@@ -127,6 +128,36 @@ describe("project channels", () => {
       nextOffset: null,
     })
     expect(parsed.items[0]?.url).toMatch(/^asset:\/\//)
+  })
+
+  it("lists generations for one container or for the whole project", () => {
+    const { input } = ipcContract["generations:list"]
+    expect(input.safeParse({ containerId: "c1" }).success).toBe(true)
+    // Omitted means every run in the open project, newest first.
+    expect(input.safeParse({}).success).toBe(true)
+    expect(input.safeParse({ limit: 12 }).success).toBe(true)
+    expect(input.safeParse({ containerId: 7 }).success).toBe(false)
+  })
+
+  it("summarises containers with a nullable cover asset", () => {
+    const { input, output } = ipcContract["containers:summaries"]
+    expect(input.parse(undefined)).toBeUndefined()
+    expect(input.safeParse({ id: "c1" }).success).toBe(false)
+    const parsed = output.parse([
+      {
+        id: "c1",
+        assetCount: 0,
+        generationCount: 0,
+        coverAsset: null,
+        lastActivityAt: 1,
+      },
+    ])
+    expect(parsed[0]?.coverAsset).toBeNull()
+    expect(
+      output.safeParse([
+        { id: "c1", assetCount: 0, generationCount: 0, lastActivityAt: 1 },
+      ]).success
+    ).toBe(false)
   })
 
   it("parses a container tree recursively", () => {

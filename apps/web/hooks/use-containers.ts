@@ -11,6 +11,7 @@ import type {
   ContainerDto,
   ContainerKind,
   ContainerNodeDto,
+  ContainerSummaryDto,
   ProjectRefDto,
   RecentProjectDto,
 } from "@opendirect/contract"
@@ -78,6 +79,24 @@ export function useContainerTree(
   return useQuery({
     queryKey: queryKeys.containers.tree,
     queryFn: () => invoke("containers:tree"),
+    enabled,
+  })
+}
+
+/**
+ * Counts, cover and last activity for every container — the cards on Home and
+ * the character and scene grids.
+ *
+ * Kept fresh without a call of its own at each mutation: its key sits under
+ * `containers.all`, which every tree mutation below already invalidates, and a
+ * finished job invalidates it from `use-jobs.ts`.
+ */
+export function useContainerSummaries(
+  enabled = true
+): UseQueryResult<ContainerSummaryDto[]> {
+  return useQuery({
+    queryKey: queryKeys.containers.summaries,
+    queryFn: () => invoke("containers:summaries"),
     enabled,
   })
 }

@@ -10,12 +10,14 @@ import {
   deleteContainer,
   existingHandles,
   getContainer,
+  listContainerSummaries,
   listTree,
   renameContainer,
   reparentContainer,
   setContainerDescription,
   setContainerHandle,
 } from "./containers"
+import { createGeneration, updateStatus } from "./generations"
 
 const NOW = 1_763_000_000_000
 const PROJECT_ID = "p1"
@@ -462,5 +464,117 @@ describe("createContainerFromAsset", () => {
         now: NOW,
       })
     ).toThrow(/characters and scenes/i)
+  })
+})
+
+describe("listContainerSummaries", () => {
+  function seedAsset(
+    id: string,
+    containerId: string,
+    overrides: { kind?: string; createdAt?: number } = {}
+  ) {
+    handle.db
+      .insert(assets)
+      .values({
+        id,
+        projectId: PROJECT_ID,
+        kind: overrides.kind ?? "image",
+        relPath: `assets/2026/09/${id}.png`,
+        createdAt: overrides.createdAt ?? NOW,
+      })
+      .run()
+    handle.db.insert(containerAssets).values({ containerId, assetId: id }).run()
+    return id
+  }
+
+  function seedGeneration(containerId: string | null, now: number) {
+    return createGeneration(handle.db, {
+      projectId: PROJECT_ID,
+      containerId,
+      provider: "replicate",
+      modelSlug: "bytedance/seedance-2.5",
+      kind: "image",
+      params: {},
+      now,
+    })
+  }
+
+  function summaryOf(id: string) {
+    return listContainerSummaries(handle.db, PROJECT_ID).find(
+      (summary) => summary.id === id
+    )
+  }
+
+  it("summarises an empty container by its creation time alone", () => {
+    const empty = make("Empty")
+    expect(summaryOf(empty.id)).toEqual({
+      id: empty.id,
+      assetCount: 0,
+      generationCount: 0,
+      coverAsset: null,
+      lastActivityAt: NOW,
+    })
+  })
+
+  it("counts each container's own assets and generations", () => {
+    const a = make("A")
+    const b = make("B")
+    seedAsset("a1", a.id)
+    seedAsset("a2", a.id)
+    seedAsset("b1", b.id)
+    seedGeneration(a.id, NOW + 1)
+    seedGeneration(null, NOW + 2)
+
+    const summaries = listContainerSummaries(handle.db, PROJECT_ID)
+    expect(summaries.map((summary) => summary.id)).toEqual([a.id, b.id])
+    expect(summaryOf(a.id)).toMatchObject({ assetCount: 2, generationCount: 1 })
+    expect(summaryOf(b.id)).toMatchObject({ assetCount: 1, generationCount: 0 })
+  })
+
+  it("covers a container with its first reference image", () => {
+    const character = make("Venkz")
+    seedAsset("old", character.id, { createdAt: NOW })
+    seedAsset("new", character.id, { createdAt: NOW + 10 })
+    handle.db
+      .update(containers)
+      .set({ referenceAssetIds: ["old", "new"] })
+      .where(eq(containers.id, character.id))
+      .run()
+
+    const cover = summaryOf(character.id)?.coverAsset
+    expect(cover?.id).toBe("old")
+    // A DTO, so the renderer gets a URL rather than a path on disk.
+    expect(cover?.url).toMatch(/^asset:\/\//)
+  })
+
+  it("falls back to the newest image, skipping other kinds", () => {
+    const scene = make("Lobby")
+    seedAsset("older", scene.id, { createdAt: NOW })
+    seedAsset("newest", scene.id, { createdAt: NOW + 10 })
+    seedAsset("clip", scene.id, { kind: "video", createdAt: NOW + 20 })
+    expect(summaryOf(scene.id)?.coverAsset?.id).toBe("newest")
+  })
+
+  it("falls back when the reference image no longer exists", () => {
+    const character = make("Venkz")
+    seedAsset("kept", character.id)
+    handle.db
+      .update(containers)
+      .set({ referenceAssetIds: ["gone"] })
+      .where(eq(containers.id, character.id))
+      .run()
+    expect(summaryOf(character.id)?.coverAsset?.id).toBe("kept")
+  })
+
+  it("dates activity by the latest asset, run or completion", () => {
+    const scene = make("Lobby")
+    seedAsset("a1", scene.id, { createdAt: NOW + 5 })
+    expect(summaryOf(scene.id)?.lastActivityAt).toBe(NOW + 5)
+
+    const run = seedGeneration(scene.id, NOW + 7)
+    expect(summaryOf(scene.id)?.lastActivityAt).toBe(NOW + 7)
+
+    updateStatus(handle.db, run.id, { status: "succeeded", now: NOW + 30 })
+    expect(summaryOf(scene.id)?.lastActivityAt).toBe(NOW + 30)
   })
 })

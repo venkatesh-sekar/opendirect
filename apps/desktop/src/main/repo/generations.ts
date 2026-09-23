@@ -317,25 +317,30 @@ export interface GenerationPage {
 
 export const DEFAULT_PAGE_SIZE = 40
 
-/** A container's runs, newest first. */
+/**
+ * A container's runs, newest first — or, with no `containerId`, every run in
+ * the project. The database file belongs to one project folder, so "every
+ * row" and "the whole project" are the same set.
+ */
 export function listByContainer(
   db: ProjectDatabase,
-  input: { containerId: string; limit?: number; offset?: number }
+  input: { containerId?: string; limit?: number; offset?: number }
 ): GenerationPage {
   const limit = Math.max(1, input.limit ?? DEFAULT_PAGE_SIZE)
   const offset = Math.max(0, input.offset ?? 0)
+  const scope =
+    input.containerId === undefined
+      ? undefined
+      : eq(generations.containerId, input.containerId)
 
   const total =
-    db
-      .select({ value: count() })
-      .from(generations)
-      .where(eq(generations.containerId, input.containerId))
-      .get()?.value ?? 0
+    db.select({ value: count() }).from(generations).where(scope).get()?.value ??
+    0
 
   const rows = db
     .select()
     .from(generations)
-    .where(eq(generations.containerId, input.containerId))
+    .where(scope)
     .orderBy(desc(generations.createdAt), desc(generations.id))
     .limit(limit)
     .offset(offset)

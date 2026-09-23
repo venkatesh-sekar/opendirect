@@ -58,11 +58,13 @@ function applyUpdate(current: JobDto[] | undefined, job: JobDto): JobDto[] {
 /**
  * A finished run has produced assets, a container link and a final cost, none
  * of which the pushed job payload carries — so the views that show them are
- * invalidated rather than patched.
+ * invalidated rather than patched. That includes the container cards, whose
+ * counts, cover and last activity may all have just moved.
  */
 function invalidateForTerminalJob(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: queryKeys.generations.all })
   void client.invalidateQueries({ queryKey: queryKeys.assets.all })
+  void client.invalidateQueries({ queryKey: queryKeys.containers.summaries })
 }
 
 /**

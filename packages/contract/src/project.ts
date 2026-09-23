@@ -123,6 +123,31 @@ export const assetSchema = z.object({
 })
 export type AssetDto = z.output<typeof assetSchema>
 
+/**
+ * What a character, scene or folder card shows without opening it: how much
+ * is in it, the picture on its face and when anything last happened there.
+ *
+ * Counts are the container's own — a folder's children are not rolled up.
+ */
+export const containerSummarySchema = z.object({
+  id: z.string(),
+  /** Assets linked to this container through `container_assets`. */
+  assetCount: z.number(),
+  /** Runs filed under this container (`generations.container_id`). */
+  generationCount: z.number(),
+  /**
+   * The first reference image when one is set and still exists, otherwise the
+   * newest image in the container; null when it has no image at all.
+   */
+  coverAsset: assetSchema.nullable(),
+  /**
+   * Epoch ms of the latest of: the container's creation, a linked asset's
+   * creation, a run's submission or a run's completion.
+   */
+  lastActivityAt: z.number(),
+})
+export type ContainerSummaryDto = z.output<typeof containerSummarySchema>
+
 export const assetPageSchema = z.object({
   items: z.array(assetSchema),
   total: z.number(),

@@ -53,3 +53,26 @@ describe("mention keys", () => {
     expect(queryKeys.mentions.all[0]).not.toBe(queryKeys.assets.all[0])
   })
 })
+
+describe("project workspace keys", () => {
+  it("files container summaries under the tree's invalidatable prefix", () => {
+    // Every tree mutation invalidates `containers.all`, so the summaries are
+    // swept along with it rather than needing a second call at each site.
+    expect(queryKeys.containers.summaries[0]).toBe(queryKeys.containers.all[0])
+    expect(queryKeys.containers.summaries).not.toEqual(
+      queryKeys.containers.tree
+    )
+  })
+
+  it("keeps project-wide generation pages apart from any container's", () => {
+    expect(queryKeys.generations.project({ limit: 12 })[0]).toBe(
+      queryKeys.generations.all[0]
+    )
+    expect(queryKeys.generations.project({ offset: 0 })).not.toEqual(
+      queryKeys.generations.project({ offset: 40 })
+    )
+    expect(queryKeys.generations.project()).not.toEqual(
+      queryKeys.generations.byContainer("")
+    )
+  })
+})

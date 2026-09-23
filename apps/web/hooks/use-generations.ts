@@ -51,6 +51,26 @@ export function useGenerations(
   })
 }
 
+/**
+ * Every run in the open project, newest first, whatever container it was
+ * filed under — Home's Continue strip and the generations page.
+ */
+export function useProjectGenerations(
+  options: GenerationsPageOptions = {}
+): UseQueryResult<GenerationPageDto> {
+  return useQuery({
+    queryKey: queryKeys.generations.project({
+      limit: options.limit,
+      offset: options.offset,
+    }),
+    queryFn: () =>
+      invoke("generations:list", {
+        limit: options.limit,
+        offset: options.offset,
+      }),
+  })
+}
+
 export interface GenerationDetail {
   generation: GenerationDto
   inputs: { slotField: string; position: number; asset: AssetDto }[]

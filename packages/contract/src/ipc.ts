@@ -29,6 +29,7 @@ import {
   containerKindSchema,
   containerNodeSchema,
   containerSchema,
+  containerSummarySchema,
   generationPageSchema,
   generationSchema,
   importResultSchema,
@@ -288,6 +289,14 @@ export const ipcContract = {
   },
 
   "containers:tree": { input: z.void(), output: z.array(containerNodeSchema) },
+  /**
+   * Counts, a cover image and last activity for every container, in one
+   * query — what Home and the character and scene grids draw their cards from.
+   */
+  "containers:summaries": {
+    input: z.void(),
+    output: z.array(containerSummarySchema),
+  },
   "containers:create": {
     input: z.object({
       parentId: z.string().nullable().optional(),
@@ -458,10 +467,13 @@ export const ipcContract = {
   /**
    * Generation *records*. Submitting one only queues a row; running it is the
    * job runner's job; `jobs:list` is where its progress shows up.
+   *
+   * Leave `containerId` out for every run in the open project, newest first —
+   * Home's Continue strip and the generations page read it that way.
    */
   "generations:list": {
     input: z.object({
-      containerId: z.string(),
+      containerId: z.string().optional(),
       limit: z.number().int().min(1).max(500).optional(),
       offset: z.number().int().min(0).optional(),
     }),

@@ -225,6 +225,30 @@ describe("listByContainer", () => {
     expect(page.total).toBe(3)
     expect(page.nextOffset).toBe(2)
   })
+
+  it("lists the whole project's generations newest first when no container is given", () => {
+    const other = createContainer(opened.handle.db, {
+      projectId: opened.project.id,
+      kind: "character",
+      name: "Bellhop",
+    }).id
+    const first = make({ now: 1_000 }).id
+    const unfiled = make({ containerId: null, now: 2_000 }).id
+    const elsewhere = make({ containerId: other, now: 3_000 }).id
+
+    const page = listByContainer(opened.handle.db, {})
+    expect(page.items.map((item) => item.id)).toEqual([
+      elsewhere,
+      unfiled,
+      first,
+    ])
+    expect(page.total).toBe(3)
+    expect(page.nextOffset).toBeNull()
+
+    const firstPage = listByContainer(opened.handle.db, { limit: 2 })
+    expect(firstPage.items.map((item) => item.id)).toEqual([elsewhere, unfiled])
+    expect(firstPage.nextOffset).toBe(2)
+  })
 })
 
 describe("lineage", () => {

@@ -20,17 +20,30 @@ import {
   type ContainerDto,
   type ContainerKind,
   type ContainerNodeDto,
+  type ContainerSummaryDto,
 } from "@opendirect/contract"
-import { and, asc, eq, isNotNull, isNull, max, ne } from "drizzle-orm"
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  max,
+  ne,
+} from "drizzle-orm"
 
 import type { ProjectDatabase } from "../db/client"
 import {
   assets,
   containerAssets,
   containers,
+  generations,
   type Container,
 } from "../db/schema"
-import { addToContainer } from "./assets"
+import { addToContainer, toAssetDto } from "./assets"
 
 export interface CreateContainerInput {
   projectId: string
@@ -402,6 +415,110 @@ export function listTree(
     else roots.push(node)
   }
   return roots
+}
+
+/**
+ * Counts, cover and last activity for every container in the project, in
+ * `listContainers` order.
+ *
+ * A handful of grouped queries assembled in memory, for the same reason as
+ * `listTree`: a project has tens of containers, and a card grid wants them
+ * all at once rather than one round trip per card.
+ */
+export function listContainerSummaries(
+  db: ProjectDatabase,
+  projectId: string
+): ContainerSummaryDto[] {
+  const rows = listContainers(db, projectId)
+  const inProject = eq(containers.projectId, projectId)
+
+  const assetStats = new Map(
+    db
+      .select({
+        containerId: containerAssets.containerId,
+        total: count(),
+        latest: max(assets.createdAt),
+      })
+      .from(containerAssets)
+      .innerJoin(containers, eq(containers.id, containerAssets.containerId))
+      .innerJoin(assets, eq(assets.id, containerAssets.assetId))
+      .where(inProject)
+      .groupBy(containerAssets.containerId)
+      .all()
+      .map((row) => [row.containerId, row])
+  )
+
+  const runStats = new Map(
+    db
+      .select({
+        containerId: generations.containerId,
+        total: count(),
+        latestCreated: max(generations.createdAt),
+        latestCompleted: max(generations.completedAt),
+      })
+      .from(generations)
+      .where(
+        and(
+          eq(generations.projectId, projectId),
+          isNotNull(generations.containerId)
+        )
+      )
+      .groupBy(generations.containerId)
+      .all()
+      .map((row) => [row.containerId!, row])
+  )
+
+  // Newest image per container. Only ids here — the full rows are fetched
+  // once, below, for the few that end up on a card.
+  const newestImage = new Map<string, string>()
+  for (const row of db
+    .select({
+      containerId: containerAssets.containerId,
+      assetId: assets.id,
+    })
+    .from(containerAssets)
+    .innerJoin(containers, eq(containers.id, containerAssets.containerId))
+    .innerJoin(assets, eq(assets.id, containerAssets.assetId))
+    .where(and(inProject, eq(assets.kind, "image")))
+    .orderBy(desc(assets.createdAt), desc(assets.id))
+    .all()) {
+    if (!newestImage.has(row.containerId)) {
+      newestImage.set(row.containerId, row.assetId)
+    }
+  }
+
+  const referenced = rows
+    .map((row) => row.referenceAssetIds?.[0])
+    .filter((id): id is string => id !== undefined)
+  const candidates = [...new Set([...referenced, ...newestImage.values()])]
+  const coverRows = new Map(
+    (candidates.length === 0
+      ? []
+      : db.select().from(assets).where(inArray(assets.id, candidates)).all()
+    ).map((asset) => [asset.id, asset])
+  )
+
+  return rows.map((row) => {
+    const own = assetStats.get(row.id)
+    const runs = runStats.get(row.id)
+    // A reference that has since been deleted must not leave a blank card
+    // when the container still has other pictures.
+    const cover =
+      coverRows.get(row.referenceAssetIds?.[0] ?? "") ??
+      coverRows.get(newestImage.get(row.id) ?? "")
+    return {
+      id: row.id,
+      assetCount: own?.total ?? 0,
+      generationCount: runs?.total ?? 0,
+      coverAsset: cover ? toAssetDto(cover) : null,
+      lastActivityAt: Math.max(
+        row.createdAt,
+        own?.latest ?? 0,
+        runs?.latestCreated ?? 0,
+        runs?.latestCompleted ?? 0
+      ),
+    }
+  })
 }
 
 /** An explicit selection is scoped to this subject, never a global asset pin. */
