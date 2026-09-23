@@ -19,6 +19,7 @@ vi.mock("@/lib/ipc", () => ({
 }))
 
 const { ContainerTree } = await import("./container-tree")
+const { queryKeys } = await import("@/hooks/query-keys")
 
 const node: ContainerNodeDto = {
   id: "shelf",
@@ -94,6 +95,56 @@ describe("container delete", () => {
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith("containers:delete", { id: "shelf" })
     )
+  })
+})
+
+describe("deleting a scene with shots", () => {
+  it("counts its shots from the tree already loaded, fetching nothing", async () => {
+    const user = userEvent.setup()
+    const shot = (id: string): ContainerNodeDto => ({
+      ...node,
+      id,
+      kind: "shot",
+      parentId: "hall",
+      name: id,
+    })
+    const scene: ContainerNodeDto = {
+      ...node,
+      id: "hall",
+      name: "Hotel hallway",
+      kind: "scene",
+      handle: "hallway",
+      children: [shot("s1"), shot("s2"), shot("s3")],
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    client.setQueryData(queryKeys.containers.tree, [scene])
+    render(
+      <QueryClientProvider client={client}>
+        <DndContext>
+          <SidebarProvider>
+            {/* The sidebar's row: its shots taken out. */}
+            <ContainerTree
+              nodes={[{ ...scene, children: [] }]}
+              selectedId={null}
+              onSelect={() => {}}
+            />
+          </SidebarProvider>
+        </DndContext>
+      </QueryClientProvider>
+    )
+
+    await user.pointer({
+      keys: "[MouseRight]",
+      target: screen.getByTestId("container-row"),
+    })
+    await user.click(await screen.findByRole("menuitem", { name: /delete/i }))
+    const dialog = await screen.findByRole("alertdialog")
+    expect(dialog).toHaveTextContent(
+      "This also deletes its 3 shots (their runs stay on Generations)."
+    )
+    expect(invoke).not.toHaveBeenCalled()
   })
 })
 

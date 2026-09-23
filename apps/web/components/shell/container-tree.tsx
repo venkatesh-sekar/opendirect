@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 import { useDraggable, useDroppable } from "@dnd-kit/core"
 import type { ContainerNodeDto } from "@opendirect/contract"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -44,6 +45,8 @@ import {
   useDeleteContainer,
   useRenameContainer,
 } from "@/hooks/use-containers"
+import { queryKeys } from "@/hooks/query-keys"
+import { findContainer } from "@/lib/board/sidebar-tree"
 import type {
   ContainerDragData,
   ContainerDropData,
@@ -88,7 +91,24 @@ export function DeleteContainerDialog({
   onOpenChange,
 }: DeleteContainerDialogProps) {
   const deleteContainer = useDeleteContainer()
-  const nested = node.children.length
+  const client = useQueryClient()
+  // A sidebar row has its scene's shots taken out, but they go with it. The
+  // tree the sidebar was drawn from is already cached, so it is read, never
+  // fetched: nothing may reach main before the answer is yes.
+  const shots =
+    findContainer(
+      client.getQueryData<ContainerNodeDto[]>(queryKeys.containers.tree) ?? [],
+      node.id
+    )?.children.filter((child) => child.kind === "shot").length ?? 0
+  const nested = node.children.filter((child) => child.kind !== "shot").length
+  const also = [
+    nested > 0
+      ? `${nested} container${nested === 1 ? "" : "s"} inside it`
+      : null,
+    shots > 0
+      ? `its ${shots} shot${shots === 1 ? "" : "s"} (their runs stay on Generations)`
+      : null,
+  ].filter(Boolean)
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -96,9 +116,7 @@ export function DeleteContainerDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete “{node.name}”?</AlertDialogTitle>
           <AlertDialogDescription>
-            {nested > 0
-              ? `This also deletes ${nested} container${nested === 1 ? "" : "s"} inside it. `
-              : ""}
+            {also.length > 0 ? `This also deletes ${also.join(" and ")}. ` : ""}
             Assets stay in the project; only the container and its
             sub-containers are removed. This cannot be undone.
           </AlertDialogDescription>
