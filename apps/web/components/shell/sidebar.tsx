@@ -38,6 +38,7 @@ import { useProjectGenerations } from "@/hooks/use-generations"
 import { isJobActive, useJobs } from "@/hooks/use-jobs"
 import { buildSidebarSections } from "@/lib/board/sidebar-tree"
 import { formatUsd } from "@/lib/price"
+import { containersOfKind } from "@/lib/workspace/home"
 import {
   canvasHref,
   containerHref,
@@ -288,7 +289,11 @@ export function ProjectSidebar({
                   label="Characters"
                   icon={UserGroupIcon}
                   active={isOnRoute(pathname, "/characters/")}
-                  count={tree.data ? characters.nodes.length : null}
+                  count={
+                    tree.data
+                      ? containersOfKind(tree.data, "character").length
+                      : null
+                  }
                   hasAction
                 />
                 <SidebarMenuAction
@@ -306,7 +311,11 @@ export function ProjectSidebar({
                   label="Scenes"
                   icon={Film02Icon}
                   active={isOnRoute(pathname, "/scenes/")}
-                  count={tree.data ? scenes.nodes.length : null}
+                  count={
+                    tree.data
+                      ? containersOfKind(tree.data, "scene").length
+                      : null
+                  }
                   hasAction
                 />
                 <SidebarMenuAction

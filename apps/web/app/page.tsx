@@ -1,17 +1,11 @@
 "use client"
 
-import Link from "next/link"
+import { Home } from "@/components/workspace/home"
 
-import { canvasHref } from "@/lib/shell/routes"
-
-/** Home. The canvas moved to `/canvas/`; the sections arrive next. */
+/**
+ * Home — where opening a project lands. The canvas is at `/canvas/` now, one
+ * place among the project's others rather than its front door.
+ */
 export default function HomePage() {
-  return (
-    <main className="flex min-h-0 flex-1 flex-col gap-2 p-8">
-      <h1 className="text-sm font-semibold">Home</h1>
-      <Link href={canvasHref()} className="text-sm text-muted-foreground">
-        Open canvas
-      </Link>
-    </main>
-  )
+  return <Home />
 }

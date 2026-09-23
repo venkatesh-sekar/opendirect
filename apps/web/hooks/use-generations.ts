@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -54,6 +55,9 @@ export function useGenerations(
 /**
  * Every run in the open project, newest first, whatever container it was
  * filed under — Home's Continue strip and the generations page.
+ *
+ * A wider page keeps showing the narrower one until it arrives, so "Show
+ * more" grows the list instead of blanking it.
  */
 export function useProjectGenerations(
   options: GenerationsPageOptions = {}
@@ -68,6 +72,7 @@ export function useProjectGenerations(
         limit: options.limit,
         offset: options.offset,
       }),
+    placeholderData: keepPreviousData,
   })
 }
 
