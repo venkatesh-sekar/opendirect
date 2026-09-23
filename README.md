@@ -187,6 +187,16 @@ A scene page shows its cast (characters mentioned in the scene's runs) and its
 **shots**: an ordered storyboard where each shot keeps its versions and one
 picked take.
 
+### Prompt composer
+
+A run's prompt is built from blocks. Notes wired into the run appear inside the
+prompt as blocks you can drag to reorder or remove next to your own text, and
+that order is saved with the recipe and kept by workflow templates. **Full
+prompt** shows exactly what will be sent to the model, with each note
+highlighted, word and character counts, and Copy. Reference images are grouped
+by the model input they feed, with a +N count for overflow and an inline
+gallery to review them.
+
 ### Portable workflow templates
 
 Open “Workflow templates” on the canvas to use a starter, save a template on this

@@ -1,5 +1,18 @@
 # @opendirect/desktop
 
+## 0.2.0
+
+### Minor Changes
+
+- A new prompt composer on the canvas. Notes connected to a run now appear as
+  blocks inside its prompt, which you can drag to reorder or remove alongside
+  your own text, and saved or imported workflow templates keep that order. A
+  **Full prompt** panel shows exactly the text that will be sent to the model,
+  with each note highlighted, word and character counts, and a Copy button.
+  Reference images are grouped by the model input they feed, show a +N count when
+  there are more than fit, and open in an inline gallery. The prompt bar is now a
+  single, cleaner card whose toolbar stays on one line instead of wrapping.
+
 ## 0.1.0
 
 ### Minor Changes
