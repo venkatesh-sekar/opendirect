@@ -123,6 +123,12 @@ to *many* containers through `container_assets`, which is why dropping a card on
 a container **adds** rather than moves by default: an asset legitimately lives
 in several places and a copy is the non-destructive choice.
 
+Who is in which scene is derived, not stored. The prompt a run keeps has its
+`@mentions` already resolved into prose, so each run also records the
+containers it mentioned (`generations.mentioned_container_ids`). A scene's cast
+is the characters mentioned by runs filed under it. For older runs, where that
+column is null, it is the characters whose assets were sent as inputs.
+
 A project is a folder the user owns:
 
 ```

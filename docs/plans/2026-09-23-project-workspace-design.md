@@ -200,20 +200,22 @@ which `PromptBar` and `GenerateForm` both call; `PromptBar` does not render
 `GenerateForm`. The panel submits through `generations:submitBatch` with a
 count of 1, the canvas's path, so its runs carry a batch id. Known gaps:
 
-- "Save to" names only the container; there is no "+ scene" yet, because
-  there is no way to arrive from a scene until the scene page's cast lands.
+- "Save to" names only the container; there is no "+ scene" yet. The scene
+  page's cast (Phase 3) does not open the panel, so there is still no way to
+  arrive at a character's panel from a scene.
 - Duration, aspect ratio and resolution sit in the settings popover the
   canvas uses (plus Advanced), not in an inline row of chips.
 - References in the panel are what the prompt's mentions resolve to for the
   chosen model. They are edited on the page, not in the panel.
 
-**"Appears in" is not built, and §6.3's derivation does not work as
-written.** `generations.prompt` stores the *resolved* prompt — `@mira` is
+**"Appears in" waited for Phase 3, because §6.3's first derivation could not
+work.** `generations.prompt` stores the *resolved* prompt — `@mira` is
 already replaced by "Mira (the person in reference image 1)" or by the
-description — so no stored prompt contains `@handle`. Phase 3 will record the
-container ids a run mentioned when it is submitted and derive Cast and
-"Appears in" from those. Until then the character page has no "Appears in"
-tab and its stats line has no "in Hotel hallway, …" clause.
+description — so no stored prompt contains `@handle`. Phase 3 records the
+container ids a run mentioned when it is submitted (§6.3, as built). The
+character page now has the **Appears in** tab (the scenes as Scene cards,
+counted "3 scenes" on the tab) and the stats line ends "· in Hotel hallway,
+Rooftop at dusk" (three names, then "and N more").
 
 ## 5. Scene page (C3)
 
@@ -229,6 +231,29 @@ tab and its stats line has no "in Hotel hallway, …" clause.
   which opens the same `GenerateForm` panel with `containerId = scene`.
 - **Tabs:** **Shots** (Phase 3), **Assets**, **Canvas** (link) and **Notes**.
   Until shots ship, the first tab is **Generations**.
+
+**As built (Phase 3a).** `scene-page.tsx` replaces the placeholder. The
+character and scene pages share one frame, `SubjectPage` in
+`subject-page.tsx`: header, reference strip, tabs, the Edit button and the
+generate panel. `character-page.tsx` and `scene-page.tsx` fill in what
+differs. The scene page has:
+
+- **Open canvas** beside **Generate in scene**. **Edit** stays, because it is
+  the only way to rename a scene or change its handle.
+- **Cast** chips (avatar and name) that link to each character's page, from
+  `containers:related`. There is no "+ Add" (§6.3). An empty cast says how to
+  join it.
+- No stats line, as in the mockup.
+- Tabs **Generations**, **Assets** and **Canvas**. **Notes** is not built:
+  nothing backs it. The description is the only prose a scene has, and it is
+  already in the header.
+
+**Shots seam (Phase 3b).** `SCENE_TABS` in `lib/workspace/container-page.ts`
+gets `"shots"` first. `PageTab` and the frame's `TAB_LABELS` get it too.
+`ScenePage` draws the storyboard and the versions strip through `renderTab`,
+where `SHOTS_SEAM` marks the spot. `castByScene` in main only counts runs
+filed directly under a scene. A shot's versions are filed under the shot, so
+3b must also roll a shot's runs up into its scene's cast.
 
 **Shots (Phase 3):**
 
@@ -254,12 +279,33 @@ both sides, and registered in main.
    - Home, `/characters/` and `/scenes/` use it. Invalidate it in the same
      places `containers:tree` is invalidated, plus on `jobs:update` terminal
      states.
-3. **Cast / Appears in.** Add `containers:related {id}` with output
-   `{ characters: ContainerDto[] }` for a scene and `{ scenes: ContainerDto[] }`
-   for a character.
-   - It is derived; there is no new table. A character is "in" a scene when a
-     generation filed under that scene mentions `@handle` in its prompt. Use the
-     handle parser in `packages/contract/src/handle.ts`.
+3. **Cast / Appears in.** Add `containers:related {id}`. Its output is a union
+   on `kind`: `{ kind: "scene", characters: ContainerDto[] }` for a scene and
+   `{ kind: "character", scenes: ContainerDto[] }` for a character. Both lists
+   are in tree order. Asking about a folder or a project is an error.
+   - **As built.** A stored prompt cannot be parsed for `@handle`, because
+     mentions are resolved before a run is stored (§4.3). So submission
+     records them instead. `GenerationRequest.mentionedContainerIds` (zod,
+     nullable, default null) is filled by `useGeneratePlan` from the resolved
+     mentions, for the canvas and the panel alike. It includes a mention that
+     fell back to prose, but not a handle nobody claims. Main stores it in a
+     new nullable JSON column, `generations.mentioned_container_ids`
+     (migration `0008_adorable_human_cannonball`).
+   - A character is "in" a scene when a run filed under that scene lists it
+     in `mentioned_container_ids`. A row from before the column has null
+     there. For those rows, a character is in the scene when one of the
+     character's assets (by `container_assets`) was a
+     `generation_inputs` row of the run. A recorded list, even an empty
+     one, beats the inputs. `castByScene` in `repo/containers.ts` does this
+     in two queries for the whole project.
+   - Scene cards need the cast for every scene at once, so
+     `containers:summaries` also carries `castIds` (empty for anything but a
+     scene). That avoids one `containers:related` call per card, and the
+     summaries are already refreshed at the same moments.
+   - The renderer refreshes `containers.related` wherever it refreshes the
+     summaries (`invalidateContainerFacts`): on submit, on a terminal job and
+     on an asset import, link or unlink (links matter for old rows). Tree
+     mutations reach it through `containers.all`.
    - "+ Add" on Cast needs to be explicit, so an explicit
      `cast_ids` JSON column on scene containers will be needed when that
      button is built. Leave it out of v1 and hide "+ Add".
@@ -273,7 +319,9 @@ both sides, and registered in main.
    - Shots are not `@`-mentionable (null handle), and `buildSidebarSections`
      must skip them.
 
-No other schema changes are needed.
+No other schema changes are needed beyond
+`generations.mentioned_container_ids` (6.3, as built) and 6.4's
+`picked_asset_id`.
 
 ## 7. Phases
 
