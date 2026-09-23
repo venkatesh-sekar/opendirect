@@ -78,7 +78,7 @@ import {
 import {
   reconcileBlocks,
   renderPromptBlocks,
-  replaceText,
+  type DraftBlock,
 } from "@/lib/canvas/prompt-blocks"
 import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
 import type { IconGrid } from "@/lib/canvas/icon-grid"
@@ -179,6 +179,34 @@ export function seedPromptDraft(
     modelKey: seed.modelKey,
   })
   emit()
+}
+
+/**
+ * The single prompt field's text, written back into a draft.
+ *
+ * A legacy draft keeps only `prompt`, exactly as before blocks. A draft whose
+ * blocks order its notes gets `text` in its first text block and loses the
+ * others — the field shows them joined — so a note keeps its place relative to
+ * the start of the user's words. `prompt` is kept exactly as typed, trailing
+ * space and all, since it is the field's value.
+ */
+function withPromptText(
+  current: PromptDraft,
+  text: string,
+  noteIds: readonly string[]
+): PromptDraft {
+  if (current.blocks === undefined) return { ...current, prompt: text }
+  const base = reconcileBlocks({
+    blocks: current.blocks,
+    prompt: current.prompt,
+    noteIds,
+  })
+  const first = base.findIndex((block) => block.kind === "text")
+  const blocks = base.flatMap((block, index): DraftBlock[] => {
+    if (block.kind !== "text") return [block]
+    return index === first ? [{ ...block, text }] : []
+  })
+  return { ...current, prompt: text, blocks }
 }
 
 /** Test seam: a fresh canvas between tests must not inherit yesterday's draft. */
@@ -309,19 +337,6 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const aiTools = useAiTools()
   const ai = useAiHelper()
 
-  const appendToPrompt = useCallback(
-    (text: string) => {
-      updateDraft((current) => ({
-        ...current,
-        prompt:
-          current.prompt.trim() === ""
-            ? text
-            : `${current.prompt.trimEnd()}, ${text}`,
-      }))
-    },
-    [updateDraft]
-  )
-
   const split = useMemo(
     () => (descriptor ? splitSchema(descriptor) : null),
     [descriptor]
@@ -392,6 +407,27 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const rendered = useMemo(
     () => renderPromptBlocks(blocks, notesById),
     [blocks, notesById]
+  )
+
+  /**
+   * The one way the prompt field's text changes — typing, Apply and Insert —
+   * so a draft whose blocks order its notes never sends stale text.
+   */
+  const setPromptText = useCallback(
+    (edit: (prompt: string) => string) => {
+      updateDraft((current) =>
+        withPromptText(current, edit(current.prompt), noteIds)
+      )
+    },
+    [noteIds, updateDraft]
+  )
+
+  const appendToPrompt = useCallback(
+    (text: string) =>
+      setPromptText((prompt) =>
+        prompt.trim() === "" ? text : `${prompt.trimEnd()}, ${text}`
+      ),
+    [setPromptText]
   )
 
   /**
@@ -697,29 +733,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           placeholder="Describe what you want…"
           rows={1}
           value={draft.prompt}
-          onChange={(prompt) => {
-            if (draft.blocks === undefined) {
-              updateDraft((current) => ({ ...current, prompt }))
-              return
-            }
-            // A recipe that already orders its notes (an imported workflow)
-            // must send what is typed here too. This one field shows every
-            // text block joined, so it writes them back as one, after the
-            // notes — and keeps `prompt` exactly as typed, trailing space and
-            // all, since it is this field's value.
-            updateDraft((current) => ({
-              ...current,
-              prompt,
-              blocks: replaceText(
-                reconcileBlocks({
-                  blocks: current.blocks,
-                  prompt: current.prompt,
-                  noteIds,
-                }),
-                prompt
-              ),
-            }))
-          }}
+          onChange={(prompt) => setPromptText(() => prompt)}
           subjects={subjects}
           className="max-h-32 min-h-9 w-full resize-none py-2"
         />
@@ -871,7 +885,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         controller={ai}
         onApply={
           ai.helper === "improve-prompt"
-            ? (text) => updateDraft((current) => ({ ...current, prompt: text }))
+            ? (text) => setPromptText(() => text)
             : undefined
         }
         applyLabel="Use this prompt"

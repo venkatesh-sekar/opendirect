@@ -967,9 +967,109 @@ describe("saved prompts and unknown pricing", () => {
       await user.click(run)
 
       await waitFor(() => expect(submissions()).toHaveLength(1))
-      const sent = submissions()[0]![1] as { request: { prompt: string } }
-      expect(sent.request.prompt).toContain("at dusk, slowly")
-      expect(sent.request.prompt).toContain("a bellhop opens the lift")
+      expect(submissions()[0]![1]).toMatchObject({
+        // The note stays after the user's words, where the recipe put it.
+        request: { prompt: "at dusk, slowly\n\na bellhop opens the lift" },
+      })
+    })
+
+    /** The recipe Save prompt wrote, parsed. */
+    function savedRecipe() {
+      const saved = invoke.mock.calls
+        .filter(
+          ([channel, payload]) =>
+            channel === "canvas:node:update" &&
+            (payload as { patch: { text?: string } }).patch.text
+        )
+        .at(-1)
+      return saved
+        ? JSON.parse((saved[1] as { patch: { text: string } }).patch.text)
+        : undefined
+    }
+
+    it("sends and saves an applied AI prompt", async () => {
+      const user = userEvent.setup()
+      renderBar(WIRED, ORDERED)
+
+      await user.click(
+        await screen.findByRole("button", { name: "AI helpers" })
+      )
+      await user.click(
+        await screen.findByRole("button", { name: /improve prompt/i })
+      )
+      await user.click(
+        await screen.findByRole("button", { name: "Use this prompt" })
+      )
+      await waitFor(() =>
+        expect(screen.queryByTestId("ai-result-text")).not.toBeInTheDocument()
+      )
+
+      const run = await screen.findByRole("button", { name: "Run" })
+      await waitFor(() => expect(run).toBeEnabled())
+      await user.click(run)
+      await waitFor(() => expect(submissions()).toHaveLength(1))
+      expect(submissions()[0]![1]).toMatchObject({
+        request: {
+          prompt:
+            "a bellhop opens the lift, slowly\n\na bellhop opens the lift",
+        },
+      })
+
+      await user.click(screen.getByRole("button", { name: "Save prompt" }))
+      await waitFor(() => expect(savedRecipe()).toBeDefined())
+      expect(savedRecipe()).toMatchObject({
+        prompt: "a bellhop opens the lift, slowly",
+        blocks: [
+          { kind: "text", text: "a bellhop opens the lift, slowly" },
+          { kind: "note", nodeId: "note" },
+          { kind: "text", text: "" },
+        ],
+      })
+    })
+
+    it("sends and saves an inserted shot", async () => {
+      const served = invoke.getMockImplementation()!
+      invoke.mockImplementation(
+        async (channel: IpcChannel, payload: unknown) =>
+          channel === "ai:run"
+            ? { text: "Two shots.", shots: ["a slow push-in"], tool: "claude" }
+            : served(channel, payload)
+      )
+      const user = userEvent.setup()
+      renderBar(WIRED, ORDERED)
+
+      await user.click(
+        await screen.findByRole("button", { name: "AI helpers" })
+      )
+      await user.click(
+        await screen.findByRole("button", { name: /suggest shots/i })
+      )
+      await user.click(await screen.findByRole("button", { name: "Insert" }))
+      await user.keyboard("{Escape}")
+      await waitFor(() =>
+        expect(screen.queryByTestId("ai-result-text")).not.toBeInTheDocument()
+      )
+
+      const run = await screen.findByRole("button", { name: "Run" })
+      await waitFor(() => expect(run).toBeEnabled())
+      await user.click(run)
+      await waitFor(() => expect(submissions()).toHaveLength(1))
+      expect(submissions()[0]![1]).toMatchObject({
+        request: {
+          prompt: "at dusk, a slow push-in\n\na bellhop opens the lift",
+        },
+      })
+
+      await user.click(screen.getByRole("button", { name: "Save prompt" }))
+      await waitFor(() => expect(savedRecipe()).toBeDefined())
+      expect(savedRecipe()).toMatchObject({
+        prompt: "at dusk, a slow push-in",
+        blocks: [
+          { kind: "text", text: "at dusk, a slow push-in" },
+          { kind: "note", nodeId: "note" },
+          { kind: "text", text: "" },
+        ],
+      })
     })
   })
 
