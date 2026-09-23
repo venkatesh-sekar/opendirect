@@ -920,6 +920,64 @@ describe("shots", () => {
     ).toBe(v1)
   })
 
+  it("rolls its runs and activity up into its scene's summary", () => {
+    const hall = scene()
+    const one = shot(hall.id)
+    const two = shot(hall.id)
+    const runIn = (containerId: string, now: number) =>
+      createGeneration(handle.db, {
+        projectId: PROJECT_ID,
+        containerId,
+        provider: "replicate",
+        modelSlug: "bytedance/seedance-2.5",
+        kind: "video",
+        params: {},
+        now,
+      })
+    runIn(hall.id, NOW + 1)
+    runIn(one.id, NOW + 2)
+    const last = runIn(two.id, NOW + 3)
+    updateStatus(handle.db, last.id, { status: "succeeded", now: NOW + 50 })
+
+    const summaries = listContainerSummaries(handle.db, PROJECT_ID)
+    const of = (id: string) => summaries.find((entry) => entry.id === id)!
+    expect(of(hall.id)).toMatchObject({
+      generationCount: 3,
+      lastActivityAt: NOW + 50,
+      // Assets are the scene's own library, which the Assets tab lists.
+      assetCount: 0,
+    })
+    expect(of(one.id).generationCount).toBe(1)
+    expect(of(two.id).generationCount).toBe(1)
+  })
+
+  it("covers a scene with no picture of its own from its shots", () => {
+    const hall = scene()
+    const one = shot(hall.id)
+    const two = shot(hall.id)
+    const coverOf = () =>
+      listContainerSummaries(handle.db, PROJECT_ID).find(
+        (entry) => entry.id === hall.id
+      )?.coverAsset?.id
+    const at = (id: string, containerId: string, createdAt: number) => {
+      handle.db
+        .insert(assets)
+        .values({ id, projectId: PROJECT_ID, kind: "image", createdAt })
+        .run()
+      addToContainer(handle.db, { containerId, assetId: id })
+    }
+    at("one-old", one.id, NOW + 1)
+    at("two-new", two.id, NOW + 2)
+    // The newest picture across its shots…
+    expect(coverOf()).toBe("two-new")
+    // …but a pick beats it,
+    setContainerPick(handle.db, one.id, "one-old")
+    expect(coverOf()).toBe("one-old")
+    // and the scene's own picture beats both.
+    at("own", hall.id, NOW)
+    expect(coverOf()).toBe("own")
+  })
+
   it("goes with its scene", () => {
     const hall = scene()
     shot(hall.id)

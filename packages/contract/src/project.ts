@@ -139,13 +139,17 @@ export type AssetDto = z.output<typeof assetSchema>
  * What a character, scene or folder card shows without opening it: how much
  * is in it, the picture on its face and when anything last happened there.
  *
- * Counts are the container's own — a folder's children are not rolled up.
+ * Counts are the container's own — a folder's children are not rolled up —
+ * except that a scene's runs, activity and fallback cover include its shots'.
  */
 export const containerSummarySchema = z.object({
   id: z.string(),
   /** Assets linked to this container through `container_assets`. */
   assetCount: z.number(),
-  /** Runs filed under this container (`generations.container_id`). */
+  /**
+   * Runs filed under this container (`generations.container_id`), and for a
+   * scene under its shots too.
+   */
   generationCount: z.number(),
   /**
    * The first reference image when one is set and still exists, otherwise the

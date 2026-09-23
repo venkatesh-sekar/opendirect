@@ -634,7 +634,8 @@ export function listRelated(
 
 /**
  * Counts, cover and last activity for every container in the project, in
- * `listContainers` order.
+ * `listContainers` order. A scene's runs, activity and (failing its own)
+ * cover include its shots'.
  *
  * A handful of grouped queries assembled in memory, for the same reason as
  * `listTree`: a project has tens of containers, and a card grid wants them
@@ -686,10 +687,12 @@ export function listContainerSummaries(
   // Every linked image per container, newest first. Only ids here — the full
   // rows are fetched once, below, for the one per card that becomes its cover.
   const linkedImages = new Map<string, string[]>()
+  const imageCreatedAt = new Map<string, number>()
   for (const row of db
     .select({
       containerId: containerAssets.containerId,
       assetId: assets.id,
+      createdAt: assets.createdAt,
     })
     .from(containerAssets)
     .innerJoin(containers, eq(containers.id, containerAssets.containerId))
@@ -700,6 +703,21 @@ export function listContainerSummaries(
     const list = linkedImages.get(row.containerId) ?? []
     list.push(row.assetId)
     linkedImages.set(row.containerId, list)
+    imageCreatedAt.set(row.assetId, row.createdAt)
+  }
+
+  // A scene's shots, in order. Their runs are the scene's work too, so the
+  // scene's card counts them and dates itself by them, and wears one of their
+  // pictures when it has none of its own. Assets are not rolled up: a
+  // scene's asset count is its own library, the one its Assets tab lists.
+  const kindOf = new Map(rows.map((row) => [row.id, row.kind]))
+  const shotsOf = new Map<string, ContainerDto[]>()
+  for (const row of rows) {
+    if (row.kind !== "shot" || row.parentId === null) continue
+    if (kindOf.get(row.parentId) !== "scene") continue
+    const list = shotsOf.get(row.parentId) ?? []
+    list.push(row)
+    shotsOf.set(row.parentId, list)
   }
 
   // The first reference still linked here, else the newest image. Unlinking an
@@ -720,6 +738,24 @@ export function listContainerSummaries(
       linked[0]
     if (id !== undefined) coverIds.set(row.id, id)
   }
+  // A scene with no picture of its own: its first picked shot image, else
+  // the newest image any of its shots has.
+  for (const [sceneId, shots] of shotsOf) {
+    if (coverIds.has(sceneId)) continue
+    const picked = shots.find(
+      (shot) =>
+        shot.pickedAssetId &&
+        linkedImages.get(shot.id)?.includes(shot.pickedAssetId)
+    )?.pickedAssetId
+    const newest = shots
+      .map((shot) => linkedImages.get(shot.id)?.[0])
+      .filter((id): id is string => id !== undefined)
+      .sort(
+        (a, b) => (imageCreatedAt.get(b) ?? 0) - (imageCreatedAt.get(a) ?? 0)
+      )[0]
+    const id = picked ?? newest
+    if (id) coverIds.set(sceneId, id)
+  }
   const casts = castByScene(db, projectId, rows)
   const candidates = [...new Set(coverIds.values())]
   const coverRows = new Map(
@@ -731,18 +767,19 @@ export function listContainerSummaries(
 
   return rows.map((row) => {
     const own = assetStats.get(row.id)
-    const runs = runStats.get(row.id)
     const cover = coverRows.get(coverIds.get(row.id) ?? "")
+    const work = [row, ...(shotsOf.get(row.id) ?? [])]
+    const runs = work.map((one) => runStats.get(one.id))
     return {
       id: row.id,
       assetCount: own?.total ?? 0,
-      generationCount: runs?.total ?? 0,
+      generationCount: runs.reduce((sum, one) => sum + (one?.total ?? 0), 0),
       coverAsset: cover ? toAssetDto(cover) : null,
       lastActivityAt: Math.max(
         row.createdAt,
-        own?.latest ?? 0,
-        runs?.latestCreated ?? 0,
-        runs?.latestCompleted ?? 0
+        ...work.map((one) => assetStats.get(one.id)?.latest ?? 0),
+        ...runs.map((one) => one?.latestCreated ?? 0),
+        ...runs.map((one) => one?.latestCompleted ?? 0)
       ),
       castIds: casts.get(row.id) ?? [],
     }
