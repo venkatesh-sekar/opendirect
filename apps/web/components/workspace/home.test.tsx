@@ -48,6 +48,8 @@ type Responses = Record<string, unknown>
 
 function mount(responses: Responses) {
   invoke.mockImplementation((channel: string, input: unknown) => {
+    if (responses[channel] instanceof Error)
+      return Promise.reject(responses[channel])
     if (channel === "containers:create")
       return Promise.resolve(
         container({
@@ -159,6 +161,20 @@ describe("Home", () => {
       screen.getByRole("button", { name: /create your first scene/i })
     ).toBeVisible()
     expect(screen.getByText(/nothing generating/i)).toBeInTheDocument()
+  })
+
+  /** A failed read is not an empty project, and must not say it is. */
+  it("says the strip failed to load instead of claiming nothing was generated", async () => {
+    mount({
+      ...EMPTY,
+      "generations:list": new Error("The project database is locked"),
+    })
+
+    const strip = await screen.findByRole("region", { name: "Continue" })
+    expect(await within(strip).findByRole("alert")).toHaveTextContent(
+      "The project database is locked"
+    )
+    expect(within(strip).queryByText(/nothing generated yet/i)).toBeNull()
   })
 
   it("opens the canvas from the top bar", async () => {

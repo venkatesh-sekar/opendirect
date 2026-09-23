@@ -134,6 +134,10 @@ export function Home() {
         >
           {generations.isPending ? (
             <StripSkeleton />
+          ) : generations.error ? (
+            <p role="alert" className="text-sm text-destructive">
+              Could not load recent generations: {generations.error.message}
+            </p>
           ) : tiles.length === 0 ? (
             <EmptySection
               title="Nothing generated yet"
