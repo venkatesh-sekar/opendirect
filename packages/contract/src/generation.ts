@@ -17,6 +17,7 @@ import {
   pricingBasisSchema,
   pricingSourceSchema,
 } from "./model"
+import { providerIdSchema } from "./provider"
 
 /**
  * One asset in one reference slot. `position` is explicit because order is
@@ -68,6 +69,17 @@ export const generationRequestSchema = z.object({
    * "mentioned nobody", which is an empty list.
    */
   mentionedContainerIds: z.array(z.string().min(1)).nullable().default(null),
+  /**
+   * A family request's per-node provider override; null means the settings
+   * order. Ignored for a `provider:slug` key, which already names one.
+   */
+  providerOverride: providerIdSchema.nullable().default(null),
+  /**
+   * Set by main on the translated request: which family this concrete run
+   * came from. A family key never reaches the `queued` row — main rewrites
+   * it to the endpoint it chose — so this is how the row remembers it.
+   */
+  familyId: z.string().nullable().default(null),
 })
 export type GenerationRequest = z.output<typeof generationRequestSchema>
 

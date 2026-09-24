@@ -13,11 +13,11 @@
  */
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 
 import type { JobDto } from "@opendirect/contract"
 import { HttpResponse, http } from "msw"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { server } from "../../../../../test/msw/server"
 import { createProject, openProject, type OpenProject } from "../project"
@@ -706,6 +706,114 @@ describe("references", () => {
     expect(provider.submissions[0]!.params.image).toMatch(
       /^data:image\/png;base64,/
     )
+  })
+})
+
+/**
+ * Named shapes (design §3): a mapped slot may say its URLs go out nested.
+ * They run here, after upload, because only then are the final URLs known.
+ */
+describe("shapes", () => {
+  async function twoAssets() {
+    const paths = await Promise.all(
+      ["front.png", "side.png"].map(async (name, index) => {
+        const path = join(root, name)
+        // Distinct bytes, or the import would dedupe them into one asset.
+        await writeFile(path, Buffer.from([137, 80, 78, 71, index]))
+        return path
+      })
+    )
+    const imported = await importFiles(
+      { db: opened.handle.db, project: opened.project },
+      { paths, containerId }
+    )
+    return imported.assets
+  }
+
+  /** The URL `uploading` hands back for an asset. */
+  function urlOf(asset: { relPath: string | null }) {
+    return `https://api.replicate.com/v1/files/${basename(asset.relPath!)}`
+  }
+
+  function uploading(provider: FakeProvider) {
+    provider.uploadReference = async (input) =>
+      `https://api.replicate.com/v1/files/${input.filename}`
+    return provider
+  }
+
+  it("applies the slot's shape to its URLs, in position order", async () => {
+    const [front, side] = await twoAssets()
+    const provider = uploading(
+      fakeProvider({ states: [{ status: "succeeded" }] })
+    )
+    // Written out of order: position, not insertion, decides the frontal photo.
+    const generation = queued({
+      inputs: [
+        { assetId: side!.id, slotField: "elements", position: 1 },
+        { assetId: front!.id, slotField: "elements", position: 0 },
+      ],
+    })
+    build(provider, {
+      getModel: async () => ({
+        referenceSlots: [
+          {
+            field: "elements",
+            label: "Characters",
+            multiple: true,
+            shape: "kling-elements",
+          },
+        ],
+      }),
+    }).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(provider.submissions[0]!.params.elements).toEqual([
+      {
+        frontal_image_url: urlOf(front!),
+        reference_image_urls: [urlOf(side!)],
+      },
+    ])
+    // What is recorded is for people: the asset marks, never the shape.
+    const recorded = JSON.parse(
+      getGeneration(opened.handle.db, generation.id)!.requestJson!
+    ) as Record<string, unknown>
+    expect(recorded.elements).toEqual([
+      { assetId: front!.id, slot: "elements" },
+      { assetId: side!.id, slot: "elements" },
+    ])
+  })
+
+  it("fails a shape this version does not have before anything is paid for", async () => {
+    const [front] = await twoAssets()
+    const provider = uploading(
+      fakeProvider({ states: [{ status: "succeeded" }] })
+    )
+    const submit = vi.spyOn(provider, "submit")
+    const generation = queued({
+      inputs: [{ assetId: front!.id, slotField: "elements", position: 0 }],
+    })
+    build(provider, {
+      getModel: async () => ({
+        referenceSlots: [
+          {
+            field: "elements",
+            label: "Characters",
+            multiple: true,
+            shape: "from-the-future",
+          },
+        ],
+      }),
+    }).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(submit).not.toHaveBeenCalled()
+    const failed = getGeneration(opened.handle.db, generation.id)!
+    expect(failed.status).toBe("failed")
+    expect(failed.error).toBe(
+      "This model's mapping names a shape (from-the-future) this version of OpenDirect does not have. Update the app or remove the mapping."
+    )
+    // Terminal: no retry, no backoff.
+    expect(waits).toEqual([])
   })
 })
 

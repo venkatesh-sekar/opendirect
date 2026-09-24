@@ -435,6 +435,23 @@ describe("generation submission", () => {
     ).toBe(false)
   })
 
+  it("carries a family run's provider override, and no family until main sets one", () => {
+    const { input } = ipcContract["generations:submit"]
+    const parsed = input.parse(request)
+    expect(parsed.providerOverride).toBeNull()
+    expect(parsed.familyId).toBeNull()
+    expect(
+      input.parse({
+        ...request,
+        modelKey: "family:seedance-2-5",
+        providerOverride: "openrouter",
+      }).providerOverride
+    ).toBe("openrouter")
+    expect(
+      input.safeParse({ ...request, providerOverride: "fal" }).success
+    ).toBe(false)
+  })
+
   it("rejects a request with no model", () => {
     expect(
       ipcContract["generations:submit"].input.safeParse({

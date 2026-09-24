@@ -107,6 +107,8 @@ function request(
     parentGenerationId: null,
     batchId: null,
     mentionedContainerIds: null,
+    providerOverride: null,
+    familyId: null,
     ...overrides,
   }
 }

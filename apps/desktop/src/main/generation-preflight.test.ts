@@ -52,6 +52,8 @@ const request: GenerationRequest = {
   parentGenerationId: null,
   batchId: null,
   mentionedContainerIds: null,
+  providerOverride: null,
+  familyId: null,
 }
 function provider(configured = true) {
   const validateSpend = vi.fn(async () => {})

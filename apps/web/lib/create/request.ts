@@ -25,6 +25,7 @@ import type {
   GenerationReference,
   GenerationRequest,
   ModelDescriptor,
+  ProviderId,
 } from "@opendirect/contract"
 
 import {
@@ -61,6 +62,11 @@ export interface BuildRequestInput {
    * out, it is null — "not recorded" — rather than "mentioned nobody".
    */
   mentionedContainerIds?: string[] | null
+  /**
+   * A family node's provider override; null (the default) runs it on the
+   * settings order. Main ignores it for a `provider:slug` key.
+   */
+  providerOverride?: ProviderId | null
 }
 
 /** True for a value the user has actually supplied. */
@@ -117,6 +123,9 @@ export function buildGenerationRequest(
     parentGenerationId: input.parentGenerationId ?? null,
     batchId: input.batchId ?? null,
     mentionedContainerIds: input.mentionedContainerIds ?? null,
+    providerOverride: input.providerOverride ?? null,
+    // Main's to set, on the request it translates from a family key.
+    familyId: null,
   }
 }
 

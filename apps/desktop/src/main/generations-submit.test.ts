@@ -2,11 +2,18 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import type { GenerationRequest, ModelDescriptor } from "@opendirect/contract"
+import {
+  familyKey,
+  mergeRegistry,
+  type GenerationRequest,
+  type ModelDescriptor,
+} from "@opendirect/contract"
 import sharp from "sharp"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { submitBatch, submitGeneration } from "./generations-submit"
+import { BUNDLED_FAMILIES } from "./model-registry/bundled"
+import { translateSubmission } from "./model-registry/translate-submit"
 import { createProject, openProject, type OpenProject } from "./project"
 import { importFiles } from "./repo/assets"
 import { createContainer } from "./repo/containers"
@@ -83,6 +90,8 @@ function request(
     parentGenerationId: null,
     batchId: null,
     mentionedContainerIds: null,
+    providerOverride: null,
+    familyId: null,
     ...overrides,
   }
 }
@@ -437,5 +446,112 @@ describe("submission validation", () => {
     ).rejects.toThrow("Spending limit")
     expect(preflight).toHaveBeenCalledOnce()
     expect(listByContainer(opened.handle.db, { containerId }).total).toBe(0)
+  })
+})
+
+/**
+ * A `family:<id>` request is translated before anything else happens, so the
+ * row — and the runner, and a replay — only ever see the concrete endpoint.
+ * ⛔ A request that cannot be translated leaves no row behind.
+ */
+describe("family requests", () => {
+  const registry = mergeRegistry([
+    { source: "bundled", entries: BUNDLED_FAMILIES },
+  ])
+
+  function familyDeps(
+    configured: ("replicate" | "openrouter")[] = ["replicate"]
+  ) {
+    const catalog = deps()
+    return {
+      ...catalog,
+      translate: vi.fn((request: GenerationRequest) =>
+        translateSubmission(request, {
+          family: (id) =>
+            registry.families.find((entry) => entry.family.id === id) ?? null,
+          configured: () => configured,
+          providerOrder: () => ["replicate", "openrouter"],
+          getModel: catalog.getModel,
+        })
+      ),
+    }
+  }
+
+  function familyRequest(overrides: Partial<GenerationRequest> = {}) {
+    return request({
+      modelKey: familyKey("seedance-2-5"),
+      params: { prompt: "a bellhop opens the lift", duration: 5 },
+      references: [{ slotField: "reference", assetId, position: 0 }],
+      ...overrides,
+    })
+  }
+
+  function rows() {
+    return listByContainer(opened.handle.db, { containerId }).total
+  }
+
+  it("records the concrete endpoint's run, translated", async () => {
+    const generation = await submitGeneration(
+      context(),
+      familyDeps(),
+      familyRequest()
+    )
+
+    expect(generation.status).toBe("queued")
+    expect(generation.provider).toBe("replicate")
+    expect(generation.modelSlug).toBe("bytedance/seedance-2.5")
+    expect(JSON.parse(generation.requestJson!)).toMatchObject({
+      modelKey: "replicate:bytedance/seedance-2.5",
+      familyId: "seedance-2-5",
+      references: [{ slotField: "reference_images", assetId, position: 0 }],
+    })
+    expect(listInputs(opened.handle.db, generation.id)).toEqual([
+      expect.objectContaining({ slotField: "reference_images", position: 0 }),
+    ])
+  })
+
+  it("translates a batch once, then plans it on the concrete model", async () => {
+    const d = familyDeps()
+    const batch = await submitBatch(context(), d, familyRequest(), 2)
+
+    expect(d.translate).toHaveBeenCalledOnce()
+    expect(batch.generations).toHaveLength(2)
+    for (const generation of batch.generations) {
+      expect(generation.modelSlug).toBe("bytedance/seedance-2.5")
+      expect(JSON.parse(generation.requestJson!).familyId).toBe("seedance-2-5")
+    }
+  })
+
+  it("writes no row when the request cannot be translated", async () => {
+    const before = rows()
+    await expect(
+      submitGeneration(
+        context(),
+        familyDeps(),
+        familyRequest({
+          references: [{ slotField: "character", assetId, position: 0 }],
+        })
+      )
+    ).rejects.toThrow(/Character/)
+    await expect(
+      submitBatch(context(), familyDeps([]), familyRequest(), 3)
+    ).rejects.toThrow(/No configured provider/)
+    expect(rows()).toBe(before)
+  })
+
+  it("still refuses a family key when nothing can translate it", async () => {
+    await expect(
+      submitGeneration(context(), deps(), familyRequest())
+    ).rejects.toThrow(/not a catalog model key/)
+    expect(rows()).toBe(0)
+  })
+
+  it("hands a concrete request through untouched", async () => {
+    const d = familyDeps()
+    const concrete = request()
+    await submitGeneration(context(), d, concrete)
+
+    expect(await d.translate.mock.results[0]!.value).toBe(concrete)
+    expect(d.getModel).toHaveBeenCalledOnce()
   })
 })

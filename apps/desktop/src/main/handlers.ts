@@ -16,11 +16,18 @@
  */
 import { dialog, shell } from "electron"
 
+import type { ModelDescriptor } from "@opendirect/contract"
+
 import { registerCanvasHandlers } from "./canvas-service"
-import { submitBatch, submitGeneration } from "./generations-submit"
+import {
+  submitBatch,
+  submitGeneration,
+  type SubmitDeps,
+} from "./generations-submit"
 import { getJobRunner } from "./jobs-service"
 import { estimateFor } from "./model-registry/family-descriptor"
 import { annotatedModel, modelSource } from "./model-registry/registry-service"
+import { translateSubmission } from "./model-registry/translate-submit"
 import type { IpcRegistrar } from "./ipc-registry"
 import type { ProjectDatabase } from "./db/client"
 import type { ProjectRef } from "./project"
@@ -74,6 +81,38 @@ function requireProject(): OpenContext {
   const current = getCurrentProject()
   if (!current) throw new Error("No project is open")
   return { db: current.handle.db, project: current.project }
+}
+
+/**
+ * What one submission needs: the annotated catalog (fresh — a submit must
+ * not run against a stale schema), account preflight, and family
+ * translation with the live registry, keys and provider order.
+ *
+ * The descriptor is fetched once per key per submission, so translation and
+ * validation read the very same schema — and a family run costs one free
+ * `GET`, like a concrete one.
+ */
+function submitDeps(): Required<SubmitDeps> {
+  const fetched = new Map<string, Promise<ModelDescriptor>>()
+  const getModel = (key: string) => {
+    let descriptor = fetched.get(key)
+    if (descriptor === undefined) {
+      descriptor = annotatedModel(key, { refresh: true })
+      fetched.set(key, descriptor)
+    }
+    return descriptor
+  }
+  return {
+    getModel,
+    preflight: preflightGeneration,
+    translate: (request) =>
+      translateSubmission(request, {
+        family: (id) => modelSource.registry().family(id),
+        configured: () => modelSource.catalog().configuredProviders(),
+        providerOrder: () => modelSource.settings().providerOrder,
+        getModel,
+      }),
+  }
 }
 
 /** File types the import dialog offers. Dropping a file is not filtered. */
@@ -304,10 +343,7 @@ export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
     const { db, project } = requireProject()
     const generation = await submitGeneration(
       { db, project },
-      {
-        getModel: (key) => annotatedModel(key, { refresh: true }),
-        preflight: preflightGeneration,
-      },
+      submitDeps(),
       request
     )
 
@@ -341,10 +377,7 @@ export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
     const { db, project } = requireProject()
     const batch = await submitBatch(
       { db, project },
-      {
-        getModel: (key) => annotatedModel(key, { refresh: true }),
-        preflight: preflightGeneration,
-      },
+      submitDeps(),
       request,
       count
     )

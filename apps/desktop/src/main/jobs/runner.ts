@@ -34,7 +34,13 @@
 import { readFile } from "node:fs/promises"
 import { basename } from "node:path"
 
-import type { JobDto, JobState, ProviderId } from "@opendirect/contract"
+import {
+  applyShape,
+  isShapeName,
+  type JobDto,
+  type JobState,
+  type ProviderId,
+} from "@opendirect/contract"
 import PQueue from "p-queue"
 
 import { contentTypeFor } from "../media"
@@ -107,7 +113,30 @@ class DownloadFailure extends TerminalJobError {
 
 /** What a run needs to know about the model beyond what its row records. */
 export interface RunnerModelShape {
-  referenceSlots: { field: string; label: string; multiple: boolean }[]
+  referenceSlots: {
+    field: string
+    label: string
+    multiple: boolean
+    /**
+     * A named payload shape from the slot's mapping (design §3), applied to
+     * the uploaded URLs. Null or absent: the plain URL, or the list of them.
+     */
+    shape?: string | null
+  }[]
+}
+
+/**
+ * A mapping (say, a newer remote registry) that names a shape this build
+ * does not ship. Terminal, and thrown before the submit: sending the URLs
+ * unshaped would pay for a run that ignores what the mapping meant.
+ */
+class UnknownShape extends TerminalJobError {
+  constructor(shape: string) {
+    super(
+      `This model's mapping names a shape (${shape}) this version of OpenDirect does not have. Update the app or remove the mapping.`
+    )
+    this.name = "UnknownShape"
+  }
 }
 
 /** A run's references, twice: as the provider needs them, and as we record them. */
@@ -263,6 +292,14 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       }
     }
     const multiple = new Map(slots.map((slot) => [slot.field, slot.multiple]))
+    const shapes = new Map(
+      slots.map((slot) => [slot.field, slot.shape ?? null])
+    )
+    // Checked before any upload, so an unknown shape costs nothing at all.
+    for (const input of inputs) {
+      const shape = shapes.get(input.slotField) ?? null
+      if (shape !== null && !isShapeName(shape)) throw new UnknownShape(shape)
+    }
 
     const byField = new Map<string, string[]>()
     const assetsByField = new Map<string, string[]>()
@@ -292,13 +329,17 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
     const params: Record<string, unknown> = {}
     const redacted: Record<string, unknown> = {}
+    // `listInputs` returns the inputs in position order, so each field's URLs
+    // are too: a shape's "first image" is the one the user put first.
     for (const [field, urls] of byField) {
       const many = multiple.get(field) ?? urls.length > 1
-      params[field] = many ? urls : urls[0]
+      params[field] = applyShape(shapes.get(field) ?? null, urls, many)
 
       // What is *recorded* names the asset instead of carrying its bytes: the
       // recorded request travels to the renderer inside every `jobs:update`,
       // and a base64 data URL (or a signed upload URL) has no business there.
+      // Never shaped: it is a record for people of which asset filled which
+      // field, not a second copy of the payload.
       const marks = (assetsByField.get(field) ?? []).map((assetId) => ({
         assetId,
         slot: field,

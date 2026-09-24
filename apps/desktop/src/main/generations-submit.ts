@@ -16,6 +16,11 @@
  * The whole `GenerationRequest` is stored in `requestJson` alongside the
  * params, so a run can be replayed exactly as it was asked for even after the
  * model's schema has moved on.
+ *
+ * A `family:<id>` request is translated into its endpoint's concrete request
+ * first (`deps.translate`), and only that concrete request is validated and
+ * recorded. A request that cannot be translated is refused before any row
+ * exists.
  */
 import {
   parseModelKey,
@@ -43,6 +48,21 @@ export interface SubmitDeps {
     descriptor: ModelDescriptor,
     requests: GenerationRequest[]
   ): Promise<GenerationRequest[]>
+  /**
+   * Family request → the concrete request of the endpoint it runs on; a
+   * `provider:slug` request comes back as it is. Throws — before any row is
+   * written — when the request cannot be translated. Without it, a family
+   * key is refused as not a catalog key.
+   */
+  translate?(request: GenerationRequest): Promise<GenerationRequest>
+}
+
+/** Runs first, so every check below sees — and every row records — the concrete request. */
+async function concrete(
+  deps: SubmitDeps,
+  request: GenerationRequest
+): Promise<GenerationRequest> {
+  return deps.translate ? deps.translate(request) : request
 }
 
 /**
@@ -141,8 +161,9 @@ function record(
 export async function submitGeneration(
   ctx: SubmitContext,
   deps: SubmitDeps,
-  request: GenerationRequest
+  asked: GenerationRequest
 ): Promise<GenerationDto> {
+  const request = await concrete(deps, asked)
   const descriptor = await resolveForSubmission(ctx, deps, request)
   const checked = deps.preflight
     ? await deps.preflight(descriptor, [request])
@@ -173,9 +194,10 @@ export interface BatchSubmission {
 export async function submitBatch(
   ctx: SubmitContext,
   deps: SubmitDeps,
-  request: GenerationRequest,
+  asked: GenerationRequest,
   count: number
 ): Promise<BatchSubmission> {
+  const request = await concrete(deps, asked)
   const descriptor = await resolveForSubmission(ctx, deps, request)
   const plan = planBatch({
     request,
