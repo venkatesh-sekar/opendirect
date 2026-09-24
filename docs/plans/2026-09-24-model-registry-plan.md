@@ -8,6 +8,19 @@
 > superpowers:test-driven-development inside each task. UI tasks (8, 9, 10, 11,
 > 12) also use the `frontend-design:frontend-design` skill.
 
+> **Status (2026-09-24):** Tasks 1–14 are done on `feat/model-registry`. The
+> integration pass (Task 14) also fixed what earlier reviews carried over: a
+> retried family run keeps the shapes it was queued with; one invalid stored
+> setting falls back alone instead of resetting all of them; a remote index
+> that fails the schema never replaces a usable cache; override keys no
+> longer collide. The manual run turned up and fixed a provider override
+> that ignored mouse clicks (the canvas swallowed the mousedown), unverified
+> picker rows whose names collapsed to a letter, a Video tab offered on
+> image nodes, and a blank mapping that opened covered in red errors. The
+> remote registry answers 404 until this branch reaches `main`, and the
+> Models tab says so. What is still open is listed at the end of the design
+> doc.
+
 **Goal:** Give every model input a *meaning* (a role from a closed list of
 ten), curated per model family in a layered registry (bundled, remote, user
 overrides, then inferred/unverified). Use that registry to filter models by

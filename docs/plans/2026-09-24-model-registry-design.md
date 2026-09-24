@@ -223,9 +223,32 @@ time. These make the rules mechanical:
   with reference images"). The format has no exclusivity rule, so this is
   documented and not modelled: the slot label says it, and the provider
   rejects the run at submit with its own message. Section 5.3's dimming only
-  covers combinations no endpoint supports at all.
+  covers combinations no endpoint supports at all. This is how it shipped:
+  the bundled Seedance labels read "First frame (not with reference images,
+  videos or audio)" and so on. Those labels are long enough to be cut off on
+  a canvas wire, so a short-label field may be worth adding if this stays
+  unmodelled.
+- Single-image inputs without a `max`. A family slot is a list when any
+  endpoint's field is a list, and an endpoint whose schema has not been
+  fetched (no key for that provider) is judged by `max` alone, where no `max`
+  means a list. So with only an OpenRouter key, the bundled Seedance
+  "First frame" slot offers several images until Replicate's schema is
+  known. Writing `max: 1` on single-URL inputs in the bundled files would
+  settle it; it has not been done yet.
 
 ## Decided
+
+- **A refused remote copy.** A fetched copy in a newer format, or whose
+  `index.json` does not validate, is reported and never written over a cache
+  that works. A bad index is retried after an hour; a newer format waits for
+  an app update.
+- **Retries keep their shapes.** The queued row records `familyId` and each
+  field's shape, and the runner keeps both when it rewrites the recorded
+  request after submitting, so a retry of a cancelled run shapes its payload
+  as it was queued.
+- **One bad setting does not reset the rest.** Settings are validated field
+  by field on read, so a hand-edited `http://` registry URL falls back to the
+  default URL alone.
 
 - **Hosting.** The remote registry is this repo's `registry/` on `main`,
   fetched from

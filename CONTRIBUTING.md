@@ -227,10 +227,14 @@ Both are free `GET`s. Never record a fixture by running a model.
 ### The fastest path: build it in the app
 
 You do not have to write the JSON by hand. In **Settings → Models**, create a
-new mapping (or duplicate an existing one). The editor suggests mappings from
-the model's schema and validates as you go, using the same checks as the
-tests. Save it and it takes effect in your copy of the app straight away, as
-a user override that sits above the bundled and remote registry.
+new mapping (or duplicate an existing one). You can also start from the model
+picker: an unmapped model has a **Map this model** button on its row (or
+press ⌘E, Ctrl+E off a Mac, with the row highlighted). The editor loads the
+model's schema, so it needs a key for that provider. It pre-fills one row per field with a suggested role
+or control, validates as you go using the same checks as the tests, and shows
+a preview of the canvas node your mapping produces. Save it and it takes
+effect in your copy of the app straight away, as a user override that sits
+above the bundled and remote registry.
 
 To turn it into a pull request:
 

@@ -93,7 +93,9 @@ a single-user desktop app.
 
 **`electron-store` + `safeStorage`.** Settings in JSON, API keys encrypted at
 rest by the OS keychain. `.env.local` is developer convenience only and never
-reaches a packaged build.
+reaches a packaged build. Stored settings are checked field by field on read:
+a field that no longer validates (say, an `http://` registry URL written by
+hand) falls back to its default, and the rest are kept.
 
 **Changesets over release-please.** Monorepo-native, matches the Turborepo
 scaffold, and produces both the changelog and the version bump that
@@ -210,7 +212,10 @@ replaces a family by id, wholesale:
    used only when its `format` is one this build reads and its
    `registryVersion` is higher than the bundled one. It is fetched by
    **Reload registry** or a background refresh at most once a day, never at
-   startup.
+   startup. A fetched copy that cannot be used (a newer `format`, or an
+   `index.json` that fails the schema) is never written over a cache that
+   works; the Models tab shows why. A bad index is tried again after an
+   hour, a newer format only after the app updates.
 3. **User overrides**: mappings written in Settings → Models, kept raw in the
    settings store under `modelRegistry.overrides`, so an entry that stops
    validating is listed with its issues rather than lost.
@@ -234,7 +239,11 @@ Annotation is applied when a descriptor is read, never written into
 translated in main, in `generations-submit.ts`, into a concrete
 `provider:slug` request with the provider's field names and values, *before*
 the `queued` row is written. What SQLite records is exactly what is sent, and
-the runner, retries and replay never see a family. An input the chosen
+the runner, retries and replay never re-translate. The row also records the
+family id and each field's shape (`familyId`, `shapes` in the request JSON),
+and keeps them when the runner rewrites the request after submitting, so a
+retry shapes its payload the way the run was queued and priced even if the
+registry has changed since. An input the chosen
 endpoint cannot take, an advanced field that would overwrite a mapped one, or
 a value with no mapping is an error, never a silent drop.
 
@@ -243,6 +252,17 @@ a value with no mapping is an error, never a silent drop.
 `packages/contract/src/registry/shapes.ts`, so a remote file can never run
 code. The runner applies the shape after uploading, because only then are
 the final URLs known.
+
+**Where it shows up.** Settings → Models has the registry status (with
+Reload), the provider order, and the list of families by source. **New
+mapping** opens the mapping editor: pick a provider model, and its schema
+pre-fills a row per field with a suggested role or control; the preview shows
+the canvas node the mapping will produce; Save writes a user override, and
+Export or Copy JSON gives the canonical file to contribute. The model picker
+lists each family once with its providers, filters by role ("Takes"), and
+offers **Map this model** on an unmapped row. On the canvas a family node has
+a provider override in its prompt bar, slot labels come from the mapping, and
+a wired input the chosen provider cannot take is dimmed with the reason.
 
 > ⛔ The registry, its remote fetch and `verify:providers -- --registry` only
 > make free `GET`s. Translation adds no request; `provider.submit` in the job
