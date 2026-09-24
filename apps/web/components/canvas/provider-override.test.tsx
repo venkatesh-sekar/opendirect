@@ -96,8 +96,17 @@ describe("ProviderOverride", () => {
     })
     const trigger = screen.getByRole("combobox", { name: /provider/i })
     expect(trigger).toHaveAttribute("aria-invalid", "true")
+    // Visible too, not only to a screen reader or on hover.
+    expect(trigger).toHaveClass("text-destructive", "border-destructive")
     expect(trigger).toHaveAccessibleDescription(
       /Add an OpenRouter key in Settings/
+    )
+  })
+
+  it("is not tinted when the choice can run", () => {
+    renderControl()
+    expect(screen.getByRole("combobox", { name: /provider/i })).not.toHaveClass(
+      "text-destructive"
     )
   })
 

@@ -477,6 +477,28 @@ describe("estimateFor", () => {
     expect(quote).toMatchObject({ confidence: "estimated", amount: 0.5 })
   })
 
+  it("quotes the video-input tier when a video slot is filled", async () => {
+    const { source } = fakeSource({ configured: ["replicate"] })
+    const params = { duration: "5", resolution: "720p" }
+
+    const plain = await estimateFor(
+      source,
+      familyKey("seedance-2-5"),
+      params,
+      {}
+    )
+    const withVideo = await estimateFor(
+      source,
+      familyKey("seedance-2-5"),
+      params,
+      { filled: ["reference:2"] }
+    )
+
+    expect(plain.sku).toBe("720p")
+    expect(withVideo.sku).toBe("720p:video_in")
+    expect(withVideo.amount).toBeGreaterThan(plain.amount)
+  })
+
   it("answers a translation error as an unknown quote with its message", async () => {
     const { source } = fakeSource({ configured: ["openrouter"] })
 

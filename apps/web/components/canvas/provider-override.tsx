@@ -102,8 +102,11 @@ export function ProviderOverride({
           aria-invalid={blocked ? true : undefined}
           aria-describedby={blocked ? reasonId : undefined}
           data-testid="provider-override"
+          data-blocked={blocked ? true : undefined}
           className={cn(
             "h-8 text-xs text-muted-foreground",
+            // Seen, not only announced: a choice that cannot run is tinted.
+            blocked && "border-destructive bg-destructive/10 text-destructive",
             // Stated widths: a provider name arriving must not move Run.
             compact
               ? "w-8 justify-center px-0 [&>svg:last-child]:hidden"

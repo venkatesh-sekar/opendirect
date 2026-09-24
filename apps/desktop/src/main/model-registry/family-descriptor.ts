@@ -307,6 +307,31 @@ function quote(descriptor: ModelDescriptor, params: Record<string, unknown>) {
 }
 
 /**
+ * Marks each filled slot's provider field as populated, for the estimator
+ * only: a tier such as Replicate's `video_in` is chosen by whether a field
+ * like `reference_videos` has a value, and a family quote carries no
+ * references. The placeholder is never a URL and never sent anywhere.
+ */
+function withFilledInputs(
+  params: Record<string, unknown>,
+  endpoint: MappingEndpoint,
+  descriptor: ModelDescriptor,
+  filled: readonly string[] = []
+): Record<string, unknown> {
+  const out = { ...params }
+  const properties = (
+    descriptor.inputSchema as { properties?: Record<string, unknown> }
+  ).properties
+  for (const key of filled) {
+    const input = endpoint.inputs[key]
+    if (input === undefined || out[input.field] !== undefined) continue
+    const property = properties?.[input.field] as { type?: unknown } | undefined
+    out[input.field] = property?.type === "array" ? ["filled"] : "filled"
+  }
+  return out
+}
+
+/**
  * The pre-flight price. A family run is priced on the endpoint it would run
  * on, with its params translated into that endpoint's fields — the same
  * translation a submit makes. A run that cannot be translated, or that no
@@ -333,14 +358,18 @@ export async function estimateFor(
   // endpoint takes together, an override to a provider with no key): its
   // price would be a number for a run that will not happen.
   if (!choice.ok) return unknownQuote(choice.message)
+  const endpoint = entry.family.endpoints[choice.index!]!
   try {
     const translated = translateFamilyParams({
       family: entry.family,
-      endpoint: entry.family.endpoints[choice.index!]!,
+      endpoint,
       endpointSchema: endpointDescriptor.inputSchema,
       params,
     })
-    return quote(endpointDescriptor, translated)
+    return quote(
+      endpointDescriptor,
+      withFilledInputs(translated, endpoint, endpointDescriptor, options.filled)
+    )
   } catch (error) {
     if (error instanceof RegistryTranslationError) {
       return unknownQuote(error.message)

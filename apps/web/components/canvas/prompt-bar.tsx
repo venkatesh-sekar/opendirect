@@ -59,6 +59,7 @@ import {
   ViewIcon,
 } from "@hugeicons/core-free-icons"
 import {
+  parseFamilyKey,
   promptRecipeSchema,
   type PromptBlock,
   type PromptRecipe,
@@ -658,11 +659,23 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
    */
   const chosenModelKey = draft.modelKey
   const updateNodeMutate = updateNode.mutate
+  const staleOverride =
+    node.providerOverride != null &&
+    chosenModelKey !== null &&
+    parseFamilyKey(chosenModelKey) === null
   useEffect(() => {
     if (!chosenModelKey) return
     if (node.modelKey === chosenModelKey) return
-    updateNodeMutate({ id: node.id, patch: { modelKey: chosenModelKey } })
-  }, [chosenModelKey, node.id, node.modelKey, updateNodeMutate])
+    updateNodeMutate({
+      id: node.id,
+      patch: {
+        modelKey: chosenModelKey,
+        // Only a family has a provider to override; a concrete model's
+        // provider is its key, so the old choice goes with the family.
+        ...(staleOverride ? { providerOverride: null } : {}),
+      },
+    })
+  }, [chosenModelKey, node.id, node.modelKey, staleOverride, updateNodeMutate])
 
   /**
    * Edges drawn before this node had a model.

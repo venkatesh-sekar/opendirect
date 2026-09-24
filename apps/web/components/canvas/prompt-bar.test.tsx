@@ -1269,6 +1269,30 @@ describe("family nodes", () => {
     expect(submissions()).toHaveLength(0)
   })
 
+  it("clears the override when the node leaves the family for a concrete model", async () => {
+    const target = {
+      ...TARGET,
+      modelKey: FAMILY_KEY,
+      providerOverride: "openrouter" as const,
+      // The user has since picked a concrete model in this node's recipe.
+      text: JSON.stringify({
+        prompt: "",
+        modelKey: MODEL_KEY,
+        common: {},
+        advanced: {},
+        count: 1,
+      }),
+    }
+    renderBar({ nodes: [target], edges: [] }, target)
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:node:update", {
+        id: "target",
+        patch: { modelKey: MODEL_KEY, providerOverride: null },
+      })
+    )
+  })
+
   it("has no provider control on a concrete-key node", async () => {
     renderBar()
     await screen.findByRole("button", { name: "Run" })
