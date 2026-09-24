@@ -300,11 +300,17 @@ function FamilySection({
   issues,
   act,
   notice,
+  quiet,
 }: {
   state: EditorState
   issues: EditorIssue[]
   act: Dispatch<EditorAction>
   notice: IdNotice | null
+  /**
+   * Nothing typed yet: an empty name and id are where a new mapping starts,
+   * not mistakes, so they are not flagged until the person asks.
+   */
+  quiet: boolean
 }) {
   const nameId = useId()
   const idId = useId()
@@ -313,8 +319,8 @@ function FamilySection({
   const descriptionId = useId()
   const at = (path: string) =>
     issues.filter((issue) => issue.where === "family" && issue.path === path)
-  const nameIssues = at("name")
-  const idIssues = at("id")
+  const nameIssues = quiet ? [] : at("name")
+  const idIssues = quiet ? [] : at("id")
   const descriptionIssues = at("description")
   const kindIssues = at("kind")
 
@@ -699,6 +705,8 @@ function EditorSheet({
   )
   // An import is new to this computer until it is saved once.
   const [savedOnce, setSavedOnce] = useState(false)
+  /** The person asked to see the problems, so none is held back as untouched. */
+  const [revealIssues, setRevealIssues] = useState(false)
   const [serverIssues, setServerIssues] = useState<RegistryIssue[]>([])
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState<null | "save" | "export">(null)
@@ -833,6 +841,7 @@ function EditorSheet({
 
   /** "N problems to fix": go to the first one, switching tabs if needed. */
   function jumpToFirstProblem() {
+    setRevealIssues(true)
     const first = issues[0]
     if (!first) return
     const body = bodyRef.current
@@ -1046,6 +1055,12 @@ function EditorSheet({
                   issues={issues}
                   act={act}
                   notice={idNotice}
+                  quiet={
+                    !revealIssues &&
+                    state.name === "" &&
+                    state.id === "" &&
+                    !state.idTouched
+                  }
                 />
 
                 <section

@@ -193,6 +193,28 @@ describe("MappingEditor", () => {
     )
   })
 
+  it("does not greet a blank mapping with errors, until asked for them", async () => {
+    const user = userEvent.setup()
+    open({ from: { kind: "blank" } })
+    const name = await screen.findByRole("textbox", { name: "Name" })
+
+    expect(name).not.toHaveAttribute("aria-invalid")
+    expect(screen.getByRole("textbox", { name: "ID" })).not.toHaveAttribute(
+      "aria-invalid"
+    )
+    expect(screen.queryByText(/Give the mapping a name/)).toBeNull()
+    expect(screen.queryByText(/lowercase letters, digits/)).toBeNull()
+    expect(screen.getByRole("button", { name: "Save mapping" })).toBeDisabled()
+
+    await user.click(screen.getByRole("button", { name: /to fix/ }))
+    expect(await screen.findByText(/Give the mapping a name/)).toBeVisible()
+    await waitFor(() =>
+      expect(["name", "id"]).toContain(
+        document.activeElement?.getAttribute("data-issue-path")
+      )
+    )
+  })
+
   it("will not save with an invalid id, and says why", async () => {
     const user = userEvent.setup()
     open({ from: { kind: "blank" } })
