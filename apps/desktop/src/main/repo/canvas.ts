@@ -26,6 +26,7 @@ import {
   type CanvasNodeMove,
   type CanvasNodePatch,
   type CanvasNodeType,
+  type ProviderId,
 } from "@opendirect/contract"
 import { asc, eq, inArray } from "drizzle-orm"
 
