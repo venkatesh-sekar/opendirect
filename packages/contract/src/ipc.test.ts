@@ -278,6 +278,11 @@ describe("ipcEvents", () => {
     expect(payload.safeParse("ready").success).toBe(false)
   })
 
+  it("declares the registry-changed push with an empty payload", () => {
+    expect(ipcEventChannels).toContain("registry:changed")
+    expect(ipcEvents["registry:changed"].payload.parse({})).toEqual({})
+  })
+
   it("guards event channels the same way", () => {
     expect(ipcEventChannels).toContain("updater:status")
     expect(isIpcEventChannel("updater:status")).toBe(true)

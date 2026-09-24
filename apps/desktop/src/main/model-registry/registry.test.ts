@@ -94,6 +94,7 @@ function setup(
     registryUrl: (options.registryUrl ?? null) as string | null,
   }
   const onError = vi.fn()
+  const onChange = vi.fn()
   const registry = createModelRegistry({
     bundled: options.bundled ?? bundled,
     remote,
@@ -101,8 +102,9 @@ function setup(
     settings: () => settings,
     now: () => clock.now,
     onError,
+    onChange,
   })
-  return { registry, remote, settings, clock, onError }
+  return { registry, remote, settings, clock, onError, onChange }
 }
 
 function names(registry: ReturnType<typeof setup>["registry"]) {
@@ -477,6 +479,45 @@ describe("createModelRegistry", () => {
     expect(remote.write).toHaveBeenCalledTimes(1)
     expect(registry.status().remote.url).toBe("https://mirror.test/registry")
     expect(registry.status().activeSource).toBe("remote")
+  })
+
+  it("reports a background refresh that changed the merged registry", async () => {
+    const { registry, remote, onChange } = setup()
+    expect(names(registry)).toEqual(["A bundled", "B bundled"])
+
+    registry.refreshIfStale()
+    await vi.waitFor(() => expect(remote.write).toHaveBeenCalledTimes(1))
+
+    await vi.waitFor(() => expect(onChange).toHaveBeenCalledTimes(1))
+    expect(names(registry)).toContain("A remote")
+  })
+
+  it("stays quiet after a background refresh that changed nothing", async () => {
+    const clock = { now: NOW }
+    const { registry, remote, onChange } = setup({
+      clock,
+      remote: fakeRemote(remoteCache({ fetchedAt: NOW - 2 * REFRESH_INTERVAL_MS })),
+    })
+    expect(names(registry)).toContain("A remote")
+
+    registry.refreshIfStale()
+    await vi.waitFor(() => expect(remote.write).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("stays quiet after a failed background refresh", async () => {
+    const remote = fakeRemote(null, async () => {
+      throw new Error("offline")
+    })
+    const { registry, onChange, onError } = setup({ remote })
+
+    registry.refreshIfStale()
+    await vi.waitFor(() => expect(onError).toHaveBeenCalled())
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it("does not refresh a cache that is still fresh", () => {

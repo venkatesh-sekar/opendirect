@@ -11,13 +11,13 @@
 import { readFileSync, statSync, writeFileSync } from "node:fs"
 import { basename, join } from "node:path"
 
-import { app, dialog } from "electron"
+import { app, BrowserWindow, dialog } from "electron"
 import log from "electron-log/main"
 
 import type { ModelDescriptor } from "@opendirect/contract"
 
 import { getModelCatalog } from "../catalog-service"
-import type { IpcRegistrar } from "../ipc-registry"
+import { emitIpcEvent, type IpcRegistrar } from "../ipc-registry"
 import { getSettingsService } from "../settings-service"
 import { BUNDLED_FAMILIES, BUNDLED_INDEX } from "./bundled"
 import {
@@ -36,6 +36,22 @@ import {
 } from "./remote"
 
 let registry: ModelRegistry | undefined
+
+/**
+ * Every live window drops its cached descriptors and quotes: a background
+ * refresh can move a family to another endpoint, and a quote shown before
+ * it would no longer be what a submit runs (and costs).
+ */
+function broadcastChanged(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    try {
+      emitIpcEvent(window.webContents, "registry:changed", {})
+    } catch (error) {
+      log.warn("Could not push a registry change", error)
+    }
+  }
+}
 
 /**
  * Built on first use: `app.getPath("userData")` is only meaningful once
@@ -57,6 +73,7 @@ export function getModelRegistry(): ModelRegistry {
       // in `registry:status` for the Models tab to show.
       log.warn("Model registry:", error)
     },
+    onChange: broadcastChanged,
   })
   return registry
 }

@@ -4,9 +4,10 @@
  * The model registry, from the renderer's side: where it stands, the
  * families in force, and the user's own mappings (design §4).
  *
- * Every mutation that changes state invalidates `["registry"]` and
- * `["models"]`: a mapping decides a model's slots and controls, so a save, a
- * delete or a reload changes the descriptors the canvas is drawn from.
+ * Every mutation that changes state invalidates `["registry"]`, `["models"]`
+ * and `["cost"]`: a mapping decides a model's slots and controls — and a
+ * family's endpoint and price — so a save, a delete or a reload changes the
+ * descriptors the canvas is drawn from and the quotes it shows.
  * Import (validates, saves nothing) and export (writes a file) do not.
  *
  * ⛔ Nothing here can reach a provider. `registry:reload` (and the background
@@ -33,6 +34,7 @@ import type {
 import { invoke } from "@/lib/ipc"
 
 import { queryKeys } from "./query-keys"
+import { invalidateModelQueries } from "./use-models"
 
 /**
  * Main refused a mapping. `issues` carry dotted paths into the family
@@ -57,7 +59,7 @@ export class MappingValidationError extends Error {
 
 function invalidateMappings(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: queryKeys.registry.all })
-  void client.invalidateQueries({ queryKey: ["models"] })
+  invalidateModelQueries(client)
 }
 
 export function useRegistryStatus(): UseQueryResult<RegistryStatus> {

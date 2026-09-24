@@ -1,9 +1,11 @@
 "use client"
 
+import { useEffect } from "react"
 import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query"
@@ -16,7 +18,38 @@ import {
   type RecommendedModel,
 } from "@opendirect/contract"
 
-import { invoke } from "@/lib/ipc"
+import { invoke, isBridgeAvailable, subscribe } from "@/lib/ipc"
+
+/**
+ * Drops every cached descriptor and every quote.
+ *
+ * A family's descriptor and its price are functions of the provider order,
+ * the keys held and the merged registry — exactly what main reads again at
+ * submit. Both caches live forever (`staleTime: Infinity`), so anything that
+ * changes one of those inputs must call this, or the price on screen stops
+ * being the price of the run.
+ */
+export function invalidateModelQueries(client: QueryClient): void {
+  void client.invalidateQueries({ queryKey: ["models"] })
+  void client.invalidateQueries({ queryKey: ["cost"] })
+}
+
+/**
+ * Listens for main's `registry:changed` push — a background refresh that
+ * changed the merged registry, which nothing in the renderer asked for —
+ * and re-reads the registry, the descriptors and the quotes. Mounted once,
+ * on the shell.
+ */
+export function useRegistryChanges(): void {
+  const client = useQueryClient()
+  useEffect(() => {
+    if (!isBridgeAvailable()) return
+    return subscribe("registry:changed", () => {
+      void client.invalidateQueries({ queryKey: ["registry"] })
+      invalidateModelQueries(client)
+    })
+  }, [client])
+}
 
 /**
  * `["models", kinds]` — the kinds are part of the key so the video-only and
@@ -90,7 +123,7 @@ export function useRefreshModels(): UseMutationResult<
   return useMutation({
     mutationFn: (kinds?: ModelKind[]) =>
       invoke("models:list", { kinds, refresh: true }),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["models"] }),
+    onSuccess: () => invalidateModelQueries(client),
   })
 }
 

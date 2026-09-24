@@ -75,6 +75,8 @@ function expectRegistryAndModelsInvalidated(
   expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.registry.all })
   // A mapping change changes the descriptors.
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ["models"] })
+  // …and so which endpoint a family runs on, and what it costs.
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cost"] })
 }
 
 describe("registry queries", () => {

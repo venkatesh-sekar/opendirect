@@ -906,6 +906,13 @@ export const ipcEvents = {
    * chunks are the CLI's own stdout/stderr — never the prompt.
    */
   "ai:progress": { payload: aiProgressSchema },
+  /**
+   * A background registry refresh in main changed the merged registry —
+   * mappings, and so which endpoint a family runs on and what it costs. The
+   * renderer drops its cached descriptors and quotes. No payload: what
+   * changed is re-read, never pushed.
+   */
+  "registry:changed": { payload: z.object({}) },
   /** A menu item asking the renderer's router for a screen. */
   "shell:navigate": { payload: navigateRequestSchema },
 } as const

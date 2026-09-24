@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-query"
 import type { KeysSummary, ProviderId, Settings } from "@opendirect/contract"
 
+import { invalidateModelQueries } from "@/hooks/use-models"
 import { invoke } from "@/lib/ipc"
 
 export const settingsQueryKey = ["settings"] as const
@@ -49,6 +50,9 @@ export function useUpdateSettings(
     mutationFn: (patch: Partial<Settings>) => invoke("settings:set", patch),
     onSuccess: (next) => {
       client.setQueryData(settingsQueryKey, next)
+      // The provider order (and the rest) decide which endpoint a family
+      // runs on and so what it costs; main reads them again at submit.
+      invalidateModelQueries(client)
       // The General tab commits on blur with no Save button, so the toast is
       // the only thing that says a write happened at all.
       if (!silent) toast.success("Preferences saved")
@@ -77,8 +81,8 @@ export function useSaveKey(): UseMutationResult<
     onSuccess: (_result, { provider }) => {
       void client.invalidateQueries({ queryKey: keysQueryKey })
       // The catalog is a function of which providers hold a key, so a key
-      // change makes every cached model list obsolete.
-      void client.invalidateQueries({ queryKey: ["models"] })
+      // change makes every cached model list — and every quote — obsolete.
+      invalidateModelQueries(client)
       // The field clears itself on success, which on its own reads as "it lost
       // my key". This is the sentence that says otherwise.
       toast.success(`${PROVIDER_LABELS[provider]} key saved`)
@@ -101,7 +105,7 @@ export function useClearKey(): UseMutationResult<
       invoke("settings:keys:clear", { provider }),
     onSuccess: (_result, provider) => {
       void client.invalidateQueries({ queryKey: keysQueryKey })
-      void client.invalidateQueries({ queryKey: ["models"] })
+      invalidateModelQueries(client)
       toast.success(`${PROVIDER_LABELS[provider]} key cleared`)
     },
     onError: (error, provider) =>

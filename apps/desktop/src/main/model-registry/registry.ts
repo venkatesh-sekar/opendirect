@@ -52,6 +52,14 @@ export interface ModelRegistryDeps {
   settings: () => Pick<Settings, "remoteRegistry" | "registryUrl">
   now?: () => number
   onError?: (error: unknown) => void
+  /**
+   * A background refresh (`refreshIfStale`) changed the merged registry.
+   * Nobody asked for it, so nobody is waiting on an answer that would
+   * re-read descriptors and prices; this is how main tells the renderer.
+   * `reload()` and override edits do not call it — their caller already
+   * knows.
+   */
+  onChange?: () => void
 }
 
 export interface ModelRegistry {
@@ -109,6 +117,7 @@ function formatWarning(source: "bundled" | "remote", format: number): string {
 export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
   const now = deps.now ?? Date.now
   const onError = deps.onError ?? (() => {})
+  const onChange = deps.onChange ?? (() => {})
 
   // The bundled layer never changes while the app runs: read it once.
   const bundledWarnings: RegistryWarning[] = []
@@ -342,6 +351,15 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
     }
   }
 
+  /** What a descriptor or a price can depend on in the merge. */
+  function fingerprint(): string {
+    const { merged } = build()
+    return JSON.stringify([
+      merged.families.map((entry) => entry.family),
+      [...merged.endpointIndex],
+    ])
+  }
+
   function startFetch(url: string): Promise<void> {
     let pending = inflight.get(url)
     if (!pending) {
@@ -405,7 +423,14 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
           )
           if (now() - last < REFRESH_INTERVAL_MS) return
         }
-        void startFetch(url)
+        const before = fingerprint()
+        void startFetch(url).then(() => {
+          try {
+            if (fingerprint() !== before) onChange()
+          } catch (error) {
+            onError(error)
+          }
+        })
       } catch (error) {
         onError(error)
       }

@@ -4,11 +4,26 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { modelDescriptorQuery, modelQueryKey, useModel } from "./use-models"
+import {
+  modelDescriptorQuery,
+  modelQueryKey,
+  useModel,
+  useRegistryChanges,
+} from "./use-models"
 
-const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
+const { invoke, listeners } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  listeners: new Map<string, (payload: unknown) => void>(),
+}))
 
-vi.mock("@/lib/ipc", () => ({ invoke }))
+vi.mock("@/lib/ipc", () => ({
+  invoke,
+  isBridgeAvailable: () => true,
+  subscribe: (channel: string, callback: (payload: unknown) => void) => {
+    listeners.set(channel, callback)
+    return () => listeners.delete(channel)
+  },
+}))
 
 afterEach(() => {
   cleanup()
@@ -135,5 +150,25 @@ describe("useModel", () => {
     // Another model is never shown in its place.
     rerender({ key: "family:y", filled: ["mask"] })
     expect(result.current.data).toBeUndefined()
+  })
+})
+
+describe("useRegistryChanges", () => {
+  it("drops cached descriptors and quotes when main reports a registry change", () => {
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, "invalidateQueries")
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { unmount } = renderHook(() => useRegistryChanges(), { wrapper })
+
+    listeners.get("registry:changed")?.({})
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["models"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["cost"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["registry"] })
+
+    unmount()
+    expect(listeners.has("registry:changed")).toBe(false)
   })
 })

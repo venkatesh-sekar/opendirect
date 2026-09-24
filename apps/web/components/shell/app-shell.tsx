@@ -26,6 +26,7 @@ import { isBridgeAvailable, subscribe } from "@/lib/ipc"
 import { useAssetDnd } from "@/hooks/use-asset-dnd"
 import { useBridge } from "@/hooks/use-bridge"
 import { useCurrentProject } from "@/hooks/use-containers"
+import { useRegistryChanges } from "@/hooks/use-models"
 import { isSettingsPath, rememberRoute, returnRoute } from "@/lib/shell/routes"
 
 import { ProjectLauncher } from "./project-launcher"
@@ -91,6 +92,9 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const project = useCurrentProject()
   const dnd = useAssetDnd()
   const [switching, setSwitching] = useState(false)
+  // A background registry refresh in main can move a family to another
+  // endpoint; the shell outlives every route, so it is the one listener.
+  useRegistryChanges()
 
   const toSettings = useCallback(
     () => router.push(onSettings ? returnRoute() : "/settings"),

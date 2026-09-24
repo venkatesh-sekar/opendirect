@@ -61,6 +61,7 @@ import {
 } from "@workspace/ui/components/tooltip"
 
 import { queryKeys } from "@/hooks/query-keys"
+import { invalidateModelQueries } from "@/hooks/use-models"
 import {
   useRegistryStatus,
   useReloadRegistry,
@@ -325,7 +326,7 @@ export function RegistryStatusCard() {
     update.mutate(patch, {
       onSuccess: (next) => {
         void client.invalidateQueries({ queryKey: queryKeys.registry.all })
-        void client.invalidateQueries({ queryKey: ["models"] })
+        invalidateModelQueries(client)
         // Turning fetching on, or pointing it somewhere new, is a request
         // to look now — not tomorrow.
         if (next.remoteRegistry) runReload()
