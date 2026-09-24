@@ -136,6 +136,12 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
 
   let cache: RemoteCache | null | undefined
   let remoteError: string | null = null
+  /**
+   * True when `remoteError` is about the fetched copy itself (a newer format,
+   * an index that does not validate), not about reaching it: such a copy was
+   * refused, and the Models tab lists why among the warnings.
+   */
+  let remoteRefused = false
   let lastAttempt: { at: number; ok: boolean } | null = null
   /** Keyed by URL: a reload after a URL change must not wait on the old one. */
   const inflight = new Map<string, Promise<void>>()
@@ -279,14 +285,26 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
   }
 
   /**
-   * Why a fetched copy cannot be used at all, or null. A copy in a format
-   * this build cannot read is not written: it would replace a cache that
-   * still works with one that never will.
+   * Why a fetched copy cannot be used at all, or null. Such a copy is not
+   * written: it would replace a cache that still works with one that never
+   * will. A newer format stays so until the app updates; an index that does
+   * not validate is likely a publishing mistake, so it is tried again soon.
    */
-  function unusable(next: RemoteCache): string | null {
+  function unusable(
+    next: RemoteCache
+  ): { message: string; retrySoon: boolean } | null {
     const parsed = registryIndexSchema.safeParse(next.index)
-    if (parsed.success && parsed.data.format !== REGISTRY_FORMAT) {
-      return formatWarning("remote", parsed.data.format)
+    if (!parsed.success) {
+      return {
+        message: `The remote registry's index.json cannot be read (${firstIssue(parsed.error)}); it was not used.`,
+        retrySoon: true,
+      }
+    }
+    if (parsed.data.format !== REGISTRY_FORMAT) {
+      return {
+        message: formatWarning("remote", parsed.data.format),
+        retrySoon: false,
+      }
     }
     return null
   }
@@ -300,20 +318,22 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
       if (remoteSettings().url !== url) return
       const reason = unusable(next)
       if (reason !== null) {
-        remoteError = reason
-        // Not a failure to retry soon: it stays so until the app updates.
-        lastAttempt = { at, ok: true }
-        onError(new Error(reason))
+        remoteError = reason.message
+        remoteRefused = true
+        lastAttempt = { at, ok: !reason.retrySoon }
+        onError(new Error(reason.message))
         return
       }
       deps.remote.write(next)
       cache = next
       remoteError = null
+      remoteRefused = false
       lastAttempt = { at, ok: true }
     } catch (error) {
       // The previous cache (if any) stays exactly as it was.
       if (remoteSettings().url === url) {
         remoteError = messageOf(error)
+        remoteRefused = false
         lastAttempt = { at, ok: false }
       }
       onError(error)
@@ -335,16 +355,17 @@ export function createModelRegistry(deps: ModelRegistryDeps): ModelRegistry {
 
   function status(): RegistryStatus {
     const current = build().status
-    // The error can change without the merge changing. A newer format on
-    // the remote is also a warning, so the Models tab shows it with the rest.
-    const formatNotice =
+    // The error can change without the merge changing. A refused copy (a
+    // newer format, an index that does not validate) is also a warning, so
+    // the Models tab shows it with the rest.
+    const refusalNotice =
+      remoteRefused &&
       remoteError !== null &&
-      remoteError.startsWith("The remote registry uses format") &&
       !current.warnings.some((warning) => warning.message === remoteError)
     return {
       ...current,
       remote: { ...current.remote, error: remoteError },
-      warnings: formatNotice
+      warnings: refusalNotice
         ? [
             { source: "remote", familyId: null, message: remoteError! },
             ...current.warnings,

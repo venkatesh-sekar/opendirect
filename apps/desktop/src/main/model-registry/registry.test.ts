@@ -401,6 +401,48 @@ describe("createModelRegistry", () => {
     expect(status.remote.error).toContain("uses format 2")
   })
 
+  it("keeps a usable cache when the remote index no longer validates, and says why", async () => {
+    const remote = fakeRemote(remoteCache(), async () =>
+      remoteCache({ index: { format: "one" }, fetchedAt: NOW + 5 })
+    )
+    const { registry } = setup({ remote })
+
+    const status = await registry.reload()
+
+    expect(remote.write).not.toHaveBeenCalled()
+    expect(status).toMatchObject({
+      activeSource: "remote",
+      activeVersion: 4,
+      remote: {
+        version: 4,
+        fetchedAt: NOW,
+        error: expect.stringContaining("index.json"),
+      },
+    })
+    expect(status.warnings).toContainEqual({
+      source: "remote",
+      familyId: null,
+      message: expect.stringContaining("index.json"),
+    })
+    expect(registry.family("a")?.family.name).toBe("A remote")
+  })
+
+  it("retries a remote whose index did not validate after an hour", async () => {
+    const clock = { now: NOW }
+    const remote = fakeRemote(null, async () =>
+      remoteCache({ index: { format: "one" } })
+    )
+    const { registry } = setup({ remote, clock })
+
+    await registry.reload()
+    clock.now = NOW + 30 * 60 * 1000
+    registry.refreshIfStale()
+    expect(remote.fetch).toHaveBeenCalledTimes(1)
+    clock.now = NOW + 61 * 60 * 1000
+    registry.refreshIfStale()
+    expect(remote.fetch).toHaveBeenCalledTimes(2)
+  })
+
   it("fetches the new URL when a reload follows a URL change mid-fetch", async () => {
     let release: (() => void) | undefined
     const remote = fakeRemote(null, async () => remoteCache())
