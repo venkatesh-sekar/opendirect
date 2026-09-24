@@ -766,24 +766,28 @@ export function ModelPicker({
             onValueChange={setQuery}
           />
 
-          <div
-            role="group"
-            aria-label="Filter models by modality"
-            className="flex items-center gap-1 px-2 pt-1.5"
-          >
-            {KIND_FILTERS.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                size="sm"
-                aria-pressed={filter === option.value}
-                variant={filter === option.value ? "secondary" : "ghost"}
-                onClick={() => setFilter(option.value)}
-              >
-                {option.label}
-              </Button>
-            ))}
-          </div>
+          {/* A picker limited to one kind (an image node) has nothing to
+              switch between: a Video tab there could only ever be empty. */}
+          {kindsKey.includes(",") || kindsKey === "" ? (
+            <div
+              role="group"
+              aria-label="Filter models by modality"
+              className="flex items-center gap-1 px-2 pt-1.5"
+            >
+              {KIND_FILTERS.map((option) => (
+                <Button
+                  key={option.value}
+                  type="button"
+                  size="sm"
+                  aria-pressed={filter === option.value}
+                  variant={filter === option.value ? "secondary" : "ghost"}
+                  onClick={() => setFilter(option.value)}
+                >
+                  {option.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="flex items-center gap-2 px-2 py-1.5">
             <span

@@ -24,6 +24,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   settingsDefaults,
+  type ModelKind,
   type ModelSummary,
   type ReferenceRole,
   type RegistryFamilyEntry,
@@ -152,7 +153,11 @@ function serve(registry: Registry = {}) {
 }
 
 function mount(
-  props: { value?: string | null; onChange?: (key: string) => void } = {}
+  props: {
+    value?: string | null
+    onChange?: (key: string) => void
+    kinds?: ModelKind[]
+  } = {}
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -163,6 +168,7 @@ function mount(
         <ModelPicker
           value={props.value ?? null}
           onChange={props.onChange ?? (() => {})}
+          kinds={props.kinds}
           hotkeys={false}
         />
       </TooltipProvider>
@@ -206,6 +212,18 @@ describe("ModelPicker", () => {
     await user.type(screen.getByPlaceholderText("Search models…"), "model 289")
     // No timers advanced: the filter is synchronous with the keystroke.
     expect(await screen.findByText("Model 289")).toBeVisible()
+  })
+
+  it("offers no modality tabs when the node takes one kind only", async () => {
+    serve()
+    const user = userEvent.setup()
+    mount({ kinds: ["image"] })
+
+    await user.click(screen.getByRole("combobox"))
+    await screen.findByPlaceholderText("Search models…")
+    expect(
+      screen.queryByRole("group", { name: "Filter models by modality" })
+    ).toBeNull()
   })
 
   it("says so when nothing matches", async () => {
