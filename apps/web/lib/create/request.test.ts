@@ -271,8 +271,8 @@ describe("buildGenerationRequest", () => {
     expect(onOpenRouter.quotedEndpoint).toBe(
       "openrouter:bytedance/seedance-2.5"
     )
-    // A concrete key names its endpoint already.
-    expect(build().quotedEndpoint).toBeNull()
+    // A concrete key names its endpoint already; its request is unchanged.
+    expect(build()).not.toHaveProperty("quotedEndpoint")
   })
 
   it("builds a family request under canonical names and slot keys", () => {

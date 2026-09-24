@@ -127,11 +127,16 @@ export function buildGenerationRequest(
     providerOverride: input.providerOverride ?? null,
     // A family descriptor stands on the endpoint it was chosen (and quoted)
     // on. Main chooses again at submit and refuses a different answer, so a
-    // run never costs a price that was not shown.
-    quotedEndpoint:
-      descriptor.family && descriptor.family.choice.index !== null
-        ? modelKey(descriptor.provider, descriptor.slug)
-        : null,
+    // run never costs a price that was not shown. A concrete key's request
+    // stays exactly what it was before families existed.
+    ...(descriptor.family
+      ? {
+          quotedEndpoint:
+            descriptor.family.choice.index !== null
+              ? modelKey(descriptor.provider, descriptor.slug)
+              : null,
+        }
+      : {}),
     // Main's to set, on the request it translates from a family key.
     familyId: null,
     shapes: null,
