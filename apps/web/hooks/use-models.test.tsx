@@ -100,4 +100,40 @@ describe("useModel", () => {
       filled: ["mask"],
     })
   })
+
+  it("keeps a family's descriptor on screen while its wiring re-chooses the endpoint", async () => {
+    let release: (value: unknown) => void = () => {}
+    invoke.mockImplementation(
+      async (_channel: string, payload: { key: string; filled?: string[] }) =>
+        payload.filled?.length
+          ? new Promise((resolve) => {
+              release = resolve
+            })
+          : { key: payload.key, filled: [] }
+    )
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+
+    const { result, rerender } = renderHook(
+      ({ key, filled }: { key: string; filled: string[] }) =>
+        useModel(key, { filled }),
+      { wrapper, initialProps: { key: "family:x", filled: [] as string[] } }
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    rerender({ key: "family:x", filled: ["mask"] })
+    // The same family, re-asked: the last answer stays, marked as such.
+    expect(result.current.data).toEqual({ key: "family:x", filled: [] })
+    expect(result.current.isPlaceholderData).toBe(true)
+    release({ key: "family:x", filled: ["mask"] })
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false))
+
+    // Another model is never shown in its place.
+    rerender({ key: "family:y", filled: ["mask"] })
+    expect(result.current.data).toBeUndefined()
+  })
 })

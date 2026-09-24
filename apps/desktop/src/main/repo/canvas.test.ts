@@ -239,6 +239,36 @@ describe("updateNode", () => {
     ).toBe(null)
   })
 
+  /**
+   * A family node's provider override (planning decision 11) lives on the
+   * row, so every view of the node — the bar, the edge labels, a new edge's
+   * slot — chooses the same endpoint.
+   */
+  it("records a provider override, and reads a node created without one as null", () => {
+    const node = generateNode()
+    expect(node.providerOverride).toBeNull()
+    expect(getCanvas(db(), PROJECT).nodes[0]?.providerOverride).toBeNull()
+
+    const chosen = updateNode(
+      db(),
+      node.id,
+      { providerOverride: "openrouter" },
+      NOW + 1
+    )
+    expect(chosen.providerOverride).toBe("openrouter")
+    expect(getCanvas(db(), PROJECT).nodes[0]?.providerOverride).toBe(
+      "openrouter"
+    )
+
+    expect(updateNode(db(), node.id, { x: 1 }, NOW + 2).providerOverride).toBe(
+      "openrouter"
+    )
+    expect(
+      updateNode(db(), node.id, { providerOverride: null }, NOW + 3)
+        .providerOverride
+    ).toBeNull()
+  })
+
   it("refuses a node that is not there", () => {
     expect(() => updateNode(db(), "nope", { x: 1 })).toThrow(/was not found/)
   })

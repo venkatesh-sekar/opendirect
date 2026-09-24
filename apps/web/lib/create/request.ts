@@ -142,18 +142,23 @@ export function missingRequirements(
   request: GenerationRequest
 ): string[] {
   const properties = propertiesOf(descriptor.inputSchema as JsonSchema)
-  const required = (descriptor.inputSchema as JsonSchema).required
-  if (!Array.isArray(required)) return []
+  const schemaRequired = (descriptor.inputSchema as JsonSchema).required
+  const required = Array.isArray(schemaRequired) ? schemaRequired : []
 
   const slots = new Map(descriptor.referenceSlots.map((s) => [s.field, s]))
   const filledSlots = new Set(request.references.map((r) => r.slotField))
 
   const missing: string[] = []
+  // A family descriptor's schema has lost its mapped inputs, so the chosen
+  // endpoint's required inputs are on the slots.
+  for (const slot of descriptor.referenceSlots) {
+    if (slot.required && !filledSlots.has(slot.field)) missing.push(slot.label)
+  }
   for (const field of required) {
     if (typeof field !== "string") continue
     const slot = slots.get(field)
     if (slot) {
-      if (!filledSlots.has(field)) missing.push(slot.label)
+      if (!filledSlots.has(field) && !slot.required) missing.push(slot.label)
       continue
     }
     if (isSet(request.params[field])) continue
@@ -188,6 +193,10 @@ export function costParams(
   const params: Record<string, unknown> = { ...request.params }
   const promptField = descriptor.commonControls.prompt
   if (promptField) delete params[promptField]
+  // A family's slots are slot keys, which no endpoint has as a field: the
+  // quote translates params into the endpoint's, and a slot key there would
+  // make every wired family run's price "unknown".
+  if (descriptor.family) return params
   for (const slot of descriptor.referenceSlots) {
     const chosen = request.references
       .filter((reference) => reference.slotField === slot.field)

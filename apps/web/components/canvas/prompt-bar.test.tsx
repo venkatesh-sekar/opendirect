@@ -21,6 +21,7 @@ import type {
   IpcChannel,
   MentionSubjectDto,
   ModelDescriptor,
+  ProviderId,
 } from "@opendirect/contract"
 import { TooltipProvider } from "@workspace/ui/components/tooltip"
 import {
@@ -32,6 +33,11 @@ import {
 } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+import {
+  seedanceFamilyDescriptor,
+  type FamilyDescriptorOptions,
+} from "@/lib/canvas/test-family"
 
 import { clearPromptDrafts, PromptBar } from "./prompt-bar"
 
@@ -396,6 +402,32 @@ beforeEach(() => {
 })
 
 afterEach(cleanup)
+
+/** What a concrete-key node submitted on `main`, before model families. */
+const CAPTURED = {
+  count: 1,
+  request: {
+    acceptUnknownCost: false,
+    batchId: null,
+    containerId: "c1",
+    costConfidence: "estimated",
+    estimatedCostUsd: 1.156,
+    familyId: null,
+    mentionedContainerIds: [],
+    modelKey: "replicate:bytedance/seedance-2.5",
+    params: {
+      duration: 5,
+      prompt: "a bellhop opens the lift",
+      resolution: "720p",
+      watermark: false,
+    },
+    parentGenerationId: null,
+    prompt: "a bellhop opens the lift",
+    providerOverride: null,
+    references: [{ assetId: "a0", position: 0, slotField: "reference_images" }],
+    shapes: null,
+  },
+}
 
 describe("PromptBar", () => {
   it("shows the picture as a thumbnail and the note only as a block", async () => {
@@ -1086,6 +1118,238 @@ describe("PromptBar", () => {
         value: wide,
       })
     }
+  })
+})
+
+describe("family nodes", () => {
+  const FAMILY_KEY = "family:seedance-2-5"
+
+  /**
+   * `models:get` answers a family key the way main does: the descriptor for
+   * the endpoint the node's override and filled slots choose.
+   */
+  function serveFamily(options: FamilyDescriptorOptions = {}) {
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: IpcChannel, payload: unknown) => {
+      if (channel === "models:get") {
+        const asked = payload as {
+          key: string
+          provider?: ProviderId | null
+          filled?: string[]
+        }
+        if (asked.key !== FAMILY_KEY) return base(channel, payload)
+        return seedanceFamilyDescriptor({
+          ...options,
+          filled: asked.filled ?? [],
+          override: asked.provider ?? null,
+        })
+      }
+      return base(channel, payload)
+    })
+  }
+
+  const still = node({
+    id: "still",
+    type: "media",
+    assetId: "a0",
+    asset: asset("a0"),
+  })
+
+  function familyCanvas(
+    slotField: string | null,
+    target: CanvasNodeDto = { ...TARGET, modelKey: FAMILY_KEY }
+  ): CanvasDto {
+    return {
+      nodes: [target, still],
+      edges: [edge({ id: "e-media", sourceNodeId: "still", slotField })],
+    }
+  }
+
+  it("gives a wired image the family's first frame", async () => {
+    serveFamily()
+    const canvas = familyCanvas(null)
+    renderBar(canvas, canvas.nodes[0])
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:edge:update", {
+        id: "e-media",
+        slotField: "first_frame",
+      })
+    )
+    expect(submissions()).toHaveLength(0)
+  })
+
+  it("submits the family key, its slot keys and no override", async () => {
+    serveFamily()
+    const user = userEvent.setup()
+    const canvas = familyCanvas("first_frame")
+    renderBar(canvas, canvas.nodes[0])
+
+    // Nothing is wired in as a note, so the prompt is the user's alone.
+    await user.type(await screen.findByLabelText("Prompt"), "slowly")
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.click(run)
+
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    expect(submissions()[0]![1]).toMatchObject({
+      count: 1,
+      request: {
+        modelKey: FAMILY_KEY,
+        prompt: "slowly",
+        params: { prompt: "slowly", duration: 5, resolution: "720p" },
+        references: [{ slotField: "first_frame", assetId: "a0", position: 0 }],
+        providerOverride: null,
+        familyId: null,
+      },
+    })
+    // The descriptor and the price follow the node's wiring.
+    expect(invoke).toHaveBeenCalledWith("models:get", {
+      key: FAMILY_KEY,
+      provider: null,
+      filled: ["first_frame"],
+    })
+    expect(
+      invoke.mock.calls
+        .filter(([channel]) => channel === "cost:estimate")
+        .at(-1)
+    ).toEqual([
+      "cost:estimate",
+      expect.objectContaining({
+        key: FAMILY_KEY,
+        provider: null,
+        filled: ["first_frame"],
+      }),
+    ])
+  })
+
+  it("chooses the endpoint with the slots a mention fills, as main will", async () => {
+    serveFamily()
+    const user = userEvent.setup()
+    const canvas = familyCanvas("first_frame")
+    renderBar(canvas, canvas.nodes[0])
+
+    await user.type(await screen.findByLabelText("Prompt"), "a shot of @venkz")
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.click(run)
+
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    const references = (
+      submissions()[0]![1] as {
+        request: { references: Array<{ slotField: string }> }
+      }
+    ).request.references
+    const slots = [...new Set(references.map((one) => one.slotField))].sort()
+    expect(slots).toEqual(["first_frame", "reference"])
+    expect(invoke).toHaveBeenCalledWith("models:get", {
+      key: FAMILY_KEY,
+      provider: null,
+      filled: slots,
+    })
+  })
+
+  it("writes a provider override onto the node", async () => {
+    serveFamily()
+    const user = userEvent.setup()
+    const canvas = familyCanvas("first_frame")
+    renderBar(canvas, canvas.nodes[0])
+
+    const picker = await screen.findByRole("combobox", { name: /^Provider/ })
+    await waitFor(() => expect(picker).toHaveTextContent("Auto · Replicate"))
+    await user.click(picker)
+    await user.click(await screen.findByRole("option", { name: "OpenRouter" }))
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("canvas:node:update", {
+        id: "target",
+        patch: { providerOverride: "openrouter" },
+      })
+    )
+    expect(submissions()).toHaveLength(0)
+  })
+
+  it("has no provider control on a concrete-key node", async () => {
+    renderBar()
+    await screen.findByRole("button", { name: "Run" })
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("models:get", { key: MODEL_KEY })
+    )
+    expect(
+      screen.queryByRole("combobox", { name: /^Provider/ })
+    ).not.toBeInTheDocument()
+  })
+
+  it("blocks a wire the overridden provider cannot take, with the reason", async () => {
+    serveFamily()
+    const canvas = familyCanvas("reference:2", {
+      ...TARGET,
+      modelKey: FAMILY_KEY,
+      providerOverride: "openrouter",
+    })
+    renderBar(canvas, canvas.nodes[0])
+
+    await waitFor(() =>
+      expect(screen.getByTestId("run-blocked")).toHaveTextContent(
+        "Not available on OpenRouter"
+      )
+    )
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled()
+    expect(submissions()).toHaveLength(0)
+  })
+
+  it("blocks a run no endpoint can take, in the choice's words", async () => {
+    serveFamily({ configured: ["replicate"] })
+    const canvas = familyCanvas("first_frame", {
+      ...TARGET,
+      modelKey: FAMILY_KEY,
+      providerOverride: "openrouter",
+    })
+    renderBar(canvas, canvas.nodes[0])
+
+    await waitFor(() =>
+      expect(screen.getByTestId("run-blocked")).toHaveTextContent(
+        "Add an OpenRouter key in Settings"
+      )
+    )
+    expect(screen.getByRole("button", { name: "Run" })).toBeDisabled()
+  })
+
+  /**
+   * ⛔ Regression: a board from before the registry — a concrete key and an
+   * edge holding the provider's own field — submits byte for byte what it
+   * did before families existed. Captured against the code on `main`.
+   */
+  it("submits exactly what it always did for a concrete-key node", async () => {
+    const user = userEvent.setup()
+    renderBar(WIRED, { ...TARGET, modelKey: MODEL_KEY })
+
+    const run = await screen.findByRole("button", { name: "Run" })
+    await waitFor(() => expect(run).toBeEnabled())
+    await user.click(run)
+
+    await waitFor(() => expect(submissions()).toHaveLength(1))
+    expect(submissions()[0]![1]).toEqual(CAPTURED)
+    // The descriptor and the price are asked for by key alone, as before.
+    expect(invoke).toHaveBeenCalledWith("models:get", { key: MODEL_KEY })
+    const quotes = invoke.mock.calls.filter(
+      ([channel]) => channel === "cost:estimate"
+    )
+    expect(quotes.map(([, payload]) => Object.keys(payload).sort())).toEqual(
+      quotes.map(() => ["key", "params"])
+    )
+    expect(quotes.at(-1)).toEqual([
+      "cost:estimate",
+      {
+        key: MODEL_KEY,
+        params: {
+          duration: 5,
+          resolution: "720p",
+          watermark: false,
+          reference_images: ["a0"],
+        },
+      },
+    ])
   })
 })
 

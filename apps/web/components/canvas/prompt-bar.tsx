@@ -102,7 +102,14 @@ import {
   textOfBlocks,
   type DraftBlock,
 } from "@/lib/canvas/prompt-blocks"
-import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
+import {
+  availableSlots,
+  contributedKind,
+  familyAvailability,
+  filledSlotKeys,
+  firstFreeSlot,
+  modelOptionsForNode,
+} from "@/lib/canvas/slots"
 import type { IconGrid } from "@/lib/canvas/icon-grid"
 import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
 import { frameSize, parseAspectRatio } from "@/lib/canvas/layout"
@@ -118,6 +125,7 @@ import { ModelPicker } from "@/components/models/model-picker"
 import { useCanvasSurface } from "./canvas-context"
 import { FullPromptPanel, type FullPromptPanelProps } from "./full-prompt-panel"
 import { PromptBlocks } from "./prompt-blocks"
+import { ProviderOverride } from "./provider-override"
 import {
   CanvasReferenceStrip,
   groupStrip,
@@ -357,8 +365,33 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const fullPromptId = useId()
   const advancedReasonId = useId()
 
-  const model = useModel(draft.modelKey)
+  /**
+   * The slot keys the prompt's `@mentions` fill, from the last render's plan.
+   * A family's endpoint is chosen by everything filled, and main chooses it
+   * from the references the run carries — mentions included — so the
+   * descriptor and the quote must be asked for with them too. They live in
+   * state because the plan that resolves them needs this descriptor first;
+   * the loop settles in one step, since a family's slots (the union of its
+   * endpoints) do not depend on what is filled.
+   */
+  const [mentionSlots, setMentionSlots] = useState<readonly string[]>([])
+  const modelOptions = useMemo(
+    () => modelOptionsForNode(node, canvas.edges, mentionSlots),
+    [canvas.edges, mentionSlots, node]
+  )
+  /** What the wires alone fill, which is what an edge is judged against. */
+  const edgeFilled = useMemo(
+    () => filledSlotKeys(node.id, canvas.edges),
+    [canvas.edges, node.id]
+  )
+
+  const model = useModel(draft.modelKey, modelOptions)
   const descriptor = model.data
+  /** Which of a family's slots the wires leave usable; undefined otherwise. */
+  const availability = useMemo(
+    () => familyAvailability(descriptor, edgeFilled),
+    [descriptor, edgeFilled]
+  )
 
   /**
    * Where a run's outputs are filed. The canvas is the workspace, but a
@@ -429,8 +462,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         nodes: canvas.nodes,
         edges: canvas.edges,
         slots: descriptor?.referenceSlots ?? [],
+        availability,
       }),
-    [canvas.edges, canvas.nodes, descriptor, node.id]
+    [availability, canvas.edges, canvas.nodes, descriptor, node.id]
   )
 
   /**
@@ -526,13 +560,27 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   } = useGeneratePlan({
     draft,
     descriptor,
-    modelPending: model.isPending,
+    // A family re-choosing its endpoint shows its last descriptor meanwhile;
+    // a run must wait for the one that matches the wiring.
+    modelPending: model.isPending || model.isPlaceholderData,
     kinds,
     containerId,
     inputs,
     prompt: rendered.prompt,
+    modelOptions,
     scope: node.id,
   })
+
+  // Adjusting state to the plan during render, React's pattern for state
+  // derived from something computed later in the same component: it only
+  // sets when the slots differ, so it settles at once.
+  const nextMentionSlots = useMemo(
+    () => [...new Set(mentions.references.map((one) => one.slotField))].sort(),
+    [mentions.references]
+  )
+  if (nextMentionSlots.join("\n") !== mentionSlots.join("\n")) {
+    setMentionSlots(nextMentionSlots)
+  }
 
   /**
    * The Full prompt panel reads the plan rather than rendering again: the
@@ -624,7 +672,11 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
    * rule `connect()` uses assigns one, rather than leaving the user with an
    * error whose only remedy is to re-label every wire by hand.
    */
-  const slots = descriptor?.referenceSlots
+  // A family's slots the wiring leaves usable; every slot for a concrete model.
+  const slots = useMemo(
+    () => (descriptor ? availableSlots(descriptor, edgeFilled) : undefined),
+    [descriptor, edgeFilled]
+  )
   const updateEdgeMutate = updateEdge.mutate
   useEffect(() => {
     if (!slots || slots.length === 0) return
@@ -891,6 +943,20 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           hotkeys={false}
           placeholder="Model"
         />
+
+        {/* A family runs on whichever provider its wiring and the settings
+            order choose; this lets the node insist on one. */}
+        {descriptor?.family ? (
+          <ProviderOverride
+            family={descriptor.family}
+            value={node.providerOverride ?? null}
+            filled={modelOptions.filled}
+            compact={narrow}
+            onChange={(providerOverride) =>
+              updateNode.mutate({ id: node.id, patch: { providerOverride } })
+            }
+          />
+        ) : null}
 
         {grid || narrow ? (
           <SettingsPopover

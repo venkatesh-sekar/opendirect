@@ -74,6 +74,7 @@ function row(id: string, x: number): CanvasNodeDto {
     batchId: null,
     pickAssetId: null,
     modelKey: null,
+    providerOverride: null,
     asset: null,
     generation: null,
     createdAt: 1,

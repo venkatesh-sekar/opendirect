@@ -22,13 +22,15 @@
  * back to its first output — picking is the user's decision, and a run that
  * quietly used a tile they did not choose would be a paid mistake. A slot the
  * current model no longer declares blocks too, in front of the same guard
- * `submitGeneration` already enforces in the main process.
+ * `submitGeneration` already enforces in the main process — and so does a
+ * family slot the node's endpoint cannot take with its other inputs.
  */
 import type {
   CanvasEdgeDto,
   CanvasNodeDto,
   GenerationReference,
   ReferenceSlot,
+  SlotAvailability,
 } from "@opendirect/contract"
 
 // Type-only, so the two modules never form a runtime cycle: `prompt-blocks`
@@ -45,6 +47,11 @@ export type CanvasBlockCode =
   | "unknown-slot"
   /** A media node whose asset row is gone. */
   | "missing-asset"
+  /**
+   * A family node's slot that the endpoint the node resolves to cannot take
+   * alongside its other inputs (or at all, on the overridden provider).
+   */
+  | "incompatible-slot"
 
 export interface CanvasInputsBlocked {
   blocked: string
@@ -76,6 +83,11 @@ export interface EdgesToInputsInput {
   edges: readonly CanvasEdgeDto[]
   /** The chosen model's own slots — `descriptor.referenceSlots`. */
   slots: readonly ReferenceSlot[]
+  /**
+   * A family node's slot availability (`familyAvailability`), by slot key.
+   * Absent for a concrete model, whose declared slots are all usable.
+   */
+  availability?: Readonly<Record<string, SlotAvailability>>
 }
 
 /**
@@ -204,6 +216,18 @@ export function edgesToInputs(input: EdgesToInputsInput): CanvasInputsResult {
       return blockedBy(
         "unknown-slot",
         `This model has no input called "${edge.slotField}". Choose a slot it does have from the edge label.`,
+        edge,
+        source
+      )
+    }
+    const availability = input.availability?.[edge.slotField]
+    if (availability?.available === false) {
+      const label =
+        input.slots.find((slot) => slot.field === edge.slotField)?.label ??
+        edge.slotField
+      return blockedBy(
+        "incompatible-slot",
+        `${label}: ${availability.reason ?? "not available here"}. Choose another slot from the edge label, or remove the connection.`,
         edge,
         source
       )

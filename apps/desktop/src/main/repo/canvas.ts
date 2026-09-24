@@ -25,6 +25,7 @@ import type {
   CanvasNodeMove,
   CanvasNodePatch,
   CanvasNodeType,
+  ProviderId,
 } from "@opendirect/contract"
 import { asc, eq, inArray } from "drizzle-orm"
 
@@ -62,6 +63,7 @@ function toNodeDto(
   return {
     ...row,
     type: row.type as CanvasNodeType,
+    providerOverride: row.providerOverride as ProviderId | null,
     asset: asset ? toAssetDto(asset) : null,
     generation: generation ? toGenerationDto(generation) : null,
   }
@@ -195,6 +197,7 @@ export interface CreateNodeInput {
   batchId?: string | null
   pickAssetId?: string | null
   modelKey?: string | null
+  providerOverride?: ProviderId | null
   text?: string | null
   color?: string | null
   id?: string
@@ -220,6 +223,7 @@ export function createNode(
     batchId: input.batchId ?? null,
     pickAssetId: input.pickAssetId ?? null,
     modelKey: input.modelKey ?? null,
+    providerOverride: input.providerOverride ?? null,
     text: input.text ?? null,
     color: input.color ?? null,
     createdAt: now,
@@ -253,6 +257,7 @@ export function updateNode(
     "generationId",
     "batchId",
     "modelKey",
+    "providerOverride",
     "containerId",
   ] as const) {
     if (patch[key] !== undefined) {

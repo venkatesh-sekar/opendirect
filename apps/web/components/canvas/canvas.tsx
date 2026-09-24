@@ -93,7 +93,12 @@ import {
   type AspectRatio,
   type Box,
 } from "@/lib/canvas/layout"
-import { contributedKind, firstFreeSlot } from "@/lib/canvas/slots"
+import {
+  availableSlots,
+  contributedKind,
+  firstFreeSlot,
+  modelOptionsForNode,
+} from "@/lib/canvas/slots"
 import { pathsForFiles } from "@/lib/ipc"
 import { modelKeyOf } from "@/lib/model-key"
 import { useSettings } from "@/lib/settings"
@@ -109,7 +114,11 @@ import { DefaultCanvasPick, GenerateNode } from "./nodes/generate-node"
 import { MediaNode } from "./nodes/media-node"
 import { isGenerateNode } from "./nodes/node-frame"
 import { TextNode } from "./nodes/text-node"
-import type { CanvasFlowEdge, CanvasFlowNode } from "./nodes/types"
+import type {
+  CanvasFlowEdge,
+  CanvasFlowNode,
+  TargetModelOptions,
+} from "./nodes/types"
 import { WorkflowLibrary } from "./workflow-library"
 import { PromptBar, seedPromptDraft } from "./prompt-bar"
 
@@ -241,6 +250,12 @@ export function modelKeyOfNode(node: CanvasNodeDto | undefined): string | null {
   return node.modelKey ?? (node.generation ? modelKeyOf(node.generation) : null)
 }
 
+function sameOptions(a: TargetModelOptions, b: TargetModelOptions): boolean {
+  return (
+    a.provider === b.provider && a.filled.join("\n") === b.filled.join("\n")
+  )
+}
+
 export function toFlowEdges(
   rows: readonly CanvasEdgeDto[],
   nodes: readonly CanvasNodeDto[],
@@ -249,15 +264,33 @@ export function toFlowEdges(
 ): CanvasFlowEdge[] {
   const byId = new Map(nodes.map((node) => [node.id, node]))
   const live = new Set<string>()
+  /** One per target: every edge into a node shares its options. */
+  const optionsOf = new Map<string, TargetModelOptions>()
+  const targetOptions = (targetNodeId: string): TargetModelOptions => {
+    let options = optionsOf.get(targetNodeId)
+    if (!options) {
+      options = modelOptionsForNode(
+        {
+          id: targetNodeId,
+          providerOverride: byId.get(targetNodeId)?.providerOverride ?? null,
+        },
+        rows
+      )
+      optionsOf.set(targetNodeId, options)
+    }
+    return options
+  }
   const result = rows.map((edge) => {
     live.add(edge.id)
     const chosen = selected.has(edge.id)
     const targetModelKey = modelKeyOfNode(byId.get(edge.targetNodeId))
+    const targetModelOptions = targetOptions(edge.targetNodeId)
     const previous = cache.get(edge.id)
     if (
       previous?.data?.edge === edge &&
       previous.selected === chosen &&
-      previous.data.targetModelKey === targetModelKey
+      previous.data.targetModelKey === targetModelKey &&
+      sameOptions(previous.data.targetModelOptions, targetModelOptions)
     )
       return previous
     const next: CanvasFlowEdge = {
@@ -266,7 +299,7 @@ export function toFlowEdges(
       target: edge.targetNodeId,
       type: "reference",
       selected: chosen,
-      data: { edge, targetModelKey },
+      data: { edge, targetModelKey, targetModelOptions },
     }
     cache.set(edge.id, next)
     return next
@@ -532,16 +565,19 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       // edge label.
       const key = modelKeyOfNode(target) ?? defaultModelKeyFor(target.type)
       if (!key) return null
+      // The node's own query — its override and wiring choose a family's
+      // endpoint — so a new edge lands only in a slot that endpoint allows.
+      const options = modelOptionsForNode(target, latest.current.edges)
       let descriptor: ModelDescriptor | null = null
       try {
-        descriptor = await client.fetchQuery(modelDescriptorQuery(key))
+        descriptor = await client.fetchQuery(modelDescriptorQuery(key, options))
       } catch {
         // A catalog that cannot be read is not a reason to refuse the edge;
         // it is drawn unresolved and the user labels it from the edge.
         descriptor = null
       }
       return firstFreeSlot({
-        slots: descriptor?.referenceSlots ?? [],
+        slots: descriptor ? availableSlots(descriptor, options.filled) : [],
         edges: latest.current.edges,
         targetNodeId: target.id,
         kind: contributedKind(source),

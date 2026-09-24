@@ -19,6 +19,7 @@
 import { z } from "zod"
 
 import { assetSchema, generationSchema } from "./project"
+import { providerIdSchema } from "./provider"
 
 /**
  * The four node kinds in v1. `text` is a coloured note whose text is prepended
@@ -49,13 +50,20 @@ export const canvasNodeSchema = z.object({
   /** Groups the sibling runs of one batch; null for a single run. */
   batchId: z.string().nullable(),
   /**
-   * The model a generate node is set to run, as `provider:slug`.
+   * The model a generate node is set to run, as `provider:slug` or
+   * `family:<id>`.
    *
    * The user's choice in the prompt bar, kept on the row rather than in a
    * draft, because it is what an edge's slot is resolved against — including
    * before the node has ever run, when there is no generation to ask.
    */
   modelKey: z.string().nullable(),
+  /**
+   * A family node's provider override: the one provider its endpoint is
+   * chosen on. Null (the default, and every row from before the column)
+   * runs it on the settings order. Ignored for a `provider:slug` key.
+   */
+  providerOverride: providerIdSchema.nullable().default(null),
   /** Which tile of a batch downstream edges resolve to. The user's choice. */
   pickAssetId: z.string().nullable(),
   text: z.string().nullable(),
@@ -111,6 +119,7 @@ export const canvasNodePatchSchema = z.object({
   generationId: z.string().nullable().optional(),
   batchId: z.string().nullable().optional(),
   modelKey: z.string().nullable().optional(),
+  providerOverride: providerIdSchema.nullable().optional(),
 })
 export type CanvasNodePatch = z.output<typeof canvasNodePatchSchema>
 

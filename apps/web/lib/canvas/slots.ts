@@ -14,10 +14,15 @@
  * blocks the run until the user chooses one, in front of the same guard
  * `submitGeneration` already enforces.
  */
-import type {
-  CanvasEdgeDto,
-  CanvasNodeDto,
-  ReferenceSlot,
+import {
+  slotAvailability,
+  slotKeySchema,
+  type CanvasEdgeDto,
+  type CanvasNodeDto,
+  type ModelDescriptor,
+  type ProviderId,
+  type ReferenceSlot,
+  type SlotAvailability,
 } from "@opendirect/contract"
 
 /** How many references one slot accepts. `null` means the model stated none. */
@@ -98,4 +103,111 @@ export function slotLabel(
   slots: readonly ReferenceSlot[]
 ): string {
   return slots.find((slot) => slot.field === slotField)?.label ?? slotField
+}
+
+/* -------------------------------------------------------------------------- */
+/* Family nodes                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The slot keys a node has filled: the distinct, sorted `slotField`s of its
+ * incoming edges, plus any filled another way (the prompt's mentions).
+ *
+ * A text edge carries no slot, so it adds nothing. Only well-formed slot keys
+ * count: an edge still holding a provider field from a concrete model the
+ * node used to run (`reference_images`) is the edge label's problem — it
+ * renders unresolved — not a reason to fail the family's endpoint choice.
+ * For a `provider:slug` node the list is ignored.
+ */
+export function filledSlotKeys(
+  targetNodeId: string,
+  edges: readonly CanvasEdgeDto[],
+  extra: readonly string[] = []
+): string[] {
+  const keys = new Set<string>()
+  for (const edge of edges) {
+    if (edge.targetNodeId !== targetNodeId || !edge.slotField) continue
+    keys.add(edge.slotField)
+  }
+  for (const key of extra) keys.add(key)
+  return [...keys].filter((key) => slotKeySchema.safeParse(key).success).sort()
+}
+
+/**
+ * What `useModel` / `modelDescriptorQuery` is given for a target node: its
+ * provider override and filled slot keys. Every view of one node (the prompt
+ * bar, its edge labels, a new edge's slot) asks through this, so they share
+ * one query and agree on the endpoint. Only a family key reads them.
+ */
+export function modelOptionsForNode(
+  node: Pick<CanvasNodeDto, "id" | "providerOverride">,
+  edges: readonly CanvasEdgeDto[],
+  extra: readonly string[] = []
+): { provider: ProviderId | null; filled: string[] } {
+  return {
+    provider: node.providerOverride ?? null,
+    filled: filledSlotKeys(node.id, edges, extra),
+  }
+}
+
+/**
+ * Which of a family node's slots the current wiring leaves usable, and why
+ * not (design §5.3). Undefined for a concrete model: its slots are all usable.
+ *
+ * An empty slot is judged against everything filled — can one more go there?
+ * A filled slot is judged against the *other* filled slots, so a wire the
+ * endpoint cannot take (after the provider override changed, say) is the one
+ * reported, rather than every filled slot reading as fine because it is
+ * filled. Two slots that each fit somewhere but not together both read as
+ * unavailable, each naming the other.
+ */
+export function familyAvailability(
+  descriptor: ModelDescriptor | undefined,
+  filled: readonly string[]
+): Record<string, SlotAvailability> | undefined {
+  const info = descriptor?.family
+  if (!info) return undefined
+  const base = {
+    providerOrder: info.providerOrder,
+    configured: info.configured,
+    override: info.override,
+  }
+  const keys = [...new Set(filled)]
+  // A filled slot no candidate endpoint has at all is reported as such, and
+  // is left out when judging the rest — otherwise one impossible wire would
+  // dim every other slot as "not with" it.
+  const alone = slotAvailability(info.family, { ...base, filled: [] })
+  const impossible = new Set(
+    keys.filter((key) => alone[key]?.available === false)
+  )
+  const possible = keys.filter((key) => !impossible.has(key))
+
+  const result = slotAvailability(info.family, { ...base, filled: possible })
+  for (const key of keys) {
+    if (!Object.hasOwn(result, key)) continue
+    if (impossible.has(key)) {
+      result[key] = alone[key]!
+      continue
+    }
+    const others = possible.filter((other) => other !== key)
+    result[key] = slotAvailability(info.family, { ...base, filled: others })[
+      key
+    ]!
+  }
+  return result
+}
+
+/**
+ * The slots a new edge may land in: every slot for a concrete model, else
+ * the family slots the current wiring leaves available.
+ */
+export function availableSlots(
+  descriptor: ModelDescriptor,
+  filled: readonly string[]
+): readonly ReferenceSlot[] {
+  const availability = familyAvailability(descriptor, filled)
+  if (!availability) return descriptor.referenceSlots
+  return descriptor.referenceSlots.filter(
+    (slot) => availability[slot.field]?.available !== false
+  )
 }

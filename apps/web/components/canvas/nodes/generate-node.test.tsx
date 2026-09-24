@@ -134,6 +134,7 @@ function node(overrides: Partial<CanvasNodeDto> = {}): CanvasNodeDto {
     batchId: "batch-1",
     pickAssetId: null,
     modelKey: null,
+    providerOverride: null,
     text: null,
     color: null,
     createdAt: 1,

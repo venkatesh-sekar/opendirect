@@ -300,6 +300,7 @@ export async function migrateCanvas(
       // The run's own model, so a migrated node resolves edge slots without
       // having to be re-run — the same `provider:slug` the catalog is keyed by.
       modelKey: `${generation.provider}:${generation.modelSlug}`,
+      providerOverride: null,
       text: null,
       color: null,
       // The node is as old as the run it stands for, so `getCanvas`'s ordering
@@ -333,6 +334,7 @@ export async function migrateCanvas(
       batchId: null,
       pickAssetId: null,
       modelKey: null,
+      providerOverride: null,
       text: null,
       color: null,
       createdAt: asset.createdAt,

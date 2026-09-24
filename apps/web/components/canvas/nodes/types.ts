@@ -11,9 +11,16 @@ import type {
   CanvasEdgeDto,
   CanvasNodeDto,
   CanvasNodeType,
+  ProviderId,
 } from "@opendirect/contract"
 
 export type CanvasFlowNode = Node<{ node: CanvasNodeDto }, CanvasNodeType>
+
+/** What a target node's descriptor is asked with (`modelOptionsForNode`). */
+export interface TargetModelOptions {
+  provider: ProviderId | null
+  filled: string[]
+}
 
 export type CanvasFlowEdge = Edge<
   {
@@ -23,6 +30,12 @@ export type CanvasFlowEdge = Edge<
      * run yet and therefore has no model to ask.
      */
     targetModelKey: string | null
+    /**
+     * The target's provider override and filled slot keys
+     * (`modelOptionsForNode`), so the label asks for the same descriptor the
+     * node's prompt bar does. Only a family key reads them.
+     */
+    targetModelOptions: TargetModelOptions
   },
   "reference"
 >

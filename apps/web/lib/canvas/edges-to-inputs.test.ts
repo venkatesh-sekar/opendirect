@@ -34,6 +34,7 @@ function node(
     batchId: null,
     pickAssetId: null,
     modelKey: null,
+    providerOverride: null,
     text: null,
     color: null,
     createdAt: 1,
@@ -310,6 +311,69 @@ describe("edgesToInputs", () => {
   it("ignores an edge whose source node is gone, rather than blocking", () => {
     const result = ok(run([], [edge({ id: "e1", sourceNodeId: "vanished" })]))
     expect(result.references).toEqual([])
+  })
+
+  it("blocks an edge whose slot the family's endpoint cannot take, with the reason", () => {
+    const nodes = [
+      node({ id: "m1", type: "media", assetId: "asset-1" }),
+      node({ id: "m2", type: "media", assetId: "asset-2" }),
+    ]
+    const edges = [
+      edge({ id: "e1", sourceNodeId: "m1", slotField: "reference_images" }),
+      edge({ id: "e2", sourceNodeId: "m2", slotField: "last_frame_image" }),
+    ]
+    const result = edgesToInputs({
+      targetNodeId: "target",
+      nodes: [TARGET, ...nodes],
+      edges,
+      slots: SLOTS,
+      availability: {
+        reference_images: { available: true, reason: null },
+        last_frame_image: {
+          available: false,
+          reason: "Not available on OpenRouter",
+        },
+      },
+    })
+    expect(result).toEqual({
+      blocked: expect.stringContaining("Not available on OpenRouter"),
+      code: "incompatible-slot",
+      edgeId: "e2",
+      nodeId: "m2",
+    })
+    if (!isBlocked(result)) throw new Error("expected a block")
+    expect(result.blocked).toContain("Last Frame Image")
+  })
+
+  it("is unchanged when no availability is given", () => {
+    const nodes = [
+      node({ id: "m1", type: "media", assetId: "asset-1" }),
+      node({ id: "m2", type: "media", assetId: "asset-2" }),
+    ]
+    const edges = [
+      edge({ id: "e1", sourceNodeId: "m1", slotField: "reference_images" }),
+      edge({ id: "e2", sourceNodeId: "m2", slotField: "last_frame_image" }),
+    ]
+    const without = run(nodes, edges)
+    expect(without).toEqual({
+      references: [
+        { slotField: "reference_images", assetId: "asset-1", position: 0 },
+        { slotField: "last_frame_image", assetId: "asset-2", position: 0 },
+      ],
+      notes: [],
+    })
+    // An availability that rules nothing out changes nothing either.
+    expect(
+      edgesToInputs({
+        targetNodeId: "target",
+        nodes: [TARGET, ...nodes],
+        edges,
+        slots: SLOTS,
+        availability: {
+          reference_images: { available: true, reason: null },
+        },
+      })
+    ).toEqual(without)
   })
 
   it("is empty for a node nothing feeds", () => {

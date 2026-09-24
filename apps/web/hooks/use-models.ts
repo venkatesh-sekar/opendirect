@@ -139,5 +139,13 @@ export function useModel(
   return useQuery({
     ...modelDescriptorQuery(key ?? "", options),
     enabled: key !== null,
+    // A family node re-asks whenever a wire or its override changes the
+    // endpoint. Its last descriptor stays meanwhile — marked
+    // `isPlaceholderData` — so its slots and form do not blink out; another
+    // model's descriptor is never shown in its place.
+    placeholderData: (previous, previousQuery) =>
+      previous !== undefined && previousQuery?.queryKey[2] === key
+        ? previous
+        : undefined,
   })
 }

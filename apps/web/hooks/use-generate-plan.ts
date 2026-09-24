@@ -32,6 +32,7 @@ import {
   type BatchSubmissionResult,
 } from "@/hooks/use-generations"
 import { useMentionSubjects } from "@/hooks/use-mentions"
+import { familyChoice, type ModelQueryOptions } from "@/hooks/use-models"
 import {
   isBlocked,
   type CanvasInputsResult,
@@ -89,6 +90,12 @@ export interface GeneratePlanInput {
    */
   prompt?: string
   /**
+   * A family node's provider override and filled slot keys — what its
+   * descriptor was fetched with (`modelOptionsForNode`), so the quote prices
+   * the same endpoint. Ignored for a `provider:slug` key.
+   */
+  modelOptions?: ModelQueryOptions
+  /**
    * What an accepted unknown price is scoped to, beyond the model, params and
    * count — the canvas node's id. Accepting the risk for one composition must
    * not accept it for another.
@@ -99,6 +106,7 @@ export interface GeneratePlanInput {
 /** Frozen: the empty answer must not be a new array on every render. */
 const NO_SUBJECTS: readonly MentionSubject[] = []
 const NO_INPUTS: CanvasInputsResult = { references: [], notes: [] }
+const NO_OPTIONS: ModelQueryOptions = {}
 
 export function useGeneratePlan({
   draft,
@@ -108,10 +116,16 @@ export function useGeneratePlan({
   containerId,
   inputs = NO_INPUTS,
   prompt,
+  modelOptions = NO_OPTIONS,
   scope = "",
 }: GeneratePlanInput) {
   const [acceptedCostFor, setAcceptedCostFor] = useState<string | null>(null)
-  const blockedReason = isBlocked(inputs) ? inputs.blocked : null
+  // An edge that cannot be read comes first: it names the wire to fix. Then
+  // a family whose wiring or provider no endpoint can run, in the sentence
+  // the endpoint choice wrote.
+  const blockedReason = isBlocked(inputs)
+    ? inputs.blocked
+    : (descriptor?.family?.choice.message ?? null)
 
   /**
    * What `@venkz` means for *this* model.
@@ -160,14 +174,23 @@ export function useGeneratePlan({
       // The prompt above has lost its `@handles`, so who this run was about
       // travels beside it — a scene's cast is read from this.
       mentionedContainerIds: mentionedContainerIds(mentions),
+      // Only a family has an endpoint to choose; a concrete key's request
+      // stays exactly what it was before families existed.
+      providerOverride: descriptor.family
+        ? (modelOptions.provider ?? null)
+        : null,
     })
-  }, [containerId, descriptor, draft, inputs, mentions])
+  }, [containerId, descriptor, draft, inputs, mentions, modelOptions.provider])
 
   const quoteParams = useMemo(
     () => (descriptor && request ? costParams(descriptor, request) : {}),
     [descriptor, request]
   )
-  const cost = useCostEstimate(descriptor ? descriptor.key : null, quoteParams)
+  const cost = useCostEstimate(
+    descriptor ? descriptor.key : null,
+    quoteParams,
+    modelOptions
+  )
 
   const missing = useMemo(
     () =>
@@ -210,6 +233,7 @@ export function useGeneratePlan({
   const costIdentity = JSON.stringify([
     scope,
     draft.modelKey,
+    familyChoice(draft.modelKey ?? "", modelOptions),
     quoteParams,
     draft.count,
   ])

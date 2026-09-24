@@ -10,6 +10,7 @@ import {
   costParams,
   missingRequirements,
 } from "./request"
+import { seedanceFamilyDescriptor } from "../canvas/test-family"
 
 function descriptor(overrides: Partial<ModelDescriptor> = {}): ModelDescriptor {
   return {
@@ -245,6 +246,37 @@ describe("buildGenerationRequest", () => {
   it("produces something the contract accepts", () => {
     expect(() => generationRequestSchema.parse(build({ quote }))).not.toThrow()
   })
+
+  it("carries a family node's provider override, and null when it has none", () => {
+    expect(build({ providerOverride: "openrouter" }).providerOverride).toBe(
+      "openrouter"
+    )
+    expect(build().providerOverride).toBeNull()
+    // Main sets the family id when it translates the key.
+    expect(build({ providerOverride: "openrouter" }).familyId).toBeNull()
+  })
+
+  it("builds a family request under canonical names and slot keys", () => {
+    const family = seedanceFamilyDescriptor({ filled: ["first_frame"] })
+    const request = build({
+      descriptor: family,
+      values: {
+        prompt: "a bellhop opens the lift",
+        common: { duration: 5, aspect_ratio: "16:9" },
+        advanced: {},
+        references: { first_frame: ["a1"] },
+      },
+    })
+    expect(request.modelKey).toBe("family:seedance-2-5")
+    expect(request.params).toEqual({
+      prompt: "a bellhop opens the lift",
+      duration: 5,
+      aspect_ratio: "16:9",
+    })
+    expect(request.references).toEqual([
+      { slotField: "first_frame", assetId: "a1", position: 0 },
+    ])
+  })
 })
 
 describe("missingRequirements", () => {
@@ -301,6 +333,50 @@ describe("missingRequirements", () => {
     ).toEqual(["Reference Images"])
   })
 
+  it("names a slot the chosen endpoint requires, though the schema cannot say so", () => {
+    // A family descriptor's schema has lost its mapped inputs, so a required
+    // input is only on the slot.
+    const model = descriptor({
+      referenceSlots: descriptor().referenceSlots.map((slot) =>
+        slot.field === "last_frame_image" ? { ...slot, required: true } : slot
+      ),
+    })
+    const empty = build({ descriptor: model })
+    expect(missingRequirements(model, empty)).toEqual(["Last Frame Image"])
+    const filled = build({
+      descriptor: model,
+      values: {
+        prompt: "x",
+        common: {},
+        advanced: {},
+        references: { last_frame_image: ["a1"] },
+      },
+    })
+    expect(missingRequirements(model, filled)).toEqual([])
+  })
+
+  it("names a slot once when both the schema and the slot require it", () => {
+    const model = descriptor({
+      inputSchema: {
+        type: "object",
+        required: ["reference_images"],
+        properties: { reference_images: { type: "array" } },
+      },
+      referenceSlots: descriptor().referenceSlots.map((slot) =>
+        slot.field === "reference_images" ? { ...slot, required: true } : slot
+      ),
+    })
+    expect(
+      missingRequirements(
+        model,
+        build({
+          descriptor: model,
+          values: { prompt: "", common: {}, advanced: {}, references: {} },
+        })
+      )
+    ).toEqual(["Reference Images"])
+  })
+
   it("treats a field with a schema default as satisfied", () => {
     const model = descriptor({
       inputSchema: {
@@ -341,6 +417,23 @@ describe("costParams", () => {
       reference_images: ["a", "b"],
       last_frame_image: "z",
     })
+  })
+
+  it("keeps a family's slot keys out of its price params", () => {
+    // `cost:estimate` translates a family's params into the endpoint's
+    // fields, and a slot key is not a field of any endpoint — it would turn
+    // every wired run's price into "unknown".
+    const family = seedanceFamilyDescriptor({ filled: ["first_frame"] })
+    const request = build({
+      descriptor: family,
+      values: {
+        prompt: "x",
+        common: { duration: 5 },
+        advanced: {},
+        references: { first_frame: ["a1"] },
+      },
+    })
+    expect(costParams(family, request)).toEqual({ duration: 5 })
   })
 
   it("leaves an empty slot out, so an unset tier stays unset", () => {

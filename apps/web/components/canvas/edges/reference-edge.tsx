@@ -138,7 +138,9 @@ const SlotControl = memo(function SlotControl({
   data,
 }: Pick<EdgeProps<CanvasFlowEdge>, "id" | "data">) {
   const update = useUpdateCanvasEdge()
-  const model = useModel(data?.targetModelKey ?? null)
+  // The target node's own query: a family's slots and endpoint follow its
+  // override and wiring, and the prompt bar asks with the same options.
+  const model = useModel(data?.targetModelKey ?? null, data?.targetModelOptions)
   return (
     <EdgeSlotLabel
       slotField={data?.edge.slotField ?? null}

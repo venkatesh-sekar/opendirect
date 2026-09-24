@@ -300,8 +300,13 @@ export const canvasNodes = sqliteTable(
     ),
     /** Groups the sibling runs of one batch; matches `generations.batch_id`. */
     batchId: text("batch_id"),
-    /** `provider:slug` — the model this node is set to run, before it has. */
+    /** `provider:slug` or `family:<id>` — the model this node is set to run, before it has. */
     modelKey: text("model_key"),
+    /**
+     * A family node's provider override (`ProviderId`); null runs it on the
+     * settings order. Ignored for a `provider:slug` key.
+     */
+    providerOverride: text("provider_override"),
     /** Which tile downstream edges resolve to. The user's decision. */
     pickAssetId: text("pick_asset_id").references(
       (): AnySQLiteColumn => assets.id,

@@ -193,6 +193,64 @@ describe("toFlowEdges", () => {
   })
 })
 
+describe("toFlowEdges — a family target", () => {
+  it("gives each edge its target's override and filled slots, so its label asks the node's own query", () => {
+    const edges: CanvasEdgeDto[] = [
+      {
+        id: "ab",
+        projectId: "p",
+        sourceNodeId: "a",
+        targetNodeId: "b",
+        slotField: "reference",
+        createdAt: 1,
+      },
+      {
+        id: "cb",
+        projectId: "p",
+        sourceNodeId: "c",
+        targetNodeId: "b",
+        slotField: "first_frame",
+        createdAt: 2,
+      },
+    ]
+    const nodes = [
+      node({ id: "a" }),
+      node({
+        id: "b",
+        modelKey: "family:seedance-2-5",
+        providerOverride: "openrouter",
+      }),
+      node({ id: "c" }),
+    ]
+    const cache = new Map<string, ReturnType<typeof toFlowEdges>[number]>()
+    const first = toFlowEdges(edges, nodes, new Set(), cache)
+    expect(first[0]!.data?.targetModelOptions).toEqual({
+      provider: "openrouter",
+      filled: ["first_frame", "reference"],
+    })
+    expect(first[1]!.data?.targetModelOptions).toEqual(
+      first[0]!.data?.targetModelOptions
+    )
+
+    // Unchanged options keep the edge as it was.
+    const again = toFlowEdges(edges, nodes, new Set(), cache)
+    expect(again[0]).toBe(first[0])
+
+    // Re-labelling one wire re-asks for both.
+    const relabelled = toFlowEdges(
+      [edges[0]!, { ...edges[1]!, slotField: "last_frame" }],
+      nodes,
+      new Set(),
+      cache
+    )
+    expect(relabelled[0]).not.toBe(first[0])
+    expect(relabelled[0]!.data?.targetModelOptions.filled).toEqual([
+      "last_frame",
+      "reference",
+    ])
+  })
+})
+
 describe("reconcileFlowNodes", () => {
   it("reuses already-selected live nodes and preserves their measurements", () => {
     const rows = [node({ id: "a" }), node({ id: "b" })]
