@@ -34,19 +34,24 @@ export function useSettings(): UseQueryResult<Settings> {
   })
 }
 
-export function useUpdateSettings(): UseMutationResult<
-  Settings,
-  Error,
-  Partial<Settings>
-> {
+export function useUpdateSettings(
+  options: {
+    /**
+     * No success toast. For a toggle whose new state is its own feedback
+     * (the picker's "Include unverified" switch); failures still toast.
+     */
+    silent?: boolean
+  } = {}
+): UseMutationResult<Settings, Error, Partial<Settings>> {
   const client = useQueryClient()
+  const { silent = false } = options
   return useMutation({
     mutationFn: (patch: Partial<Settings>) => invoke("settings:set", patch),
     onSuccess: (next) => {
       client.setQueryData(settingsQueryKey, next)
       // The General tab commits on blur with no Save button, so the toast is
       // the only thing that says a write happened at all.
-      toast.success("Preferences saved")
+      if (!silent) toast.success("Preferences saved")
     },
     onError: (error) =>
       toast.error("Could not save that", { description: error.message }),
