@@ -256,6 +256,25 @@ describe("buildGenerationRequest", () => {
     expect(build({ providerOverride: "openrouter" }).familyId).toBeNull()
   })
 
+  it("records the endpoint a family was quoted on, so main can refuse a moved one", () => {
+    const onReplicate = build({
+      descriptor: seedanceFamilyDescriptor({ filled: ["first_frame"] }),
+    })
+    const onOpenRouter = build({
+      descriptor: seedanceFamilyDescriptor({
+        filled: ["first_frame"],
+        override: "openrouter",
+      }),
+    })
+
+    expect(onReplicate.quotedEndpoint).toBe("replicate:bytedance/seedance-2.5")
+    expect(onOpenRouter.quotedEndpoint).toBe(
+      "openrouter:bytedance/seedance-2.5"
+    )
+    // A concrete key names its endpoint already.
+    expect(build().quotedEndpoint).toBeNull()
+  })
+
   it("builds a family request under canonical names and slot keys", () => {
     const family = seedanceFamilyDescriptor({ filled: ["first_frame"] })
     const request = build({

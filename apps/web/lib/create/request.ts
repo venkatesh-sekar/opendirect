@@ -20,12 +20,13 @@
  * ⛔ Building a request does not submit it, and submitting it only queues a
  * row — no provider is called anywhere in this task.
  */
-import type {
-  CostQuote,
-  GenerationReference,
-  GenerationRequest,
-  ModelDescriptor,
-  ProviderId,
+import {
+  modelKey,
+  type CostQuote,
+  type GenerationReference,
+  type GenerationRequest,
+  type ModelDescriptor,
+  type ProviderId,
 } from "@opendirect/contract"
 
 import {
@@ -124,6 +125,13 @@ export function buildGenerationRequest(
     batchId: input.batchId ?? null,
     mentionedContainerIds: input.mentionedContainerIds ?? null,
     providerOverride: input.providerOverride ?? null,
+    // A family descriptor stands on the endpoint it was chosen (and quoted)
+    // on. Main chooses again at submit and refuses a different answer, so a
+    // run never costs a price that was not shown.
+    quotedEndpoint:
+      descriptor.family && descriptor.family.choice.index !== null
+        ? modelKey(descriptor.provider, descriptor.slug)
+        : null,
     // Main's to set, on the request it translates from a family key.
     familyId: null,
     shapes: null,

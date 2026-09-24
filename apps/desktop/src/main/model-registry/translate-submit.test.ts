@@ -177,6 +177,36 @@ describe("translateSubmission", () => {
     ])
   })
 
+  it("runs a request whose quoted endpoint is still the one chosen", async () => {
+    const translated = await translateSubmission(
+      request({ quotedEndpoint: "replicate:bytedance/seedance-2.5" }),
+      deps()
+    )
+
+    expect(translated.modelKey).toBe("replicate:bytedance/seedance-2.5")
+  })
+
+  it("refuses a request quoted on another endpoint than main now chooses", async () => {
+    // The renderer quoted OpenRouter; the provider order has since moved
+    // Replicate first. The price shown is not the price of this run.
+    const d = deps()
+    await expect(
+      translateSubmission(
+        request({ quotedEndpoint: "openrouter:bytedance/seedance-2.5" }),
+        d
+      )
+    ).rejects.toThrow(/The price changed — review and run again/)
+    expect(d.getModel).not.toHaveBeenCalled()
+  })
+
+  it("accepts a request that quoted nothing, as older callers send", async () => {
+    const translated = await translateSubmission(
+      request({ quotedEndpoint: null }),
+      deps()
+    )
+    expect(translated.familyId).toBe("seedance-2-5")
+  })
+
   it("runs on OpenRouter when that is the only configured provider", async () => {
     const translated = await translateSubmission(
       request({

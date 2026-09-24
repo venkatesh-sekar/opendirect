@@ -75,6 +75,15 @@ export const generationRequestSchema = z.object({
    */
   providerOverride: providerIdSchema.nullable().default(null),
   /**
+   * A family request's endpoint (`provider:slug`) as the renderer quoted it
+   * — the one its descriptor and price were computed on. Main chooses the
+   * endpoint again at submit, from the live provider order, keys and
+   * registry; if its choice differs, the price shown is not this run's, and
+   * the submit is refused rather than run at another price. Optional so a
+   * caller that quotes nothing (a retry, an older build) still parses.
+   */
+  quotedEndpoint: z.string().nullable().optional(),
+  /**
    * Set by main on the translated request: which family this concrete run
    * came from. A family key never reaches the `queued` row — main rewrites
    * it to the endpoint it chose — so this is how the row remembers it.

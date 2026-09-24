@@ -97,6 +97,14 @@ export async function translateSubmission(
   }
 
   const key = endpointKey(choice.endpoint)
+  // The renderer's quote was for the endpoint it thought this would run on.
+  // If the provider order, a key or the registry has moved since, running
+  // here would spend a price nobody was shown.
+  if (request.quotedEndpoint != null && request.quotedEndpoint !== key) {
+    throw new Error(
+      `The price changed — review and run again. ${family.name} now runs on ${key}, not ${request.quotedEndpoint}.`
+    )
+  }
   const descriptor = await deps.getModel(key, id)
   const { params, references } = translateFamilyRequest({
     family,
