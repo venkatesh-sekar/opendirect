@@ -18,14 +18,14 @@
  */
 import { randomUUID } from "node:crypto"
 
-import type {
-  CanvasDto,
-  CanvasEdgeDto,
-  CanvasNodeDto,
-  CanvasNodeMove,
-  CanvasNodePatch,
-  CanvasNodeType,
-  ProviderId,
+import {
+  providerIdSchema,
+  type CanvasDto,
+  type CanvasEdgeDto,
+  type CanvasNodeDto,
+  type CanvasNodeMove,
+  type CanvasNodePatch,
+  type CanvasNodeType,
 } from "@opendirect/contract"
 import { asc, eq, inArray } from "drizzle-orm"
 
@@ -63,7 +63,11 @@ function toNodeDto(
   return {
     ...row,
     type: row.type as CanvasNodeType,
-    providerOverride: row.providerOverride as ProviderId | null,
+    // The column is plain text: a hand-edited file or a provider this build
+    // does not know reads as no override (settings order), never as an id
+    // the renderer and the endpoint choice cannot handle.
+    providerOverride:
+      providerIdSchema.safeParse(row.providerOverride).data ?? null,
     asset: asset ? toAssetDto(asset) : null,
     generation: generation ? toGenerationDto(generation) : null,
   }

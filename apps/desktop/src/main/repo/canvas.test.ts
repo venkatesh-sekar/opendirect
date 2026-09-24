@@ -269,6 +269,19 @@ describe("updateNode", () => {
     ).toBeNull()
   })
 
+  it("reads a stored override that is no known provider as none", () => {
+    // A hand-edited project, or a provider an older build knew: the column is
+    // plain text, and an unknown id must not reach the renderer as one.
+    const node = generateNode()
+    db()
+      .update(canvasNodes)
+      .set({ providerOverride: "fal" })
+      .where(eq(canvasNodes.id, node.id))
+      .run()
+
+    expect(getCanvas(db(), PROJECT).nodes[0]?.providerOverride).toBeNull()
+  })
+
   it("refuses a node that is not there", () => {
     expect(() => updateNode(db(), "nope", { x: 1 })).toThrow(/was not found/)
   })
