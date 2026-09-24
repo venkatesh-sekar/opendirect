@@ -27,6 +27,8 @@ import {
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+import { seedanceFamilyDescriptor } from "@/lib/canvas/test-family"
+
 import { container } from "./fixtures"
 
 const invoke = vi.hoisted(() => vi.fn())
@@ -276,5 +278,36 @@ describe("the generate panel", () => {
       await screen.findByText("Pick a model to generate with.")
     ).toBeVisible()
     expect(screen.getByRole("button", { name: /^generate/i })).toBeDisabled()
+  })
+
+  it("asks for a family's descriptor and price with the slots its mentions fill", async () => {
+    // A family's endpoint — and so its price tier — is chosen by what is
+    // filled, and main chooses it from the references the run carries. The
+    // `@mira` references fill a slot, so the page must ask with it too.
+    const FAMILY_KEY = "family:seedance-2-5"
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: IpcChannel, input: unknown) => {
+      if (channel === "settings:get")
+        return { defaultImageModel: FAMILY_KEY, defaultVideoModel: null }
+      if (channel === "models:get") {
+        const { filled } = input as { filled?: string[] }
+        return seedanceFamilyDescriptor({ filled: filled ?? [] })
+      }
+      return base(channel, input)
+    })
+    mount()
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "models:get",
+        expect.objectContaining({ key: FAMILY_KEY, filled: ["reference"] })
+      )
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "cost:estimate",
+        expect.objectContaining({ key: FAMILY_KEY, filled: ["reference"] })
+      )
+    )
   })
 })

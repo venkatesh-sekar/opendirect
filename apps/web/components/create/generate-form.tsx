@@ -105,7 +105,21 @@ export function GenerateForm({
   const modelKey = draft.modelKey ?? fallbackModel
   const composed = useMemo(() => ({ ...draft, modelKey }), [draft, modelKey])
 
-  const model = useModel(modelKey)
+  /**
+   * The slot keys the prompt's `@mentions` fill, from the last render's
+   * plan — as on the canvas's prompt bar. A family's endpoint (and price
+   * tier) is chosen by what is filled, and main chooses it from the
+   * references the run carries, so the descriptor and the quote are asked
+   * for with them. The loop settles in one step: a family's slots are the
+   * union of its endpoints', whatever is filled.
+   */
+  const [mentionSlots, setMentionSlots] = useState<readonly string[]>([])
+  const modelOptions = useMemo(
+    () => ({ provider: null, filled: [...mentionSlots] }),
+    [mentionSlots]
+  )
+
+  const model = useModel(modelKey, modelOptions)
   const descriptor = model.data
 
   /**
@@ -125,10 +139,27 @@ export function GenerateForm({
   const plan = useGeneratePlan({
     draft: composed,
     descriptor,
-    modelPending: model.isPending && modelKey !== null,
+    // A family re-choosing its endpoint shows its last descriptor meanwhile;
+    // a run must wait for the one that matches what is filled.
+    modelPending:
+      (model.isPending || model.isPlaceholderData) && modelKey !== null,
     kinds: ANY_KIND,
     containerId,
+    modelOptions,
   })
+
+  // Adjusting state to the plan during render: it only sets when the slots
+  // differ, so it settles at once.
+  const nextMentionSlots = useMemo(
+    () =>
+      [
+        ...new Set(plan.mentions.references.map((one) => one.slotField)),
+      ].sort(),
+    [plan.mentions.references]
+  )
+  if (nextMentionSlots.join("\n") !== mentionSlots.join("\n")) {
+    setMentionSlots(nextMentionSlots)
+  }
 
   const grid = useMemo(
     () => (descriptor ? buildIconGrid(descriptor) : null),
