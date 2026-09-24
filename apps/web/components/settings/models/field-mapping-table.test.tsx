@@ -316,6 +316,25 @@ describe("FieldMappingTable", () => {
     expect(target("image")).toMatchObject({ key: "first_frame" })
   })
 
+  it("keeps an edit made after a bulk action when its Undo is pressed", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+    await user.click(
+      screen.getByRole("combobox", { name: "Maps to for image" })
+    )
+    await user.click(await screen.findByRole("option", { name: /^Advanced/ }))
+    await user.click(screen.getByRole("button", { name: "Reset endpoint" }))
+    const [, options] = toast.success.mock.calls.at(-1)!
+
+    await user.click(screen.getByRole("combobox", { name: "Maps to for seed" }))
+    await user.click(await screen.findByRole("option", { name: /^Advanced/ }))
+    ;(options as { action: { onClick: () => void } }).action.onClick()
+
+    await screen.findByRole("combobox", { name: "Maps to for seed" })
+    expect(target("seed")).toEqual({ kind: "advanced" })
+    expect(target("image")).toMatchObject({ key: "first_frame" })
+  })
+
   it("can undo Apply all suggestions", async () => {
     const user = userEvent.setup()
     renderWithProviders(<Harness />)

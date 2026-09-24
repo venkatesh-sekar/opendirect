@@ -147,6 +147,18 @@ export interface EditorState {
    * dirty exactly when it differs from this.
    */
   baseline: ModelFamily | null
+  /**
+   * The last bulk action (Apply all suggestions, Reset endpoint), for its
+   * Undo: the rows before and after it, and the notes it settled. Undo only
+   * applies while the endpoint's rows are still exactly `after`, so it never
+   * throws away an edit made since.
+   */
+  undo: {
+    uid: string
+    before: FieldRow[]
+    after: FieldRow[]
+    repairs: Repair[]
+  } | null
 }
 
 export type EditorAction =
@@ -172,10 +184,14 @@ export type EditorAction =
   | { type: "setActive"; index: number }
   | { type: "retryEndpoint"; index: number }
   | { type: "changeEndpointModel"; index: number; model: string }
-  | { type: "restoreRows"; uid: string; rows: FieldRow[] }
+  | { type: "undoBulk"; uid: string }
   | { type: "setTakenIds"; ids: readonly string[] }
   /** The draft was stored: it is what `replaceId` names now, and clean. */
-  | { type: "saved" }
+  /**
+   * A save succeeded. Carries what was sent: edits made while it was in
+   * flight stay unsaved, and an id changed meanwhile is not the stored one.
+   */
+  | { type: "saved"; family: ModelFamily; id: string }
 
 const FAMILY_KINDS: readonly FamilyKind[] = ["video", "image", "audio"]
 const ID_MAX = 64
@@ -229,6 +245,7 @@ export function emptyEditor(
     nextUid: 1,
     repairs: [],
     baseline: null,
+    undo: null,
   }
 }
 
@@ -319,6 +336,12 @@ function looseControl(raw: unknown): MappingControl | null {
   return control
 }
 
+/** Where an input under an unknown role goes: `reference`, then `reference:2`…`:9`. */
+const REFERENCE_KEYS = [
+  "reference",
+  ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => `reference:${n}`),
+]
+
 /**
  * A draft from JSON that may not validate (Fix, or an invalid import): what
  * has the right shape is kept, so the person fixes it instead of retyping;
@@ -359,10 +382,18 @@ export function fromRaw(
         if (slotKeySchema.safeParse(key).success) continue
         const input = looseInput(value)
         if (!input) continue
-        const taken = Object.keys(inputs).filter(
-          (k) => slotKeyRole(k) === "reference"
-        ).length
-        const renamed = taken === 0 ? "reference" : `reference:${taken + 1}`
+        // The first free Reference key: counting the taken ones would reuse
+        // `reference:2` when only it is present, overwriting a valid input.
+        const renamed = REFERENCE_KEYS.find((k) => !(k in inputs))
+        if (renamed === undefined) {
+          repairs.push({
+            endpoint: uid,
+            field: input.field,
+            message: `"${key}" is not a role, and all nine Reference inputs are taken, so this input was left out. Map "${input.field}" to a role, or leave it unmapped.`,
+            blocking: true,
+          })
+          continue
+        }
         inputs[renamed] = input
         repairs.push({
           endpoint: uid,
@@ -639,6 +670,27 @@ function assign(
   return renumber(next)
 }
 
+/** A bulk action's rows, remembered so its Undo can put them back. */
+function withBulk(
+  state: EditorState,
+  index: number,
+  rows: FieldRow[],
+  settles: (repair: Repair) => boolean
+): EditorState {
+  const endpoint = state.endpoints[index]!
+  const next = updateEndpoint(state, index, (e) => ({ ...e, rows }))
+  return {
+    ...next,
+    repairs: state.repairs.filter((repair) => !settles(repair)),
+    undo: {
+      uid: endpoint.uid,
+      before: endpoint.rows,
+      after: rows,
+      repairs: state.repairs,
+    },
+  }
+}
+
 function updateEndpoint(
   state: EditorState,
   index: number,
@@ -800,9 +852,18 @@ export function editorReducer(
       }))
     }
 
-    case "restoreRows": {
+    case "undoBulk": {
+      const undo = state.undo
       const index = state.endpoints.findIndex((e) => e.uid === action.uid)
-      return updateEndpoint(state, index, (e) => ({ ...e, rows: action.rows }))
+      const endpoint = state.endpoints[index]
+      if (!undo || undo.uid !== action.uid || endpoint?.rows !== undo.after) {
+        return state.undo === null ? state : { ...state, undo: null }
+      }
+      const next = updateEndpoint(state, index, (e) => ({
+        ...e,
+        rows: undo.before,
+      }))
+      return { ...next, repairs: undo.repairs, undo: null }
     }
 
     case "setTakenIds":
@@ -811,9 +872,9 @@ export function editorReducer(
     case "saved":
       return {
         ...state,
-        replaceId: state.id,
+        replaceId: action.id,
         idTouched: true,
-        baseline: toFamily(state),
+        baseline: action.family,
       }
 
     case "endpointFailed":
@@ -846,35 +907,51 @@ export function editorReducer(
         }
       })
 
-    case "applyAllSuggestions":
-      return updateEndpoint(state, action.index, (e) => {
-        const kept = new Set(
-          e.rows.flatMap((row) =>
-            row.touched && row.target.kind === "control"
-              ? [row.target.control]
-              : []
-          )
+    case "applyAllSuggestions": {
+      const endpoint = state.endpoints[action.index]
+      if (!endpoint) return state
+      const kept = new Set(
+        endpoint.rows.flatMap((row) =>
+          row.touched && row.target.kind === "control"
+            ? [row.target.control]
+            : []
         )
-        const rows = e.rows.map((row) => {
+      )
+      // A row given its suggestion has had a choice made for it, so what
+      // reading the file said about it is settled, as when chosen by hand.
+      const settled = new Set<string>()
+      const rows = renumber(
+        endpoint.rows.map((row) => {
           if (row.touched || !row.suggestion) return row
+          settled.add(row.field)
           const target = row.suggestion.target
           if (target.kind === "control" && kept.has(target.control)) {
             return { ...row, target: { kind: "advanced" as const } }
           }
           return { ...row, target }
         })
-        return { ...e, rows: renumber(rows) }
-      })
+      )
+      return withBulk(
+        state,
+        action.index,
+        rows,
+        (r) =>
+          r.endpoint === endpoint.uid &&
+          r.field !== null &&
+          settled.has(r.field)
+      )
+    }
 
-    case "resetEndpoint":
-      return updateEndpoint(state, action.index, (e) => ({
-        ...e,
-        rows: e.rows.map((row) => ({
-          ...row,
-          target: row.baseline,
-          touched: false,
-        })),
+    case "resetEndpoint": {
+      const endpoint = state.endpoints[action.index]
+      if (!endpoint) return state
+      const rows = endpoint.rows.map((row) => ({
+        ...row,
+        target: row.baseline,
+        touched: false,
       }))
+      return withBulk(state, action.index, rows, () => false)
+    }
 
     case "removeEndpoint": {
       if (!state.endpoints[action.index]) return state

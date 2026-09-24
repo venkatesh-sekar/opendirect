@@ -697,14 +697,18 @@ export function FieldMappingTable({
     }
   })
 
-  /** Runs a bulk change, with a toast that can put the rows back. */
+  /**
+   * Runs a bulk change, with a toast that can put the rows back. The undo
+   * only applies while the rows are as the bulk change left them (the
+   * reducer checks), so it never discards an edit made since.
+   */
   function bulk(action: EditorAction, done: string) {
-    const { uid, rows } = endpoint
+    const { uid } = endpoint
     dispatch(action)
     toast.success(done, {
       action: {
         label: "Undo",
-        onClick: () => dispatch({ type: "restoreRows", uid, rows }),
+        onClick: () => dispatch({ type: "undoBulk", uid }),
       },
     })
   }

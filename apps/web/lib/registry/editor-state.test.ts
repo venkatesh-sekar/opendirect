@@ -418,6 +418,52 @@ describe("endpoints", () => {
   })
 })
 
+describe("renaming an unknown slot key", () => {
+  const withInputs = (inputs: Record<string, unknown>) => ({
+    id: "x",
+    name: "X",
+    kind: "video",
+    endpoints: [{ provider: "replicate", model: "a/b", inputs, controls: {} }],
+  })
+
+  it("takes the first free reference name and never overwrites a valid input", () => {
+    const state = fromRaw(
+      withInputs({
+        "reference:2": { field: "kept", kind: "image" },
+        charcter: { field: "renamed", kind: "image" },
+      }),
+      "x"
+    )
+    const inputs = state.endpoints[0]!.mapping!.inputs
+    expect(inputs["reference:2"]?.field).toBe("kept")
+    expect(inputs.reference?.field).toBe("renamed")
+  })
+
+  it("leaves an input out, and says so, when every reference name is taken", () => {
+    const taken = Object.fromEntries(
+      [
+        "reference",
+        ...[2, 3, 4, 5, 6, 7, 8, 9].map((n) => `reference:${n}`),
+      ].map((key, n) => [key, { field: `f${n}`, kind: "image" }])
+    )
+    const state = fromRaw(
+      withInputs({ ...taken, charcter: { field: "extra", kind: "image" } }),
+      "x"
+    )
+    const inputs = state.endpoints[0]!.mapping!.inputs
+    expect(Object.keys(inputs)).not.toContain("reference:10")
+    expect(Object.keys(inputs)).toHaveLength(9)
+    expect(Object.values(inputs).map((i) => i.field)).not.toContain("extra")
+    expect(state.repairs).toContainEqual(
+      expect.objectContaining({
+        field: "extra",
+        blocking: true,
+        message: expect.stringMatching(/"charcter" is not a role/),
+      })
+    )
+  })
+})
+
 describe("a stored mapping that does not validate", () => {
   const raw = {
     id: "broken",
@@ -622,9 +668,28 @@ describe("isDirty", () => {
   it("is clean again once saved", () => {
     let state = withBaseline(withSeedance())
     state = editorReducer(state, { type: "setName", name: "Mine" })
-    state = editorReducer(state, { type: "saved" })
+    state = editorReducer(state, {
+      type: "saved",
+      family: toFamily(state),
+      id: state.id,
+    })
     expect(isDirty(state)).toBe(false)
     expect(state.replaceId).toBe(state.id)
+  })
+
+  it("keeps edits made while a save was in flight as unsaved", () => {
+    let state = withBaseline(withSeedance())
+    state = editorReducer(state, { type: "setName", name: "Mine" })
+    const sent = { family: toFamily(state), id: state.id }
+    // The person keeps typing before the save answers.
+    state = editorReducer(state, { type: "setId", id: "mine-renamed" })
+    state = editorReducer(state, { type: "setName", name: "Mine, later" })
+    state = editorReducer(state, { type: "saved", ...sent })
+
+    expect(isDirty(state)).toBe(true)
+    // The stored entry is the one sent, so that is what a next save replaces.
+    expect(state.replaceId).toBe(sent.id)
+    expect(state.id).toBe("mine-renamed")
   })
 })
 
@@ -638,21 +703,86 @@ describe("taken ids and undo", () => {
     expect(state.id).toBe("kling-2")
   })
 
-  it("restores an endpoint's rows", () => {
+  it("undoes a bulk action", () => {
     const before = withSeedance()
-    const rows = before.endpoints[0]!.rows
+    const uid = before.endpoints[0]!.uid
     let state = editorReducer(before, {
       type: "setTarget",
       index: 0,
       field: "image",
       target: { kind: "advanced" },
     })
-    state = editorReducer(state, {
-      type: "restoreRows",
-      uid: before.endpoints[0]!.uid,
-      rows,
-    })
+    state = editorReducer(state, { type: "resetEndpoint", index: 0 })
     expect(keyOf(row(state, "image"))).toBe("first_frame")
+    state = editorReducer(state, { type: "undoBulk", uid })
+    expect(row(state, "image").target).toEqual({ kind: "advanced" })
+  })
+
+  it("does not undo a bulk action once a row was edited after it", () => {
+    const before = withSeedance()
+    const uid = before.endpoints[0]!.uid
+    let state = editorReducer(before, {
+      type: "setTarget",
+      index: 0,
+      field: "image",
+      target: { kind: "advanced" },
+    })
+    state = editorReducer(state, { type: "resetEndpoint", index: 0 })
+    // An edit after the bulk action: undo must not throw it away.
+    state = editorReducer(state, {
+      type: "setTarget",
+      index: 0,
+      field: "seed",
+      target: { kind: "advanced" },
+    })
+    const edited = state
+    state = editorReducer(state, { type: "undoBulk", uid })
+    expect(state.endpoints[0]!.rows).toBe(edited.endpoints[0]!.rows)
+    expect(state.undo).toBeNull()
+  })
+})
+
+describe("bulk actions and read-time notes", () => {
+  const raw = {
+    id: "broken",
+    name: "Broken",
+    kind: "video",
+    endpoints: [
+      {
+        provider: "replicate",
+        model: "bytedance/seedance-2.5",
+        inputs: { charcter: { field: "image", kind: "image" } },
+        controls: {},
+      },
+    ],
+  }
+
+  function loaded(): EditorState {
+    return editorReducer(fromRaw(raw, "broken"), {
+      type: "endpointLoaded",
+      index: 0,
+      descriptor: seedanceDescriptor(),
+    })
+  }
+
+  const blocksImage = (state: EditorState) =>
+    validateEditor(state).some((i) =>
+      /"charcter" is not a role/.test(i.message)
+    )
+
+  it("settles the note of a row a bulk action gave a suggestion to, and undo brings it back", () => {
+    let state = loaded()
+    expect(blocksImage(state)).toBe(true)
+    expect(row(state, "image").suggestion).not.toBeNull()
+
+    state = editorReducer(state, { type: "applyAllSuggestions", index: 0 })
+    expect(blocksImage(state)).toBe(false)
+
+    state = editorReducer(state, {
+      type: "undoBulk",
+      uid: state.endpoints[0]!.uid,
+    })
+    expect(blocksImage(state)).toBe(true)
   })
 })
 

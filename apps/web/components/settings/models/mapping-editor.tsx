@@ -882,8 +882,10 @@ function EditorSheet({
         : null
     const id = state.id
     const name = state.name
+    // What is sent, kept for `saved`: the draft may change before it answers.
+    const sent = family
     save.mutate(
-      { family, replaceId: state.replaceId },
+      { family: sent, replaceId: state.replaceId },
       {
         onSuccess: (saved) => {
           // A broken entry without an id cannot be replaced by id; the fixed
@@ -892,7 +894,7 @@ function EditorSheet({
             remove.mutate(fixing.key)
           }
           if (then === "export") {
-            dispatch({ type: "saved" })
+            dispatch({ type: "saved", family: sent, id })
             setSavedOnce(true)
             toast.success(`Saved ${name}`, {
               description: "Now choose where to export it.",
