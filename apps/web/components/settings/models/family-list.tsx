@@ -210,16 +210,28 @@ function takesOver(shadows: RegistrySource[]): string {
 interface FamilyRowProps {
   entry: RegistryFamilyEntry
   stored: UserOverride | null
+  /**
+   * The stored entries are still loading, or failed to: a custom row keeps
+   * its Edit and Delete, disabled, rather than silently losing them.
+   */
+  storedUnavailable: boolean
   onOpenEditor: (request: MappingEditorRequest) => void
   onDelete: (target: DeleteTarget) => void
 }
 
-function FamilyRow({ entry, stored, onOpenEditor, onDelete }: FamilyRowProps) {
+function FamilyRow({
+  entry,
+  stored,
+  storedUnavailable,
+  onOpenEditor,
+  onDelete,
+}: FamilyRowProps) {
   const { family } = entry
   const exportFamily = useExportOverride()
   const custom = entry.source === "user"
   const roles = familyRoles(family)
   const shadowed = entry.shadows.filter((source) => source !== "user")
+  const editable = custom && (stored !== null || storedUnavailable)
 
   function copyJson() {
     navigator.clipboard.writeText(formatFamilyJson(family)).then(
@@ -281,11 +293,15 @@ function FamilyRow({ entry, stored, onOpenEditor, onDelete }: FamilyRowProps) {
             <HugeiconsIcon icon={MoreHorizontalIcon} />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="min-w-48">
-            {custom && stored ? (
+            {editable ? (
               <DropdownMenuItem
-                onClick={() =>
-                  onOpenEditor({ from: { kind: "override", override: stored } })
-                }
+                disabled={stored === null}
+                onClick={() => {
+                  if (stored)
+                    onOpenEditor({
+                      from: { kind: "override", override: stored },
+                    })
+                }}
               >
                 <HugeiconsIcon icon={PencilEdit02Icon} />
                 Edit
@@ -314,18 +330,20 @@ function FamilyRow({ entry, stored, onOpenEditor, onDelete }: FamilyRowProps) {
               <HugeiconsIcon icon={Copy01Icon} />
               Copy JSON
             </DropdownMenuItem>
-            {custom && stored ? (
+            {editable ? (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   variant="destructive"
-                  onClick={() =>
-                    onDelete({
-                      key: stored.key,
-                      name: family.name,
-                      consequence: takesOver(entry.shadows),
-                    })
-                  }
+                  disabled={stored === null}
+                  onClick={() => {
+                    if (stored)
+                      onDelete({
+                        key: stored.key,
+                        name: family.name,
+                        consequence: takesOver(entry.shadows),
+                      })
+                  }}
                 >
                   <HugeiconsIcon icon={Delete02Icon} />
                   Delete
@@ -442,7 +460,15 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
 
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<SourceFilter>("all")
+  // Open state and target are kept apart so the dialog keeps its text
+  // while it animates closed.
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null)
+
+  function askDelete(target: DeleteTarget) {
+    setDeleting(target)
+    setDeleteOpen(true)
+  }
 
   const all = useMemo(
     () =>
@@ -477,6 +503,7 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
     for (const entry of all) result[entry.source] += 1
     return result
   }, [all])
+  const storedUnavailable = !overrides.isSuccess
 
   const visible = all.filter(
     (entry) =>
@@ -569,27 +596,62 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
         <div
           role="group"
           aria-label="Filter mappings by source"
-          className="flex items-center gap-1"
+          className="flex flex-wrap items-center gap-1"
         >
-          {SOURCE_FILTERS.map((option) => (
-            <Button
-              key={option.value}
-              type="button"
-              size="sm"
-              aria-pressed={filter === option.value}
-              variant={filter === option.value ? "secondary" : "ghost"}
-              onClick={() => setFilter(option.value)}
-            >
-              {option.label}
-              {option.value !== "all" && counts[option.value] > 0 ? (
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {counts[option.value]}
-                </span>
-              ) : null}
-            </Button>
-          ))}
+          {SOURCE_FILTERS.map((option) => {
+            const selected = filter === option.value
+            // An empty source reads as 0 and cannot be picked, unless it is
+            // the one picked already (so it can still be left).
+            const empty =
+              option.value !== "all" &&
+              families.isSuccess &&
+              counts[option.value] === 0
+            return (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                aria-pressed={selected}
+                variant={selected ? "secondary" : "ghost"}
+                disabled={empty && !selected}
+                onClick={() => setFilter(option.value)}
+              >
+                {option.label}
+                {option.value !== "all" && families.isSuccess ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {counts[option.value]}
+                  </span>
+                ) : null}
+              </Button>
+            )
+          })}
         </div>
       </div>
+
+      {overrides.isError ? (
+        <Alert variant="destructive">
+          <HugeiconsIcon icon={AlertCircleIcon} />
+          <AlertTitle>Could not load your custom mappings</AlertTitle>
+          <AlertDescription>
+            <p className="font-mono text-xs break-words">
+              {overrides.error.message}
+            </p>
+            <p>
+              Until they load, custom mappings cannot be edited or deleted, and
+              any that are broken are not listed.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1"
+              disabled={overrides.isFetching}
+              onClick={() => void overrides.refetch()}
+            >
+              Retry
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {invalid.length > 0 ? (
         <ul
@@ -604,7 +666,7 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
                 onOpenEditor({ from: { kind: "override", override: entry } })
               }
               onDelete={() =>
-                setDeleting({
+                askDelete({
                   key: entry.key,
                   name: entry.id ?? "this custom mapping",
                   consequence: "It is not in use now, so nothing else changes.",
@@ -652,19 +714,15 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
               key={entry.family.id}
               entry={entry}
               stored={storedById.get(entry.family.id) ?? null}
+              storedUnavailable={storedUnavailable}
               onOpenEditor={onOpenEditor}
-              onDelete={setDeleting}
+              onDelete={askDelete}
             />
           ))}
         </ul>
       )}
 
-      <AlertDialog
-        open={deleting !== null}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null)
-        }}
-      >
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>

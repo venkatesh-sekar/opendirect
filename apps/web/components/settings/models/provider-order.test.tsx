@@ -137,4 +137,27 @@ describe("ProviderOrder", () => {
     await waitFor(() => expect(rows()[1]).toHaveTextContent("Used first"))
     expect(rows()[0]).not.toHaveTextContent("Used first")
   })
+
+  it("names providers, not ids, to a screen reader while dragging", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ProviderOrder />)
+
+    const handle = await screen.findByRole("button", {
+      name: "Drag to reorder Replicate",
+    })
+    expect(handle).toHaveAccessibleDescription(/Move up and Move down/)
+    expect(handle).toHaveAccessibleDescription(/Up and Down arrow keys/)
+
+    handle.focus()
+    await user.keyboard(" ")
+    // Picking up is followed at once by "over", so the region ends on that.
+    const live = await screen.findByRole("status")
+    await waitFor(() =>
+      expect(live).toHaveTextContent(/^Replicate .*position 1 of 2\.$/)
+    )
+    await user.keyboard("{Escape}")
+    expect(
+      await screen.findByText("Moving Replicate was cancelled.")
+    ).toBeInTheDocument()
+  })
 })

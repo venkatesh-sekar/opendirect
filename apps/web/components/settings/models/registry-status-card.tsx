@@ -302,9 +302,9 @@ export function RegistryStatusCard() {
   const reload = useReloadRegistry()
   const settings = useSettings()
   const update = useUpdateSettings()
-  const [reloadedAt, setReloadedAt] = useState<number | null>(null)
   const reloadHintId = useId()
   const now = useNow()
+  const remoteId = useId()
   const remoteHintId = useId()
 
   const data = status.data
@@ -312,12 +312,9 @@ export function RegistryStatusCard() {
   // setting so the switch answers instantly.
   const remoteOn = settings.data?.remoteRegistry ?? data?.remote.enabled ?? true
 
+  /** How a reload went is said once, by the hook's toast, as on every tab. */
   function runReload() {
-    reload.mutate(undefined, {
-      onSuccess: (next) => {
-        if (!next.remote.error) setReloadedAt(Date.now())
-      },
-    })
+    reload.mutate()
   }
 
   /** A remote setting changes what is in force, so the registry is re-read. */
@@ -390,15 +387,6 @@ export function RegistryStatusCard() {
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <p
-          aria-live="polite"
-          className="text-xs text-muted-foreground empty:hidden"
-        >
-          {reloadedAt !== null && data && !reload.isPending
-            ? `Reloaded. Using v${data.activeVersion} ${data.activeSource === "remote" ? "from GitHub" : "bundled with the app"}.`
-            : ""}
-        </p>
-
         {data?.remote.error ? (
           <Alert variant="destructive">
             <HugeiconsIcon icon={AlertCircleIcon} />
@@ -422,15 +410,14 @@ export function RegistryStatusCard() {
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
-            <Label htmlFor="remote-registry">Fetch updates from GitHub</Label>
+            <Label htmlFor={remoteId}>Fetch updates from GitHub</Label>
             <p id={remoteHintId} className="text-xs text-muted-foreground">
               Checks once a day for newer mappings. It only downloads small JSON
               files and never contacts a provider.
             </p>
           </div>
           <Switch
-            id="remote-registry"
-            aria-label="Fetch updates from GitHub"
+            id={remoteId}
             aria-describedby={remoteHintId}
             checked={remoteOn}
             disabled={!settings.data || update.isPending}

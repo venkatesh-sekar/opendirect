@@ -25,7 +25,10 @@ import {
   closestCenter,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
+  type ScreenReaderInstructions,
+  type UniqueIdentifier,
 } from "@dnd-kit/core"
 import {
   SortableContext,
@@ -75,6 +78,16 @@ export function completeOrder(saved: readonly ProviderId[]): ProviderId[] {
     if (!order.includes(provider)) order.push(provider)
   }
   return order
+}
+
+/** What a keyboard or screen reader user hears on focusing a drag handle. */
+const SCREEN_READER_INSTRUCTIONS: ScreenReaderInstructions = {
+  draggable:
+    "To reorder, press Space to pick this provider up, move it with the Up and Down arrow keys, then press Space again to drop it or Escape to cancel. The Move up and Move down buttons do the same.",
+}
+
+function providerName(id: UniqueIdentifier): string {
+  return PROVIDER_LABELS[id as ProviderId] ?? String(id)
 }
 
 interface RowProps {
@@ -220,6 +233,26 @@ export function ProviderOrder() {
     setAnnouncement(`${PROVIDER_LABELS[provider]} moved to position ${to + 1}.`)
   }
 
+  /** Drag announcements in provider names and positions, never raw ids. */
+  const place = (id: UniqueIdentifier) =>
+    order
+      ? `position ${order.indexOf(id as ProviderId) + 1} of ${order.length}`
+      : ""
+  const announcements: Announcements = {
+    onDragStart: ({ active }) =>
+      `Picked up ${providerName(active.id)}, ${place(active.id)}.`,
+    onDragOver: ({ active, over }) =>
+      over
+        ? `${providerName(active.id)} is over ${place(over.id)}.`
+        : `${providerName(active.id)} is no longer over the list.`,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? `${providerName(active.id)} dropped at ${place(over.id)}.`
+        : `${providerName(active.id)} dropped.`,
+    onDragCancel: ({ active }) =>
+      `Moving ${providerName(active.id)} was cancelled.`,
+  }
+
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!order || !over || active.id === over.id) return
     move(active.id as ProviderId, order.indexOf(over.id as ProviderId))
@@ -239,6 +272,10 @@ export function ProviderOrder() {
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            accessibility={{
+              announcements,
+              screenReaderInstructions: SCREEN_READER_INSTRUCTIONS,
+            }}
             onDragEnd={onDragEnd}
           >
             <SortableContext

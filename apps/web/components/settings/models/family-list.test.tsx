@@ -288,6 +288,92 @@ describe("FamilyList", () => {
     expect(onOpenEditor).toHaveBeenCalledWith({ from: { kind: "blank" } })
   })
 
+  it("says so when the custom mappings cannot be loaded, and retries", async () => {
+    const user = userEvent.setup()
+    let fail = true
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: IpcChannel, input: unknown) => {
+      if (channel === "registry:overrides:list" && fail) {
+        throw new Error("disk on fire")
+      }
+      return base(channel, input)
+    })
+    renderWithProviders(<FamilyList onOpenEditor={() => {}} />)
+
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Could not load your custom mappings")
+    expect(alert).toHaveTextContent("disk on fire")
+
+    fail = false
+    await user.click(within(alert).getByRole("button", { name: /Retry/ }))
+    expect(await screen.findByTestId("invalid-override")).toBeVisible()
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Could not load your custom mappings")
+      ).toBeNull()
+    )
+  })
+
+  it("keeps Edit and Delete on a custom row, disabled, while its stored copy loads", async () => {
+    const user = userEvent.setup()
+    const base = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: IpcChannel, input: unknown) => {
+      if (channel === "registry:overrides:list") return new Promise(() => {})
+      return base(channel, input)
+    })
+    renderWithProviders(<FamilyList onOpenEditor={() => {}} />)
+    await screen.findByText("Kling 3 (mine)")
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Kling 3 (mine)" })
+    )
+    const menu = await screen.findByRole("menu")
+    expect(
+      within(menu).getByRole("menuitem", { name: /^Edit/ })
+    ).toHaveAttribute("aria-disabled", "true")
+    expect(
+      within(menu).getByRole("menuitem", { name: /Delete/ })
+    ).toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("keeps the name in the delete dialog while it closes", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<FamilyList onOpenEditor={() => {}} />)
+    await screen.findByText("Seedance 2.5")
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Kling 3 (mine)" })
+    )
+    await user.click(await screen.findByRole("menuitem", { name: /Delete/ }))
+    const dialog = await screen.findByRole("alertdialog")
+    await user.click(within(dialog).getByRole("button", { name: "Keep it" }))
+
+    // Mid-close, the dialog is still on screen: it must not read "Delete ?".
+    expect(screen.queryByText("Delete ?")).toBeNull()
+    expect(screen.queryByText(/^Delete\s*\?$/)).toBeNull()
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull())
+  })
+
+  it("shows empty sources as 0, dimmed and disabled", async () => {
+    data = { families: [seedance, mine], overrides: [mineStored] }
+    renderWithProviders(<FamilyList onOpenEditor={() => {}} />)
+    await screen.findByText("Seedance 2.5")
+
+    const remote = screen.getByRole("button", { name: /^Remote/ })
+    expect(remote).toHaveTextContent("Remote0")
+    expect(remote).toBeDisabled()
+    expect(screen.getByRole("button", { name: /^Custom/ })).toBeEnabled()
+  })
+
+  it("wraps the source chips so they fit a narrow window", async () => {
+    renderWithProviders(<FamilyList onOpenEditor={() => {}} />)
+    await screen.findByText("Seedance 2.5")
+
+    expect(
+      screen.getByRole("group", { name: "Filter mappings by source" })
+    ).toHaveClass("flex-wrap")
+  })
+
   it("says so when there are no mappings at all", async () => {
     data = { families: [], overrides: [] }
     renderWithProviders(<FamilyList onOpenEditor={() => {}} />)

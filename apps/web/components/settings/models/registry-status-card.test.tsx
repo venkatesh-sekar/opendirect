@@ -17,6 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { renderWithProviders, settings, status } from "./test-utils"
 
 const invoke = vi.hoisted(() => vi.fn())
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+
+vi.mock("sonner", () => ({ toast }))
 
 vi.mock("@/lib/ipc", () => ({
   invoke,
@@ -35,6 +38,8 @@ beforeEach(() => {
   current = { status: status(), settings: settings() }
   reload = async () => current.status
   invoke.mockReset()
+  toast.success.mockReset()
+  toast.error.mockReset()
   invoke.mockImplementation(async (channel: IpcChannel, input: unknown) => {
     switch (channel) {
       case "registry:status":
@@ -118,7 +123,24 @@ describe("RegistryStatusCard", () => {
     expect(
       await screen.findByRole("button", { name: "Reload registry" })
     ).not.toHaveAttribute("aria-disabled", "true")
-    expect(await screen.findByText(/Reloaded/)).toBeInTheDocument()
+    // One success channel, as on every other settings tab: the toast.
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Registry reloaded · v3 from remote"
+      )
+    )
+    expect(screen.queryByText(/Reloaded\./)).toBeNull()
+  })
+
+  it("labels the remote switch through its visible label only", async () => {
+    renderWithProviders(<RegistryStatusCard />)
+
+    const toggle = await screen.findByRole("switch", {
+      name: "Fetch updates from GitHub",
+    })
+    expect(toggle).not.toHaveAttribute("aria-label")
+    expect(toggle).toHaveAttribute("aria-labelledby")
+    expect(document.getElementById("remote-registry")).toBeNull()
   })
 
   it("cannot reload from GitHub while fetching is switched off", async () => {

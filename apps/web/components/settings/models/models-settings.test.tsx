@@ -7,7 +7,7 @@ import "@testing-library/jest-dom/vitest"
  *
  * ⛔ Every channel is stubbed; nothing here reaches a provider.
  */
-import { createElement, type ReactNode } from "react"
+import { createElement, useState, type ReactNode } from "react"
 import type { IpcChannel } from "@opendirect/contract"
 import { cleanup, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -104,5 +104,37 @@ describe("ModelsSettings", () => {
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     expect(onEditorClosed).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens the editor again when the same ?map= link comes back", async () => {
+    const user = userEvent.setup()
+    const key = "replicate:kwaivgi/kling-v3"
+    // The page: ?map= arrives, and is dropped when the editor closes.
+    function Page() {
+      const [map, setMap] = useState<string | null>(key)
+      return (
+        <>
+          <button type="button" onClick={() => setMap(key)}>
+            Follow the link again
+          </button>
+          <ModelsSettings
+            mapModelKey={map}
+            onEditorClosed={() => setMap(null)}
+          />
+        </>
+      )
+    }
+    renderWithProviders(<Page />)
+    await screen.findByRole("dialog", { name: "New mapping" })
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+
+    await user.click(
+      screen.getByRole("button", { name: "Follow the link again" })
+    )
+
+    expect(
+      await screen.findByRole("dialog", { name: "New mapping" })
+    ).toHaveTextContent(key)
   })
 })

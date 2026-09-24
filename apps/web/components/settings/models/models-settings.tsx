@@ -130,10 +130,13 @@ export function ModelsSettings({
   const [linkedKey, setLinkedKey] = useState<string | null>(null)
 
   // A new `?map=` opens the editor once ("adjust state during render": no
-  // effect, no extra paint with the editor closed).
-  if (mapModelKey !== null && mapModelKey !== linkedKey) {
+  // effect, no extra paint with the editor closed). When the link is
+  // dropped, forget it, so the same link sent again opens the editor again.
+  if (mapModelKey !== linkedKey) {
     setLinkedKey(mapModelKey)
-    setRequest({ from: { kind: "model", modelKey: mapModelKey } })
+    if (mapModelKey !== null) {
+      setRequest({ from: { kind: "model", modelKey: mapModelKey } })
+    }
   }
 
   return (
