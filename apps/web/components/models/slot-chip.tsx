@@ -33,6 +33,11 @@ export interface SlotChipProps {
   slot: ReferenceSlot
   /** From `slotAvailability`; omitted means the slot is usable. */
   availability?: SlotAvailability
+  /**
+   * Draw "×max". Off where the caller already shows a count against the max
+   * (the canvas strip's "1 / 4"), so the number is not said twice.
+   */
+  showMax?: boolean
   className?: string
 }
 
@@ -50,7 +55,12 @@ function accessibleName(slot: ReferenceSlot): string {
   return parts.join(", ")
 }
 
-export function SlotChip({ slot, availability, className }: SlotChipProps) {
+export function SlotChip({
+  slot,
+  availability,
+  showMax = true,
+  className,
+}: SlotChipProps) {
   const role = roleMeta(slot.role)
   const kind = KIND_META[slot.kind]
   const describedBy = useId()
@@ -89,7 +99,7 @@ export function SlotChip({ slot, availability, className }: SlotChipProps) {
         className="size-3 shrink-0 text-muted-foreground"
         aria-hidden
       />
-      {slot.multiple ? (
+      {slot.multiple && showMax ? (
         <span
           className="shrink-0 text-muted-foreground tabular-nums"
           aria-hidden

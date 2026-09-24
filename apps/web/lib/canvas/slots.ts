@@ -15,6 +15,7 @@
  * `submitGeneration` already enforces.
  */
 import {
+  ROLE_LABELS,
   slotAvailability,
   slotKeySchema,
   type CanvasEdgeDto,
@@ -103,6 +104,18 @@ export function slotLabel(
   slots: readonly ReferenceSlot[]
 ): string {
   return slots.find((slot) => slot.field === slotField)?.label ?? slotField
+}
+
+/**
+ * The slot's role in words, for a line under its label: "Character", or
+ * "Reference · unverified" when the role was guessed from the field name
+ * rather than set by a registry mapping (design §4, degraded mode).
+ */
+export function slotRoleText(
+  slot: Pick<ReferenceSlot, "role" | "verified">
+): string {
+  const role = ROLE_LABELS[slot.role]
+  return slot.verified ? role : `${role} · unverified`
 }
 
 /* -------------------------------------------------------------------------- */

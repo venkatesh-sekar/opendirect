@@ -21,27 +21,46 @@
  *   model they may go back to, and `edges-to-inputs.ts` blocks the run until
  *   they pick one this model has.
  *
+ * The menu lists each slot with its role. On a family node, a slot the
+ * current wiring rules out is disabled with the reason written under it; on
+ * a concrete model whose roles are guesses, the menu offers "Map this
+ * model…" in Settings → Models.
+ *
  * ⛔ Re-labelling an edge writes one row. It never runs anything.
  */
-import { memo, useState } from "react"
+import { memo, useId, useMemo, useState } from "react"
+import Link from "next/link"
 import {
   BaseEdge,
   EdgeLabelRenderer,
   getBezierPath,
   type EdgeProps,
 } from "@xyflow/react"
-import type { ReferenceSlot } from "@opendirect/contract"
+import { HugeiconsIcon } from "@hugeicons/react"
+import type { ReferenceSlot, SlotAvailability } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { UNVERIFIED_HINT } from "@/components/models/role-badge"
 import { useUpdateCanvasEdge } from "@/hooks/use-canvas"
 import { useModel } from "@/hooks/use-models"
-import { isUnresolvedSlot, slotLabel } from "@/lib/canvas/slots"
+import {
+  familyAvailability,
+  isUnresolvedSlot,
+  slotLabel,
+  slotRoleText,
+} from "@/lib/canvas/slots"
+import { roleMeta } from "@/lib/registry/role-meta"
 
 import type { CanvasFlowEdge } from "../nodes/types"
 
@@ -54,6 +73,22 @@ export interface EdgeSlotLabelProps {
   onChange: (slotField: string | null) => void
   /** True while the target model's descriptor is still being fetched. */
   loading?: boolean
+  /**
+   * A family node's slot availability, judged as if this edge were not yet
+   * in any slot — so the menu answers "where may this wire go?". Omitted for
+   * a concrete model, whose slots are all usable (design §4.4).
+   */
+  availability?: Readonly<Record<string, SlotAvailability>>
+  /**
+   * The target's `provider:slug` when it is a concrete model. When any of its
+   * slots is a guess, the menu offers to map it in Settings → Models.
+   */
+  mapModelKey?: string | null
+}
+
+/** The Models tab, opened on the mapping editor for `modelKey`. */
+function mapHref(modelKey: string): string {
+  return `/settings?tab=models&map=${encodeURIComponent(modelKey)}`
 }
 
 /**
@@ -61,75 +96,199 @@ export interface EdgeSlotLabelProps {
  *
  * Presentational on purpose — it is given the slots rather than fetching them,
  * so the three states above can be rendered and asserted without a viewport.
+ *
+ * The chip leads with the slot's role icon. A guessed role is underlined with
+ * dots and says so on hover and focus; a slot the wiring rules out (a family
+ * whose endpoint cannot take it) is drawn as a problem with the reason. Both
+ * explanations are also the chip's accessible description, so nothing here
+ * is hover-only.
  */
 export function EdgeSlotLabel({
   slotField,
   slots,
   onChange,
   loading = false,
+  availability,
+  mapModelKey = null,
 }: EdgeSlotLabelProps) {
   const [open, setOpen] = useState(false)
+  const describedBy = useId()
   // A model still loading has declared nothing *yet*, which is not the same as
   // declaring nothing — so its edges do not accuse the user of a broken slot.
   const unresolved = !loading && isUnresolvedSlot(slotField, slots)
   const text =
     slotField === null ? UNASSIGNED_SLOT_LABEL : slotLabel(slotField, slots)
+  const current =
+    slotField === null
+      ? undefined
+      : slots.find((slot) => slot.field === slotField)
+  const ruledOut =
+    slotField !== null && availability?.[slotField]?.available === false
+      ? (availability[slotField]!.reason ?? "Not available here")
+      : null
+  const guessed = current !== undefined && !current.verified
+  const explanation = [ruledOut, guessed ? UNVERIFIED_HINT : null]
+    .filter((line): line is string => line !== null)
+    .join(" ")
+  const problem = unresolved || ruledOut !== null
+  const offerMapping =
+    mapModelKey !== null && slots.some((slot) => !slot.verified)
 
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        data-testid="edge-slot-label"
-        data-unresolved={unresolved || undefined}
-        aria-label={
-          unresolved ? `Unresolved input slot: ${text}` : `Input slot: ${text}`
-        }
+  const trigger = (
+    <PopoverTrigger
+      data-testid="edge-slot-label"
+      data-unresolved={unresolved || undefined}
+      data-unavailable={ruledOut !== null || undefined}
+      data-role={current?.role}
+      data-verified={current ? String(current.verified) : undefined}
+      aria-label={
+        unresolved ? `Unresolved input slot: ${text}` : `Input slot: ${text}`
+      }
+      aria-describedby={explanation ? describedBy : undefined}
+      className={cn(
+        "nodrag nopan pointer-events-auto inline-flex max-w-44 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-tight shadow-sm",
+        problem
+          ? "border-destructive bg-destructive/15 text-destructive"
+          : "border-border bg-popover text-popover-foreground"
+      )}
+    >
+      {current ? (
+        <HugeiconsIcon
+          icon={roleMeta(current.role).icon}
+          className="size-3 shrink-0 opacity-70"
+          aria-hidden
+        />
+      ) : null}
+      <span
         className={cn(
-          "nodrag nopan pointer-events-auto rounded-full border px-2 py-0.5 text-[11px] leading-tight shadow-sm",
-          unresolved
-            ? "border-destructive bg-destructive/15 text-destructive"
-            : "border-border bg-popover text-popover-foreground"
+          "truncate",
+          guessed && "underline decoration-dotted underline-offset-2"
         )}
       >
         {unresolved ? `${text} · unresolved` : text}
-      </PopoverTrigger>
-      <PopoverContent align="center" className="w-56 p-1">
-        {slots.length === 0 ? (
-          <p className="p-2 text-xs text-muted-foreground">
-            {loading
-              ? "Reading the model's inputs…"
-              : "This node has no model yet, so it declares no input slots."}
-          </p>
+      </span>
+    </PopoverTrigger>
+  )
+
+  return (
+    <>
+      {explanation ? (
+        <span id={describedBy} className="sr-only">
+          {explanation}
+        </span>
+      ) : null}
+      <Popover open={open} onOpenChange={setOpen}>
+        {explanation ? (
+          <Tooltip>
+            <TooltipTrigger render={trigger} />
+            <TooltipContent className="max-w-xs">{explanation}</TooltipContent>
+          </Tooltip>
         ) : (
-          slots.map((slot) => (
-            <Button
-              key={slot.field}
-              type="button"
-              size="sm"
-              variant={slot.field === slotField ? "secondary" : "ghost"}
-              className="w-full justify-start"
-              onClick={() => {
-                setOpen(false)
-                onChange(slot.field)
-              }}
-            >
-              {slot.label}
-            </Button>
-          ))
+          trigger
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant={slotField === null ? "secondary" : "ghost"}
-          className="w-full justify-start text-muted-foreground"
-          onClick={() => {
-            setOpen(false)
-            onChange(null)
-          }}
+        <PopoverContent align="center" className="w-64 gap-0 p-1">
+          {slots.length === 0 ? (
+            <p className="p-2 text-xs text-muted-foreground">
+              {loading
+                ? "Reading the model's inputs…"
+                : "This node has no model yet, so it declares no input slots."}
+            </p>
+          ) : (
+            slots.map((slot) => (
+              <SlotMenuItem
+                key={slot.field}
+                slot={slot}
+                selected={slot.field === slotField}
+                availability={availability?.[slot.field]}
+                onChoose={() => {
+                  setOpen(false)
+                  onChange(slot.field)
+                }}
+              />
+            ))
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant={slotField === null ? "secondary" : "ghost"}
+            className="w-full justify-start text-muted-foreground"
+            onClick={() => {
+              setOpen(false)
+              onChange(null)
+            }}
+          >
+            {UNASSIGNED_SLOT_LABEL}
+          </Button>
+          {offerMapping ? (
+            <p className="mt-1 border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">
+              Wrong input?{" "}
+              <Link
+                href={mapHref(mapModelKey)}
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                Map this model…
+              </Link>
+            </p>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+    </>
+  )
+}
+
+/**
+ * One slot in the menu: its role icon and label, then a second line with the
+ * role (and "unverified" for a guess) or, when the wiring rules it out, the
+ * reason. A ruled-out slot stays focusable (`aria-disabled`, not `disabled`)
+ * so a keyboard or screen-reader user reaches the reason too.
+ */
+function SlotMenuItem({
+  slot,
+  selected,
+  availability,
+  onChoose,
+}: {
+  slot: ReferenceSlot
+  selected: boolean
+  availability: SlotAvailability | undefined
+  onChoose: () => void
+}) {
+  const detailId = useId()
+  const unavailable = availability?.available === false
+  const detail = unavailable
+    ? (availability?.reason ?? "Not available here")
+    : slotRoleText(slot)
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant={selected ? "secondary" : "ghost"}
+      disabled={unavailable}
+      focusableWhenDisabled
+      aria-label={slot.label}
+      aria-describedby={detailId}
+      data-slot-field={slot.field}
+      className="h-auto w-full items-start justify-start gap-2 py-1.5 text-left whitespace-normal aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:hover:bg-transparent"
+      onClick={onChoose}
+    >
+      <HugeiconsIcon
+        icon={roleMeta(slot.role).icon}
+        className="mt-0.5 size-3.5 text-muted-foreground"
+        aria-hidden
+      />
+      <span className="flex min-w-0 flex-col">
+        <span className="truncate">{slot.label}</span>
+        <span
+          id={detailId}
+          className={cn(
+            "text-[11px] leading-snug font-normal",
+            unavailable ? "text-destructive" : "text-muted-foreground"
+          )}
         >
-          {UNASSIGNED_SLOT_LABEL}
-        </Button>
-      </PopoverContent>
-    </Popover>
+          {detail}
+        </span>
+      </span>
+    </Button>
   )
 }
 
@@ -141,12 +300,27 @@ const SlotControl = memo(function SlotControl({
   // The target node's own query: a family's slots and endpoint follow its
   // override and wiring, and the prompt bar asks with the same options.
   const model = useModel(data?.targetModelKey ?? null, data?.targetModelOptions)
+  const descriptor = model.data
+  const slotField = data?.edge.slotField ?? null
+  const filled = data?.targetModelOptions.filled
+  // Judged as if this wire were not yet placed: the menu answers where it may
+  // go. (Another wire in the same slot still counts in the run's check.)
+  const availability = useMemo(
+    () =>
+      familyAvailability(
+        descriptor,
+        (filled ?? []).filter((key) => key !== slotField)
+      ),
+    [descriptor, filled, slotField]
+  )
   return (
     <EdgeSlotLabel
-      slotField={data?.edge.slotField ?? null}
-      slots={model.data?.referenceSlots ?? []}
+      slotField={slotField}
+      slots={descriptor?.referenceSlots ?? []}
       loading={model.isPending && (data?.targetModelKey ?? null) !== null}
-      onChange={(slotField) => update.mutate({ id, slotField })}
+      availability={availability}
+      mapModelKey={descriptor && !descriptor.family ? descriptor.key : null}
+      onChange={(next) => update.mutate({ id, slotField: next })}
     />
   )
 })

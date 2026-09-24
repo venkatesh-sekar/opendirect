@@ -1,4 +1,8 @@
-import type { CanvasEdgeDto, CanvasNodeDto } from "@opendirect/contract"
+import type {
+  CanvasEdgeDto,
+  CanvasNodeDto,
+  ReferenceSlot,
+} from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -6,6 +10,7 @@ import {
   familyAvailability,
   filledSlotKeys,
   modelOptionsForNode,
+  slotRoleText,
 } from "./slots"
 import { seedanceFamilyDescriptor } from "./test-family"
 
@@ -105,5 +110,32 @@ describe("familyAvailability", () => {
     // A concrete model's slots are all offered.
     const concrete = { ...descriptor, family: null }
     expect(availableSlots(concrete, [])).toBe(concrete.referenceSlots)
+  })
+})
+
+describe("slotRoleText", () => {
+  const slot = (over: Partial<ReferenceSlot>): ReferenceSlot => ({
+    field: "character",
+    label: "Characters",
+    kind: "image",
+    multiple: true,
+    max: 4,
+    role: "character",
+    verified: true,
+    required: false,
+    shape: null,
+    ...over,
+  })
+
+  it("names a mapped slot's role", () => {
+    expect(slotRoleText(slot({}))).toBe("Character")
+  })
+
+  it("says a guessed role is unverified", () => {
+    expect(
+      slotRoleText(
+        slot({ field: "reference_images", role: "reference", verified: false })
+      )
+    ).toBe("Reference · unverified")
   })
 })

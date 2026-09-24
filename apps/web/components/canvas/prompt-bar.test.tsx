@@ -1320,6 +1320,15 @@ describe("family nodes", () => {
     )
     expect(screen.getByRole("button", { name: "Run" })).toBeDisabled()
     expect(submissions()).toHaveLength(0)
+    // The strip rings the group holding that wire and says why beside it,
+    // and dims the slots the provider has no field for.
+    const groups = screen.getAllByTestId("strip-group")
+    const videos = groups.find((one) => one.dataset.slot === "reference:2")!
+    expect(videos).toHaveAttribute("data-unavailable", "filled")
+    expect(videos).toHaveTextContent("Not available on OpenRouter")
+    const audio = groups.find((one) => one.dataset.slot === "soundtrack")!
+    expect(audio).toHaveAttribute("data-unavailable", "empty")
+    expect(audio).toHaveAttribute("aria-disabled", "true")
   })
 
   it("blocks a run no endpoint can take, in the choice's words", async () => {

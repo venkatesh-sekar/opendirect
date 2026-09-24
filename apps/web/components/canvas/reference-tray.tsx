@@ -22,6 +22,12 @@
  * and `edges-to-inputs.ts` says so in a sentence; the strip shows *which*
  * thumbnail the sentence is about.
  *
+ * Each group is headed by its slot's chip (role icon, label, required dot,
+ * "unverified" for a guessed role). On a family node, a slot the current
+ * wiring rules out (design §5.3) is dimmed with its reason and takes nothing
+ * new; if it already holds a wire — the provider override changed under it —
+ * it is ringed and says why inline, because the run is blocked on it.
+ *
  * ⛔ Nothing here submits or spends. Drawing an edge never starts a run.
  */
 import { useCallback, useEffect, useId, useState } from "react"
@@ -34,6 +40,7 @@ import type {
   CanvasDto,
   CanvasNodeDto,
   ReferenceSlot,
+  SlotAvailability,
 } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -63,6 +70,7 @@ import { invoke } from "@/lib/ipc"
 import type { MentionOutcome } from "@/lib/mentions/resolve"
 
 import { ReferencePicker } from "@/components/create/reference-picker"
+import { SlotChip } from "@/components/models/slot-chip"
 
 import { useCanvasSurface } from "./canvas-context"
 
@@ -81,6 +89,11 @@ export interface CanvasReferenceStripProps {
   canvas: CanvasDto
   /** The chosen model's own slots — `descriptor.referenceSlots`. */
   slots: readonly ReferenceSlot[]
+  /**
+   * A family node's slot availability (`familyAvailability`), by slot key.
+   * Undefined for a concrete model: every slot is usable (design §4.4).
+   */
+  availability?: Readonly<Record<string, SlotAvailability>>
   /** Where the picker's assets come from; no container means no `+`. */
   containerId: string | null
   /** Says something the bar shows — a fetch that failed, a slot that is full. */
@@ -366,6 +379,7 @@ export function CanvasReferenceStrip({
   node,
   canvas,
   slots,
+  availability,
   containerId,
   onNotice,
   mentions = [],
@@ -386,7 +400,18 @@ export function CanvasReferenceStrip({
 
   const groups = given ?? groupStrip(node, canvas, slots, mentions)
   const total = groups.reduce((sum, group) => sum + group.items.length, 0)
-  const headed = slots.length > 1 || groups.some((group) => !group.slot)
+  /** Why a slot takes nothing right now, or null when it can. */
+  const ruledOut = (slot: ReferenceSlot | null): string | null => {
+    const one = slot ? availability?.[slot.field] : undefined
+    if (one?.available !== false) return null
+    return one.reason ?? "Not available here"
+  }
+  // One plain slot needs no heading; a slot with something to say — a guessed
+  // role, a required input, a reason it is off — gets one even alone.
+  const headed =
+    slots.length > 1 ||
+    groups.some((group) => !group.slot) ||
+    slots.some((slot) => !slot.verified || slot.required || ruledOut(slot))
   const gallery = groups.find((group) => groupKey(group) === galleryFor)
 
   // A gallery whose group is gone — its wires deleted, the model switched —
@@ -516,26 +541,52 @@ export function CanvasReferenceStrip({
                 ? group.items
                 : group.items.slice(0, SHOW_ALL_UP_TO - 1)
             const hidden = count - shown.length
+            const reason = ruledOut(group.slot)
+            const unavailable =
+              reason === null ? undefined : count > 0 ? "filled" : "empty"
             return (
               <li
                 key={key}
                 data-testid="strip-group"
                 data-slot={key}
-                className="flex flex-col gap-1"
+                data-unavailable={unavailable}
+                aria-disabled={unavailable === "empty" ? true : undefined}
+                className={cn(
+                  "flex min-w-0 flex-col gap-1",
+                  unavailable === "filled" &&
+                    "rounded-md ring-2 ring-destructive/60 ring-offset-2 ring-offset-card"
+                )}
               >
                 {headed ? (
-                  <div className="flex items-baseline gap-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                    {group.capacity !== null ? (
-                      <>
-                        <span>{label}</span>
-                        <span className="font-mono tabular-nums">
+                  group.slot ? (
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <SlotChip
+                        slot={group.slot}
+                        // A filled group says why inline, below; dimming
+                        // the wires it still holds would hide them.
+                        availability={
+                          unavailable === "empty"
+                            ? availability?.[group.slot.field]
+                            : undefined
+                        }
+                        showMax={false}
+                        className="h-5 max-w-56 gap-1 px-1.5 text-[10px]"
+                      />
+                      {group.capacity !== null ? (
+                        <span className="shrink-0 font-mono text-[10px] font-semibold text-muted-foreground tabular-nums">
                           {`${count} / ${group.capacity}`}
                         </span>
-                      </>
-                    ) : (
+                      ) : count > 0 ? (
+                        <span className="shrink-0 font-mono text-[10px] font-semibold text-muted-foreground tabular-nums">
+                          {count}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline gap-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                       <span>{`${label} ${count}`}</span>
-                    )}
-                  </div>
+                    </div>
+                  )
                 ) : null}
                 <div className="flex items-center gap-1.5">
                   {shown.map((item) => (
@@ -570,10 +621,19 @@ export function CanvasReferenceStrip({
                       slot={group.slot}
                       full={group.full}
                       capacity={group.capacity}
+                      blocked={reason}
                       onAdd={browse}
                     />
                   ) : null}
                 </div>
+                {unavailable === "filled" ? (
+                  <p
+                    data-testid="strip-group-reason"
+                    className="max-w-56 text-[10px] leading-snug text-destructive"
+                  >
+                    {reason}
+                  </p>
+                ) : null}
               </li>
             )
           })}
@@ -669,34 +729,41 @@ function StripThumb({
 }
 
 /**
- * A slot's `+`. When the slot is full it stays in place, disabled, and says
- * why — a disabled button fires no pointer or focus events, so the tooltip
- * hangs off a focusable span around it, and the button carries the reason as
- * its description for a screen reader.
+ * A slot's `+`. When the slot is full, or the wiring rules it out, it stays
+ * in place, disabled, and says why — a disabled button fires no pointer or
+ * focus events, so the tooltip hangs off a focusable span around it, and the
+ * button carries the reason as its description for a screen reader.
  */
 function AddButton({
   slot,
   full,
   capacity,
+  blocked,
   onAdd,
 }: {
   slot: ReferenceSlot
   full: boolean
   capacity: number | null
+  /** Why the wiring rules the slot out, or null. */
+  blocked: string | null
   onAdd: (slot: ReferenceSlot) => void
 }) {
   const reasonId = useId()
-  const reason = `${slot.label} is full (${capacity} / ${capacity})`
+  const off = full || blocked !== null
+  const reason =
+    blocked !== null
+      ? `${slot.label}: ${blocked}`
+      : `${slot.label} is full (${capacity} / ${capacity})`
   const button = (
     <button
       type="button"
-      disabled={full}
-      aria-describedby={full ? reasonId : undefined}
+      disabled={off}
+      aria-describedby={off ? reasonId : undefined}
       aria-label={`Add references to ${slot.label}`}
       onClick={() => onAdd(slot)}
       className={cn(
         "flex size-10 items-center justify-center rounded-md border border-dashed text-muted-foreground transition-colors",
-        full
+        off
           ? "cursor-not-allowed opacity-40"
           : "hover:border-primary hover:text-foreground"
       )}
@@ -704,7 +771,7 @@ function AddButton({
       <HugeiconsIcon icon={PlusSignIcon} className="size-4" />
     </button>
   )
-  if (!full) return button
+  if (!off) return button
   return (
     <Tooltip>
       <TooltipTrigger
@@ -721,7 +788,7 @@ function AddButton({
           {reason}
         </span>
       </TooltipTrigger>
-      <TooltipContent>{reason}</TooltipContent>
+      <TooltipContent className="max-w-xs">{reason}</TooltipContent>
     </Tooltip>
   )
 }

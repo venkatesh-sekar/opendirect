@@ -894,6 +894,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             node={node}
             canvas={canvas}
             slots={descriptor?.referenceSlots ?? []}
+            availability={availability}
             containerId={containerId}
             onNotice={setNotice}
             mentions={mentions.outcomes}

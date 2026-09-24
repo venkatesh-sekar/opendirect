@@ -2,9 +2,28 @@
 import "@testing-library/jest-dom/vitest"
 
 import type { ReferenceSlot } from "@opendirect/contract"
-import { cleanup, render, screen } from "@testing-library/react"
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ReactNode } from "react"
+import { createElement } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: {
+    href: string
+    children?: ReactNode
+  }) => createElement("a", { href, ...props }, children),
+}))
 
 import { EdgeSlotLabel, UNASSIGNED_SLOT_LABEL } from "./reference-edge"
 
@@ -110,5 +129,157 @@ describe("EdgeSlotLabel", () => {
     )
 
     expect(onChange).toHaveBeenCalledWith("last_frame")
+  })
+
+  it("labels the edge with the slot's role, and says when the role is a guess", async () => {
+    const user = userEvent.setup()
+    render(
+      <EdgeSlotLabel
+        slotField="first_frame"
+        slots={[slot()]}
+        onChange={() => {}}
+      />
+    )
+
+    const label = screen.getByTestId("edge-slot-label")
+    expect(label).toHaveAttribute("data-role", "first_frame")
+    expect(label).toHaveAttribute("data-verified", "false")
+    // Keyboard and screen reader get the hint too, not only a hover.
+    expect(label).toHaveAccessibleDescription(/Guessed from the field name/)
+    await user.hover(label)
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(/Guessed from the field name/).length
+      ).toBeGreaterThan(1)
+    )
+  })
+
+  it("draws a mapped slot plainly", () => {
+    render(
+      <EdgeSlotLabel
+        slotField="first_frame"
+        slots={[slot({ verified: true })]}
+        onChange={() => {}}
+      />
+    )
+
+    const label = screen.getByTestId("edge-slot-label")
+    expect(label).toHaveAttribute("data-verified", "true")
+    expect(label).not.toHaveAccessibleDescription(/Guessed/)
+  })
+
+  it("disables a slot the wiring rules out, and says why in the menu itself", async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <EdgeSlotLabel
+        slotField="first_frame"
+        slots={[
+          slot({ verified: true }),
+          slot({
+            field: "soundtrack",
+            label: "Reference audio",
+            role: "soundtrack",
+            kind: "audio",
+            verified: true,
+          }),
+          slot({
+            field: "last_frame",
+            label: "Last frame",
+            role: "last_frame",
+            verified: true,
+          }),
+        ]}
+        availability={{
+          first_frame: { available: true, reason: null },
+          soundtrack: {
+            available: false,
+            reason: "Not available on OpenRouter",
+          },
+          last_frame: { available: true, reason: null },
+        }}
+        onChange={onChange}
+      />
+    )
+
+    await user.click(screen.getByTestId("edge-slot-label"))
+    const audio = await screen.findByRole("button", {
+      name: "Reference audio",
+    })
+    expect(audio).toHaveAttribute("aria-disabled", "true")
+    // Visible text, and the button's description: not a hover-only tooltip.
+    expect(audio).toHaveTextContent("Not available on OpenRouter")
+    expect(audio).toHaveAccessibleDescription(/Not available on OpenRouter/)
+    await user.click(audio)
+    expect(onChange).not.toHaveBeenCalled()
+
+    // An available one still re-labels the edge.
+    await user.click(screen.getByRole("button", { name: "Last frame" }))
+    expect(onChange).toHaveBeenCalledWith("last_frame")
+  })
+
+  it("marks the edge when the slot it carries is ruled out", () => {
+    render(
+      <EdgeSlotLabel
+        slotField="soundtrack"
+        slots={[
+          slot({
+            field: "soundtrack",
+            label: "Reference audio",
+            role: "soundtrack",
+            verified: true,
+          }),
+        ]}
+        availability={{
+          soundtrack: {
+            available: false,
+            reason: "Not available on OpenRouter",
+          },
+        }}
+        onChange={() => {}}
+      />
+    )
+
+    const label = screen.getByTestId("edge-slot-label")
+    expect(label).toHaveAttribute("data-unavailable", "true")
+    expect(label).toHaveAccessibleDescription(/Not available on OpenRouter/)
+  })
+
+  it("offers to map a concrete model whose slots are guesses", async () => {
+    const user = userEvent.setup()
+    render(
+      <EdgeSlotLabel
+        slotField="first_frame"
+        slots={[slot()]}
+        mapModelKey="replicate:acme/model-2"
+        onChange={() => {}}
+      />
+    )
+
+    await user.click(screen.getByTestId("edge-slot-label"))
+    const link = await screen.findByRole("link", { name: /Map this model/ })
+    expect(link).toHaveAttribute(
+      "href",
+      `/settings?tab=models&map=${encodeURIComponent("replicate:acme/model-2")}`
+    )
+    expect(
+      within(link.parentElement!).getByText(/Wrong input\?/)
+    ).toBeInTheDocument()
+  })
+
+  it("does not offer mapping when every slot is mapped", async () => {
+    const user = userEvent.setup()
+    render(
+      <EdgeSlotLabel
+        slotField="first_frame"
+        slots={[slot({ verified: true })]}
+        mapModelKey="replicate:acme/model-2"
+        onChange={() => {}}
+      />
+    )
+
+    await user.click(screen.getByTestId("edge-slot-label"))
+    await screen.findByRole("button", { name: "First Frame" })
+    expect(screen.queryByRole("link", { name: /Map this model/ })).toBeNull()
   })
 })

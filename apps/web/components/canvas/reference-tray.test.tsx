@@ -16,6 +16,7 @@ import type {
   CanvasEdgeDto,
   CanvasNodeDto,
   ReferenceSlot,
+  SlotAvailability,
 } from "@opendirect/contract"
 import {
   cleanup,
@@ -371,9 +372,11 @@ describe("groupStrip", () => {
 function Controlled({
   canvas,
   slots,
+  availability,
 }: {
   canvas: CanvasDto
   slots: ReferenceSlot[]
+  availability?: Record<string, SlotAvailability>
 }) {
   const [galleryFor, setGalleryFor] = useState<string | null>(null)
   return (
@@ -381,6 +384,7 @@ function Controlled({
       node={NODE}
       canvas={canvas}
       slots={slots}
+      availability={availability}
       containerId="c1"
       galleryFor={galleryFor}
       onGalleryChange={setGalleryFor}
@@ -388,14 +392,18 @@ function Controlled({
   )
 }
 
-function renderStrip(canvas: CanvasDto, slots: ReferenceSlot[] = SLOTS) {
+function renderStrip(
+  canvas: CanvasDto,
+  slots: ReferenceSlot[] = SLOTS,
+  availability?: Record<string, SlotAvailability>
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const tree = (next: CanvasDto) => (
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <Controlled canvas={next} slots={slots} />
+        <Controlled canvas={next} slots={slots} availability={availability} />
       </TooltipProvider>
     </QueryClientProvider>
   )
@@ -413,7 +421,7 @@ describe("CanvasReferenceStrip", () => {
     const strip = screen.getByTestId("canvas-reference-strip")
     expect(within(strip).getAllByTestId("reference-thumb")).toHaveLength(3)
     expect(within(strip).getByText("100 images")).toBeInTheDocument()
-    // One slot: no heading to read past.
+    // The count is its own line, not glued to the label.
     expect(within(strip).queryByText(/^Reference Images \d/)).toBeNull()
 
     const more = screen.getByRole("button", {
@@ -563,5 +571,107 @@ describe("CanvasReferenceStrip", () => {
 
     // React Flow ignores keys whose target sits inside `.nokey`.
     expect(screen.getByTestId("canvas-reference-strip")).toHaveClass("nokey")
+  })
+
+  it("heads each slot with its role, and says when the role is a guess", () => {
+    renderStrip(EMPTY, [FIRST, { ...SLOTS[0]!, verified: false }])
+
+    const groups = screen.getAllByTestId("strip-group")
+    const reference = groups.find(
+      (group) => group.dataset.slot === "reference_images"
+    )!
+    const chip = within(reference).getByTestId("slot-chip")
+    expect(chip).toHaveAttribute("data-role", "reference")
+    expect(chip).toHaveTextContent("unverified")
+  })
+
+  it("dims an empty slot the wiring rules out, says why, and will not take a reference", async () => {
+    const user = userEvent.setup()
+    const soundtrack: ReferenceSlot = {
+      field: "soundtrack",
+      label: "Reference audio",
+      kind: "audio",
+      multiple: true,
+      max: 3,
+      role: "soundtrack",
+      verified: true,
+      required: false,
+      shape: null,
+    }
+    renderStrip(EMPTY, [FIRST, soundtrack], {
+      first_frame: { available: true, reason: null },
+      soundtrack: { available: false, reason: "Not available on OpenRouter" },
+    })
+
+    const group = screen
+      .getAllByTestId("strip-group")
+      .find((one) => one.dataset.slot === "soundtrack")!
+    expect(group).toHaveAttribute("aria-disabled", "true")
+    expect(group).toHaveAttribute("data-unavailable", "empty")
+    const chip = within(group).getByTestId("slot-chip")
+    expect(chip).toHaveAccessibleDescription(/Not available on OpenRouter/)
+
+    const add = within(group).getByRole("button", {
+      name: "Add references to Reference audio",
+    })
+    expect(add).toBeDisabled()
+    expect(add).toHaveAccessibleDescription(
+      "Reference audio: Not available on OpenRouter"
+    )
+    await user.click(add)
+    expect(screen.queryByRole("dialog")).toBeNull()
+
+    // The slot that is still open is untouched.
+    const first = screen
+      .getAllByTestId("strip-group")
+      .find((one) => one.dataset.slot === "first_frame")!
+    expect(first).not.toHaveAttribute("aria-disabled")
+    expect(
+      within(first).getByRole("button", {
+        name: "Add references to First Frame",
+      })
+    ).toBeEnabled()
+  })
+
+  it("rings a filled slot that became unavailable and says why beside it", () => {
+    const soundtrack: ReferenceSlot = {
+      ...SLOTS[0]!,
+      field: "soundtrack",
+      label: "Reference audio",
+      role: "soundtrack",
+      verified: true,
+    }
+    renderStrip(wiredCanvas(1, "soundtrack"), [FIRST, soundtrack], {
+      first_frame: { available: true, reason: null },
+      soundtrack: { available: false, reason: "Not available on OpenRouter" },
+    })
+
+    const group = screen
+      .getAllByTestId("strip-group")
+      .find((one) => one.dataset.slot === "soundtrack")!
+    expect(group).toHaveAttribute("data-unavailable", "filled")
+    // Inline, not only in a tooltip: the run is blocked on it.
+    expect(within(group).getByTestId("strip-group-reason")).toHaveTextContent(
+      "Not available on OpenRouter"
+    )
+    // The wire can still be opened and removed — that is the way out.
+    expect(
+      within(group).getByRole("button", { name: /^Disconnect/ })
+    ).toBeEnabled()
+  })
+
+  it("leaves one plain mapped slot unheaded", () => {
+    renderStrip(wiredCanvas(1), [{ ...SLOTS[0]!, verified: true }])
+
+    expect(screen.queryByTestId("slot-chip")).toBeNull()
+  })
+
+  it("draws nothing dimmed for a model with no availability (unmapped)", () => {
+    renderStrip(EMPTY, [FIRST, SLOTS[0]!])
+
+    for (const group of screen.getAllByTestId("strip-group")) {
+      expect(group).not.toHaveAttribute("aria-disabled")
+      expect(group).not.toHaveAttribute("data-unavailable")
+    }
   })
 })
