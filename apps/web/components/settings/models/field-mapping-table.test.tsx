@@ -11,7 +11,7 @@ import "@testing-library/jest-dom/vitest"
 import { useEffect, useReducer } from "react"
 import { cleanup, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   editorReducer,
@@ -23,6 +23,13 @@ import { seedanceDescriptor } from "@/lib/registry/test-descriptors"
 
 import { FieldMappingTable } from "./field-mapping-table"
 import { renderWithProviders } from "./test-utils"
+
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+vi.mock("sonner", () => ({ toast }))
+
+beforeEach(() => {
+  toast.success.mockReset()
+})
 
 afterEach(cleanup)
 
@@ -41,8 +48,8 @@ function loaded(): EditorState {
 
 let latest: EditorState
 
-function Harness() {
-  const [state, dispatch] = useReducer(editorReducer, undefined, loaded)
+function Harness({ init = loaded }: { init?: () => EditorState }) {
+  const [state, dispatch] = useReducer(editorReducer, undefined, init)
   useEffect(() => {
     latest = state
   })
@@ -164,6 +171,27 @@ describe("FieldMappingTable", () => {
     })
   })
 
+  it("keeps half a value pair and says what it needs", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+
+    await user.click(
+      within(rowFor("aspect_ratio")).getByRole("button", { name: /values/i })
+    )
+    const editor = await screen.findByRole("dialog", {
+      name: /values for aspect ratio/i,
+    })
+    await user.click(within(editor).getByRole("button", { name: "Add value" }))
+    await user.type(
+      within(editor).getByRole("combobox", { name: "Canonical value 1" }),
+      "wide"
+    )
+    expect(within(editor).getByText(/Pick what to send/)).toBeVisible()
+    expect(
+      within(editor).getByRole("combobox", { name: "Canonical value 1" })
+    ).toHaveValue("wide")
+  })
+
   it("fills the value map from the field's own values", async () => {
     const user = userEvent.setup()
     renderWithProviders(<Harness />)
@@ -188,6 +216,7 @@ describe("FieldMappingTable", () => {
     const user = userEvent.setup()
     renderWithProviders(<Harness />)
 
+    await user.click(screen.getByRole("button", { name: /^Details for image/ }))
     await user.click(screen.getByRole("switch", { name: "Required for image" }))
     const label = screen.getByRole("textbox", { name: "Label for image" })
     await user.clear(label)
@@ -202,6 +231,9 @@ describe("FieldMappingTable", () => {
     const user = userEvent.setup()
     renderWithProviders(<Harness />)
 
+    await user.click(
+      screen.getByRole("button", { name: /^Details for reference_images/ })
+    )
     const max = screen.getByRole("spinbutton", {
       name: "Max for reference_images",
     })
@@ -210,6 +242,56 @@ describe("FieldMappingTable", () => {
     expect(rowFor("reference_images")).toHaveTextContent(
       "Max must be 1 or more."
     )
+
+    await user.click(screen.getByRole("button", { name: /^Problems/ }))
+    expect(screen.getAllByRole("row", { name: /^[a-z_]+$/ })).toHaveLength(1)
+    expect(rowFor("reference_images")).toBeVisible()
+  })
+
+  it("keeps an input's details folded into a summary until opened", () => {
+    renderWithProviders(<Harness />)
+    expect(
+      screen.queryByRole("switch", { name: "Required for image" })
+    ).toBeNull()
+    expect(
+      screen.getByRole("button", { name: /^Details for reference_images/ })
+    ).toHaveTextContent(/Image.*30/)
+  })
+
+  it("finds fields by name or description", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search fields" }),
+      "lip-sync"
+    )
+    expect(screen.getAllByRole("row", { name: /^[a-z_]+$/ })).toHaveLength(1)
+    expect(rowFor("reference_audios")).toBeVisible()
+  })
+
+  it("draws a row whose slot key is not a role without failing", () => {
+    function broken(): EditorState {
+      const state = loaded()
+      const endpoint = state.endpoints[0]!
+      const rows = endpoint.rows.map((r) =>
+        r.field === "reference_images"
+          ? {
+              ...r,
+              target: {
+                kind: "input" as const,
+                key: "charcter",
+                input: { field: "reference_images", kind: "image" as const },
+              },
+            }
+          : r
+      )
+      return { ...state, endpoints: [{ ...endpoint, rows }] }
+    }
+    renderWithProviders(<Harness init={broken} />)
+    expect(
+      screen.getByRole("combobox", { name: "Maps to for reference_images" })
+    ).toHaveTextContent("Reference")
   })
 
   it("filters to inputs only", async () => {
@@ -232,5 +314,23 @@ describe("FieldMappingTable", () => {
     expect(target("image")).toEqual({ kind: "advanced" })
     await user.click(screen.getByRole("button", { name: "Reset endpoint" }))
     expect(target("image")).toMatchObject({ key: "first_frame" })
+  })
+
+  it("can undo Apply all suggestions", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<Harness />)
+    await user.click(screen.getByRole("combobox", { name: "Maps to for seed" }))
+    await user.click(await screen.findByRole("option", { name: /^Advanced/ }))
+    await user.click(
+      screen.getByRole("combobox", { name: "Maps to for watermark" })
+    )
+    await user.click(await screen.findByRole("option", { name: /^Seed/ }))
+    await user.click(screen.getByRole("button", { name: "Reset endpoint" }))
+    expect(target("watermark")).toEqual({ kind: "advanced" })
+
+    const [, options] = toast.success.mock.calls.at(-1)!
+    ;(options as { action: { onClick: () => void } }).action.onClick()
+    await screen.findByRole("combobox", { name: "Maps to for watermark" })
+    expect(target("watermark")).toEqual({ kind: "control", control: "seed" })
   })
 })

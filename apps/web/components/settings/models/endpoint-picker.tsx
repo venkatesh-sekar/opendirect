@@ -13,7 +13,7 @@
  * ⛔ Reads the cached catalog (`models:list`) only. Loading the chosen
  * model's schema is the editor's job, and is a free `GET`.
  */
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { PlusSignIcon } from "@hugeicons/core-free-icons"
 import {
@@ -87,6 +87,9 @@ function SlugForm({
     () => PROVIDERS.find(hasKey) ?? "replicate"
   )
   const [slug, setSlug] = useState("")
+  const slugRef = useRef<HTMLInputElement>(null)
+  // Choosing "Use a model slug…" means typing one next.
+  useEffect(() => slugRef.current?.focus(), [])
   const trimmed = slug.trim()
   const valid = trimmed !== "" && !/\s/.test(trimmed)
   const usable = hasKey(provider)
@@ -128,6 +131,7 @@ function SlugForm({
           </SelectContent>
         </Select>
         <Input
+          ref={slugRef}
           aria-label="Model slug"
           placeholder="owner/model"
           className="h-8 flex-1 font-mono"
@@ -159,6 +163,10 @@ export function EndpointPicker({
   const [bySlug, setBySlug] = useState(false)
   const models = useModels()
   const families = useRegistryFamilies()
+  const keys = useKeysSummary()
+  /** Unknown while the key summary loads: nothing is marked then. */
+  const noKey = (provider: ProviderId) =>
+    keys.isSuccess && keys.data[provider].present !== true
 
   /** endpoint key → the family that maps it. */
   const mappedBy = useMemo(() => {
@@ -254,11 +262,12 @@ export function EndpointPicker({
                     const key = modelKey(model.provider, model.slug)
                     const added = existing.includes(key)
                     const family = mappedBy.get(key)
+                    const keyless = noKey(model.provider)
                     return (
                       <CommandItem
                         key={key}
                         value={key}
-                        disabled={added}
+                        disabled={added || keyless}
                         onSelect={() => pick(model.provider, model.slug)}
                       >
                         <div className="flex min-w-0 flex-1 flex-col">
@@ -269,6 +278,18 @@ export function EndpointPicker({
                         </div>
                         {added ? (
                           <Badge variant="secondary">Added</Badge>
+                        ) : keyless ? (
+                          <Badge
+                            variant="outline"
+                            className="font-normal"
+                            title={`Add a ${PROVIDER_NAMES[model.provider]} key to load its schema`}
+                          >
+                            No key
+                            <span className="sr-only">
+                              : add a {PROVIDER_NAMES[model.provider]} key to
+                              load its schema
+                            </span>
+                          </Badge>
                         ) : family ? (
                           <Badge variant="outline" className="font-normal">
                             Mapped by {family}

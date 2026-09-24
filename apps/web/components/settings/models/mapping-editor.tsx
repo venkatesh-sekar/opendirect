@@ -30,8 +30,10 @@ import {
   type Dispatch,
 } from "react"
 import { toast } from "sonner"
+import { useQueryClient } from "@tanstack/react-query"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  Alert02Icon,
   AlertCircleIcon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
@@ -41,6 +43,7 @@ import {
   InformationCircleIcon,
   Loading03Icon,
   MoreHorizontalIcon,
+  RefreshIcon,
 } from "@hugeicons/core-free-icons"
 import {
   PROVIDER_NAMES,
@@ -123,7 +126,7 @@ import {
   useRegistryOverrides,
   useSaveOverride,
 } from "@/hooks/use-model-registry"
-import { useModel } from "@/hooks/use-models"
+import { modelQueryKey, useModel } from "@/hooks/use-models"
 import type {
   MappingEditorRequest,
   MappingEditorSource,
@@ -131,16 +134,20 @@ import type {
 import {
   editorReducer,
   emptyEditor,
+  endpointNotices,
   fromFamily,
   fromRaw,
+  isDirty,
   locateIssue,
   toFamily,
   validateEditor,
+  withBaseline,
   type EditorAction,
   type EditorEndpoint,
   type EditorIssue,
   type EditorState,
   type FamilyKind,
+  type Repair,
 } from "@/lib/registry/editor-state"
 import { useKeysSummary, useSettings } from "@/lib/settings"
 
@@ -161,6 +168,14 @@ const KIND_OPTIONS: ReadonlyArray<{ value: FamilyKind; label: string }> = [
 ]
 
 const DESCRIPTION_MAX = 500
+
+/** Family fields that show their own issues; the footer shows the rest. */
+const FAMILY_FIELDS = ["id", "name", "kind", "description"]
+
+interface IdNotice {
+  tone: "info" | "warning"
+  text: string
+}
 
 // ---------------------------------------------------------------------------
 // Opening
@@ -243,7 +258,7 @@ function EndpointLoader({
 }) {
   const key = modelKey(endpoint.provider, endpoint.model)
   const query = useModel(key)
-  const { data, error } = query
+  const { data, error, isFetching } = query
   useEffect(() => {
     if (data) {
       dispatch({
@@ -252,12 +267,12 @@ function EndpointLoader({
         descriptor: data,
         existing: endpoint.mapping ?? existing(key),
       })
-    } else if (error) {
+    } else if (error && !isFetching) {
       dispatch({ type: "endpointFailed", index, message: error.message })
     }
     // `existing` is read once, when the descriptor lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, error, index, dispatch, key, endpoint.mapping])
+  }, [data, error, isFetching, index, dispatch, key, endpoint.mapping])
   return null
 }
 
@@ -289,7 +304,7 @@ function FamilySection({
   state: EditorState
   issues: EditorIssue[]
   act: Dispatch<EditorAction>
-  notice: string | null
+  notice: IdNotice | null
 }) {
   const nameId = useId()
   const idId = useId()
@@ -301,6 +316,7 @@ function FamilySection({
   const nameIssues = at("name")
   const idIssues = at("id")
   const descriptionIssues = at("description")
+  const kindIssues = at("kind")
 
   return (
     <section
@@ -315,6 +331,7 @@ function FamilySection({
           <Label htmlFor={nameId}>Name</Label>
           <Input
             id={nameId}
+            data-issue-path="name"
             value={state.name}
             maxLength={80}
             aria-invalid={nameIssues.length > 0 || undefined}
@@ -329,6 +346,7 @@ function FamilySection({
           <Label htmlFor={idId}>ID</Label>
           <Input
             id={idId}
+            data-issue-path="id"
             value={state.id}
             className="font-mono"
             aria-describedby={idHint}
@@ -342,8 +360,20 @@ function FamilySection({
               : "Follows the name. Used as the file name if you contribute it."}
           </p>
           <FieldIssues issues={idIssues} />
-          {notice ? (
-            <p className="text-xs text-muted-foreground">{notice}</p>
+          {notice?.tone === "warning" ? (
+            <p
+              role="status"
+              className="flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-xs font-medium text-foreground"
+            >
+              <HugeiconsIcon
+                icon={Alert02Icon}
+                className="mt-px size-3.5 shrink-0"
+                aria-hidden
+              />
+              {notice.text}
+            </p>
+          ) : notice ? (
+            <p className="text-xs text-muted-foreground">{notice.text}</p>
           ) : null}
         </div>
         <div className="flex flex-col gap-1.5">
@@ -356,7 +386,12 @@ function FamilySection({
               }
             }}
           >
-            <SelectTrigger id={kindId} className="w-full">
+            <SelectTrigger
+              id={kindId}
+              data-issue-path="kind"
+              aria-invalid={kindIssues.length > 0 || undefined}
+              className="w-full"
+            >
               <SelectValue>
                 {(value: unknown) =>
                   KIND_OPTIONS.find((option) => option.value === value)
@@ -372,6 +407,7 @@ function FamilySection({
               ))}
             </SelectContent>
           </Select>
+          <FieldIssues issues={kindIssues} />
         </div>
         <div className="flex flex-col gap-1.5 sm:row-span-2">
           <div className="flex items-baseline justify-between">
@@ -389,6 +425,7 @@ function FamilySection({
           </div>
           <Textarea
             id={descriptionId}
+            data-issue-path="description"
             value={state.description}
             placeholder="Optional: what the model is good at."
             aria-invalid={descriptionIssues.length > 0 || undefined}
@@ -407,9 +444,11 @@ function FamilySection({
 function EndpointBanner({
   endpoint,
   overrides,
+  notices,
 }: {
   endpoint: EditorEndpoint
   overrides: string | null
+  notices: Repair[]
 }) {
   const provider = PROVIDER_NAMES[endpoint.provider]
   return (
@@ -429,7 +468,55 @@ function EndpointBanner({
           This will override {overrides} for this model.
         </p>
       ) : null}
+      {notices.length > 0 ? (
+        <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+          {notices.map((notice) => (
+            <li key={notice.message}>{notice.message}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
+  )
+}
+
+/** "Check the slug": load the endpoint again under a corrected slug. */
+function SlugFix({
+  endpoint,
+  index,
+  onRetry,
+  act,
+}: {
+  endpoint: EditorEndpoint
+  index: number
+  onRetry: () => void
+  act: Dispatch<EditorAction>
+}) {
+  const [slug, setSlug] = useState(endpoint.model)
+  const trimmed = slug.trim()
+  const changed = trimmed !== "" && trimmed !== endpoint.model
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (changed) {
+          act({ type: "changeEndpointModel", index, model: trimmed })
+        } else {
+          onRetry()
+        }
+      }}
+    >
+      <Input
+        aria-label="Model slug"
+        className="h-8 min-w-48 flex-1 bg-background font-mono text-foreground"
+        value={slug}
+        onChange={(event) => setSlug(event.target.value)}
+      />
+      <Button type="submit" size="sm" variant="outline">
+        <HugeiconsIcon icon={RefreshIcon} data-icon="inline-start" />
+        {changed ? "Load this slug" : "Retry"}
+      </Button>
+    </form>
   )
 }
 
@@ -438,6 +525,7 @@ function EndpointPanel({
   index,
   count,
   issues,
+  notices,
   overrides,
   act,
 }: {
@@ -445,12 +533,31 @@ function EndpointPanel({
   index: number
   count: number
   issues: EditorIssue[]
+  notices: Repair[]
   overrides: string | null
   act: Dispatch<EditorAction>
 }) {
-  const where = `${PROVIDER_NAMES[endpoint.provider]} ${endpoint.model}`
+  const client = useQueryClient()
+  const providerName = endpoint.rawProvider ?? PROVIDER_NAMES[endpoint.provider]
+  const where = `${providerName} ${endpoint.model}`
+  const own = issues.filter(
+    (issue) =>
+      issue.where !== "family" &&
+      issue.where.endpoint === index &&
+      issue.where.field === undefined
+  )
+
+  function retry() {
+    // Drop the cached failure, so the next mount fetches afresh.
+    void client.resetQueries({
+      queryKey: modelQueryKey(modelKey(endpoint.provider, endpoint.model)),
+      exact: true,
+    })
+    act({ type: "retryEndpoint", index })
+  }
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3" data-endpoint={index}>
       <div className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="text-xs text-muted-foreground">
@@ -520,21 +627,48 @@ function EndpointPanel({
           ))}
         </div>
       ) : endpoint.error ? (
-        <Alert variant="destructive">
+        <Alert variant="destructive" tabIndex={-1} data-endpoint-alert={index}>
           <HugeiconsIcon icon={AlertCircleIcon} />
           <AlertTitle>Could not load the fields of {where}</AlertTitle>
           <AlertDescription>
             <p className="font-mono text-xs break-words">{endpoint.error}</p>
-            <p>
-              Its mapping is kept as it is, but it can&apos;t be checked or
-              edited here. Check the slug and the provider key, or remove the
-              endpoint.
-            </p>
+            {endpoint.rawProvider === null ? (
+              <p>
+                {endpoint.mapping &&
+                (Object.keys(endpoint.mapping.inputs).length > 0 ||
+                  Object.keys(endpoint.mapping.controls).length > 0)
+                  ? "Its mapping is kept as it is, unchecked. "
+                  : ""}
+                Retry, or check the slug and load it again:
+              </p>
+            ) : null}
+            {own.length > 0 ? (
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {own.map((issue) => (
+                  <li key={`${issue.path}:${issue.message}`}>
+                    {issue.message}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {endpoint.rawProvider === null ? (
+              <SlugFix
+                key={endpoint.model}
+                endpoint={endpoint}
+                index={index}
+                onRetry={retry}
+                act={act}
+              />
+            ) : null}
           </AlertDescription>
         </Alert>
       ) : (
         <>
-          <EndpointBanner endpoint={endpoint} overrides={overrides} />
+          <EndpointBanner
+            endpoint={endpoint}
+            overrides={overrides}
+            notices={notices}
+          />
           <FieldMappingTable
             endpoint={endpoint}
             index={index}
@@ -556,17 +690,22 @@ function EditorSheet({
   onClose,
 }: {
   source: OpenSource
+  /** The ids of the user's other stored mappings, kept current. */
   takenIds: string[]
   onClose: () => void
 }) {
   const [state, dispatch] = useReducer(editorReducer, undefined, () =>
-    initialState(source, takenIds)
+    withBaseline(initialState(source, takenIds))
   )
-  const [dirty, setDirty] = useState(source.kind === "import")
+  // An import is new to this computer until it is saved once.
+  const [savedOnce, setSavedOnce] = useState(false)
   const [serverIssues, setServerIssues] = useState<RegistryIssue[]>([])
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [replaceOpen, setReplaceOpen] = useState<null | "save" | "export">(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
   const [open, setOpen] = useState(true)
   const bodyRef = useRef<HTMLDivElement>(null)
+  const footerAlertRef = useRef<HTMLDivElement>(null)
 
   const families = useRegistryFamilies()
   const settings = useSettings()
@@ -575,13 +714,22 @@ function EditorSheet({
   const exportFamily = useExportOverride()
   const remove = useDeleteOverride()
 
-  /** Every dispatch a person causes: the draft is theirs now. */
+  // The ids an auto-slug avoids follow the stored mappings as they load.
+  const takenKey = takenIds.join("\u0000")
+  useEffect(() => {
+    dispatch({
+      type: "setTakenIds",
+      ids: takenKey ? takenKey.split("\u0000") : [],
+    })
+  }, [takenKey])
+
+  /** Every change a person makes clears a refusal that no longer applies. */
   const act: Dispatch<EditorAction> = (action) => {
-    setDirty(true)
     setServerIssues([])
     dispatch(action)
   }
 
+  const dirty = (source.kind === "import" && !savedOnce) || isDirty(state)
   const family = useMemo(() => toFamily(state), [state])
   const issues = useMemo(() => {
     const local = validateEditor(state)
@@ -603,6 +751,11 @@ function EditorSheet({
   const valid = issues.length === 0
   const clean =
     !dirty && state.replaceId !== null && state.replaceId === state.id
+  /** Saving under this id would replace another of the user's mappings. */
+  const replacesOther =
+    state.id !== "" &&
+    state.id !== state.replaceId &&
+    takenIds.includes(state.id)
 
   /** The mapping in force for each endpoint key, other than this draft. */
   const mappedBy = useMemo(() => {
@@ -616,29 +769,39 @@ function EditorSheet({
     return map
   }, [families.data, state.replaceId])
 
-  const idNotice = useMemo(() => {
+  const idNotice = useMemo((): IdNotice | null => {
     if (state.id === "" || state.id === state.replaceId) return null
-    if (takenIds.includes(state.id)) {
-      return "You already have a custom mapping with this ID; saving replaces it."
+    if (replacesOther) {
+      return {
+        tone: "warning",
+        text: "You already have a custom mapping with this ID. Saving replaces it; pick another ID to keep both.",
+      }
     }
     const entry = families.data?.find((e) => e.family.id === state.id)
     if (entry && entry.source !== "user") {
-      return `Matches the ${entry.source} ${entry.family.name} mapping; yours replaces it on this computer.`
+      return {
+        tone: "info",
+        text: `Matches the ${entry.source} ${entry.family.name} mapping; yours replaces it on this computer.`,
+      }
     }
     return null
-  }, [state.id, state.replaceId, takenIds, families.data])
+  }, [state.id, state.replaceId, replacesOther, families.data])
 
   // Shown in the footer: the family's issues no field shows. An empty
   // endpoint list already says so where the endpoints go.
   const familyIssues = issues.filter(
     (issue) =>
       issue.where === "family" &&
-      !["id", "name", "description"].includes(issue.path) &&
+      !FAMILY_FIELDS.includes(issue.path) &&
       !(issue.path === "endpoints" && state.endpoints.length === 0)
   )
   const configured = (["replicate", "openrouter"] as const).filter(
     (provider) => keys.data?.[provider].present === true
   )
+  const providerOrder = settings.data?.providerOrder ?? [
+    "replicate",
+    "openrouter",
+  ]
 
   function requestClose() {
     if (dirty) setConfirmOpen(true)
@@ -651,21 +814,74 @@ function EditorSheet({
     onClose()
   }
 
+  /** Focus a control after the next paint (a tab switch renders first). */
+  function focusLater(find: () => HTMLElement | null | undefined) {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        const target = find()
+        target?.focus()
+        target?.scrollIntoView?.({ block: "center" })
+      })
+    )
+  }
+
   function focusFirstInvalid() {
-    requestAnimationFrame(() => {
-      const target = bodyRef.current?.querySelector<HTMLElement>(
-        '[aria-invalid="true"]'
+    focusLater(() =>
+      bodyRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')
+    )
+  }
+
+  /** "N problems to fix": go to the first one, switching tabs if needed. */
+  function jumpToFirstProblem() {
+    const first = issues[0]
+    if (!first) return
+    const body = bodyRef.current
+    if (first.where === "family") {
+      focusLater(
+        () =>
+          body?.querySelector<HTMLElement>(
+            `[data-issue-path="${CSS.escape(first.path)}"]`
+          ) ?? footerAlertRef.current
       )
-      target?.focus()
+      return
+    }
+    const { endpoint, field } = first.where
+    dispatch({ type: "setActive", index: endpoint })
+    focusLater(() => {
+      const panel = body?.querySelector<HTMLElement>(
+        `[data-endpoint="${endpoint}"]`
+      )
+      if (field !== undefined) {
+        const row = panel?.querySelector<HTMLElement>(
+          `tr[data-field="${CSS.escape(field)}"]`
+        )
+        const control = row?.querySelector<HTMLElement>('[role="combobox"]')
+        if (control) return control
+      }
+      return (
+        panel?.querySelector<HTMLElement>("[data-endpoint-alert]") ??
+        panel?.querySelector<HTMLElement>('[aria-invalid="true"]') ??
+        body?.querySelector<HTMLElement>(`[data-endpoint-tab="${endpoint}"]`)
+      )
     })
   }
 
-  function runSave() {
+  function requestSave(then: "close" | "export") {
     if (!valid || loading) return
+    if (replacesOther) {
+      setReplaceOpen(then === "close" ? "save" : "export")
+      return
+    }
+    runSave(then)
+  }
+
+  function runSave(then: "close" | "export") {
     const fixing =
       source.kind === "override" && source.override.family === null
         ? source.override
         : null
+    const id = state.id
+    const name = state.name
     save.mutate(
       { family, replaceId: state.replaceId },
       {
@@ -675,8 +891,17 @@ function EditorSheet({
           if (fixing && fixing.id === null && fixing.key !== saved.key) {
             remove.mutate(fixing.key)
           }
-          toast.success(`Saved. Canvas nodes using ${state.name} update now`, {
-            description: `Custom mapping ${state.id}`,
+          if (then === "export") {
+            dispatch({ type: "saved" })
+            setSavedOnce(true)
+            toast.success(`Saved ${name}`, {
+              description: "Now choose where to export it.",
+            })
+            exportJson(id, name)
+            return
+          }
+          toast.success(`Saved. Canvas nodes using ${name} update now`, {
+            description: `Custom mapping ${id}`,
           })
           close()
         },
@@ -709,17 +934,17 @@ function EditorSheet({
     )
   }
 
-  function exportJson() {
-    exportFamily.mutate(state.id, {
+  function exportJson(id: string, name: string) {
+    exportFamily.mutate(id, {
       onSuccess: (path) => {
         if (path) {
-          toast.success(`Exported ${state.name}`, {
-            description: `${path}. To contribute it, add it as registry/models/${state.id}.json in a pull request (see CONTRIBUTING.md).`,
+          toast.success(`Exported ${name}`, {
+            description: `${path}. To contribute it, add it as registry/models/${id}.json in a pull request (see CONTRIBUTING.md).`,
           })
         }
       },
       onError: (error) =>
-        toast.error(`Could not export ${state.name}`, {
+        toast.error(`Could not export ${name}`, {
           description: error.message,
         }),
     })
@@ -732,12 +957,27 @@ function EditorSheet({
       : null
   const exportBlocked = !valid
     ? `Fix ${plural(issues.length, "problem")} first.`
-    : !clean
-      ? "Save the mapping first, or use Copy JSON."
+    : loading
+      ? "Waiting for the endpoint fields to load."
       : null
   const active = state.endpoints[state.active]
   const activeKey = active ? modelKey(active.provider, active.model) : null
   const other = activeKey ? mappedBy.get(activeKey) : undefined
+  const slotCount = new Set(
+    family.endpoints.flatMap((endpoint) => Object.keys(endpoint.inputs))
+  ).size
+  const controlCount = new Set(
+    family.endpoints.flatMap((endpoint) => Object.keys(endpoint.controls))
+  ).size
+
+  const preview = (
+    <MappingPreview
+      family={family}
+      schemas={schemas}
+      providerOrder={providerOrder}
+      configured={configured}
+    />
+  )
 
   return (
     <>
@@ -772,6 +1012,31 @@ function EditorSheet({
           )}
 
           <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto">
+            {/* Below xl the preview is not beside the table; this bar keeps
+                it one click away wherever the table is scrolled. */}
+            <div className="sticky top-0 z-10 border-b bg-popover/95 px-4 py-2 backdrop-blur-sm xl:hidden">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  On the canvas: {plural(slotCount, "slot")},{" "}
+                  {plural(controlCount, "control")}
+                </span>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  aria-expanded={previewOpen}
+                  onClick={() => setPreviewOpen((on) => !on)}
+                >
+                  {previewOpen ? "Hide preview" : "Show preview"}
+                </Button>
+              </div>
+              {previewOpen ? (
+                <div className="mt-2 max-h-[45vh] overflow-y-auto pb-1">
+                  {preview}
+                </div>
+              ) : null}
+            </div>
+
             <div className="grid gap-6 p-4 xl:grid-cols-[minmax(0,1fr)_18rem]">
               <div className="flex min-w-0 flex-col gap-6">
                 <FamilySection
@@ -819,7 +1084,7 @@ function EditorSheet({
                     <Tabs
                       value={state.active}
                       onValueChange={(value) =>
-                        act({ type: "setActive", index: Number(value) })
+                        dispatch({ type: "setActive", index: Number(value) })
                       }
                     >
                       <TabsList className="h-auto max-w-full flex-wrap justify-start">
@@ -833,10 +1098,12 @@ function EditorSheet({
                             <TabsTrigger
                               key={endpoint.uid}
                               value={index}
+                              data-endpoint-tab={index}
                               className="max-w-64 flex-none"
                             >
                               <Badge variant="outline" className="font-normal">
-                                {PROVIDER_NAMES[endpoint.provider]}
+                                {endpoint.rawProvider ??
+                                  PROVIDER_NAMES[endpoint.provider]}
                               </Badge>
                               <span className="truncate font-mono text-xs">
                                 {endpoint.model}
@@ -865,6 +1132,7 @@ function EditorSheet({
                             index={index}
                             count={state.endpoints.length}
                             issues={issues}
+                            notices={endpointNotices(state, index)}
                             overrides={
                               index === state.active && other
                                 ? other.name
@@ -881,7 +1149,7 @@ function EditorSheet({
 
               <aside
                 aria-labelledby="mapping-preview"
-                className="flex flex-col gap-3 xl:sticky xl:top-0 xl:self-start"
+                className="hidden flex-col gap-3 xl:sticky xl:top-0 xl:flex xl:self-start"
               >
                 <div>
                   <h3 id="mapping-preview" className="text-sm font-medium">
@@ -891,21 +1159,14 @@ function EditorSheet({
                     How a node using this model will look.
                   </p>
                 </div>
-                <MappingPreview
-                  family={family}
-                  schemas={schemas}
-                  providerOrder={
-                    settings.data?.providerOrder ?? ["replicate", "openrouter"]
-                  }
-                  configured={configured}
-                />
+                {preview}
               </aside>
             </div>
           </div>
 
           <div className="flex flex-col gap-2 border-t bg-popover p-3">
             {familyIssues.length > 0 ? (
-              <Alert variant="destructive">
+              <Alert variant="destructive" ref={footerAlertRef} tabIndex={-1}>
                 <HugeiconsIcon icon={AlertCircleIcon} />
                 <AlertTitle>
                   {familyIssues.length === 1
@@ -924,19 +1185,26 @@ function EditorSheet({
               </Alert>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
-              <p
+              <div
                 aria-live="polite"
-                className={cn(
-                  "min-w-0 flex-1 basis-48 text-xs",
-                  valid ? "text-muted-foreground" : "text-destructive"
-                )}
+                className="min-w-0 flex-1 basis-48 text-xs text-muted-foreground"
               >
-                {!valid
-                  ? `${plural(issues.length, "problem")} to fix before saving.`
-                  : loading
-                    ? "Loading endpoint fields…"
-                    : "Ready to save. To share it upstream, export or copy the JSON and open a pull request (see CONTRIBUTING.md)."}
-              </p>
+                {!valid ? (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="xs"
+                    className="h-auto px-0 text-destructive"
+                    onClick={jumpToFirstProblem}
+                  >
+                    {plural(issues.length, "problem")} to fix — show the first
+                  </Button>
+                ) : loading ? (
+                  "Loading endpoint fields…"
+                ) : (
+                  "Ready to save. To share it upstream, export or copy the JSON and open a pull request (see CONTRIBUTING.md)."
+                )}
+              </div>
               <Button variant="ghost" onClick={requestClose}>
                 Cancel
               </Button>
@@ -955,19 +1223,29 @@ function EditorSheet({
                 >
                   <Button
                     variant="outline"
-                    disabled={exportBlocked !== null || exportFamily.isPending}
-                    onClick={exportJson}
+                    disabled={
+                      exportBlocked !== null ||
+                      exportFamily.isPending ||
+                      save.isPending
+                    }
+                    onClick={() =>
+                      clean
+                        ? exportJson(state.id, state.name)
+                        : requestSave("export")
+                    }
                   >
                     <HugeiconsIcon
                       icon={FileExportIcon}
                       data-icon="inline-start"
                     />
-                    Export JSON…
+                    {clean ? "Export JSON…" : "Save & export…"}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
                   {exportBlocked ??
-                    "Writes the file a pull request to registry/models/ needs."}
+                    (clean
+                      ? "Writes the file a pull request to registry/models/ needs."
+                      : "Save first — or Copy JSON. This saves the mapping, then exports it.")}
                 </TooltipContent>
               </Tooltip>
               <Tooltip>
@@ -981,7 +1259,7 @@ function EditorSheet({
                 >
                   <Button
                     disabled={saveBlocked !== null || save.isPending}
-                    onClick={runSave}
+                    onClick={() => requestSave("close")}
                   >
                     {save.isPending ? (
                       <HugeiconsIcon
@@ -1014,6 +1292,38 @@ function EditorSheet({
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={close}>
               Discard
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={replaceOpen !== null}
+        onOpenChange={(next) => {
+          if (!next) setReplaceOpen(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Replace your mapping {state.id}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              You already have a custom mapping with the ID {state.id}. Saving
+              this one replaces it. To keep both, cancel and change the ID.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                const then = replaceOpen === "export" ? "export" : "close"
+                setReplaceOpen(null)
+                runSave(then)
+              }}
+            >
+              Replace it
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

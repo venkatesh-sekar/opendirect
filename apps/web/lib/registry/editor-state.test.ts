@@ -17,10 +17,14 @@ import {
   editorReducer,
   emptyEditor,
   fromFamily,
+  endpointNotices,
   fromRaw,
+  inputTarget,
+  isDirty,
   slugify,
   toFamily,
   validateEditor,
+  withBaseline,
   type EditorState,
   type FieldRow,
 } from "./editor-state"
@@ -69,6 +73,17 @@ describe("name and id", () => {
     state = editorReducer(state, { type: "setId", id: "kling-mine" })
     state = editorReducer(state, { type: "setName", name: "Kling 3 Pro v2" })
     expect(state.id).toBe("kling-mine")
+  })
+
+  it("lets the id be cleared and retyped, then follows the name again", () => {
+    let state = editorReducer(emptyEditor(), { type: "setName", name: "Kling" })
+    state = editorReducer(state, { type: "setId", id: "" })
+    expect(state.id).toBe("")
+    state = editorReducer(state, { type: "setId", id: "k" })
+    expect(state.id).toBe("k")
+    state = editorReducer(state, { type: "setId", id: "" })
+    state = editorReducer(state, { type: "setName", name: "Kling 3" })
+    expect(state.id).toBe("kling-3")
   })
 
   it("never auto-slugs onto an id that is already taken", () => {
@@ -400,5 +415,294 @@ describe("endpoints", () => {
       message: "404",
     })
     expect(state.endpoints[0]).toMatchObject({ loading: false, error: "404" })
+  })
+})
+
+describe("a stored mapping that does not validate", () => {
+  const raw = {
+    id: "broken",
+    name: "Broken",
+    kind: "vid",
+    endpoints: [
+      {
+        provider: "replicate",
+        model: "bytedance/seedance-2.5",
+        inputs: {
+          charcter: { field: "reference_images", kind: "image" },
+          first_frame: { field: "image", kind: "image" },
+        },
+        controls: { prompt: { field: "prompt" }, loudness: { field: "seed" } },
+      },
+      { provider: "fal", model: "x/y", inputs: {}, controls: {} },
+    ],
+  }
+
+  it("reads an unknown slot key as reference and says so under its row", () => {
+    let state = fromRaw(raw, "broken")
+    expect(state.endpoints[0]!.mapping?.inputs.reference?.field).toBe(
+      "reference_images"
+    )
+    state = editorReducer(state, {
+      type: "endpointLoaded",
+      index: 0,
+      descriptor: seedanceDescriptor(),
+    })
+    const issue = validateEditor(state).find(
+      (i) =>
+        i.where !== "family" &&
+        i.where.endpoint === 0 &&
+        i.where.field === "reference_images"
+    )
+    expect(issue?.message).toMatch(/"charcter" is not a role/)
+
+    // Choosing a role for the row settles it.
+    state = editorReducer(state, {
+      type: "setTarget",
+      index: 0,
+      field: "reference_images",
+      target: {
+        kind: "input",
+        key: "character",
+        input: { field: "reference_images", kind: "image" },
+      },
+    })
+    expect(validateEditor(state).some((i) => /charcter/.test(i.message))).toBe(
+      false
+    )
+  })
+
+  it("notes a control it does not know without blocking", () => {
+    const state = fromRaw(raw, "broken")
+    expect(endpointNotices(state, 0).map((n) => n.message)).toContainEqual(
+      expect.stringMatching(/"loudness" is not a control/)
+    )
+    expect(validateEditor(state).some((i) => /loudness/.test(i.message))).toBe(
+      false
+    )
+  })
+
+  it("flags an unknown provider instead of reading it as Replicate", () => {
+    const state = fromRaw(raw, "broken")
+    expect(state.endpoints[1]!.error).toMatch(/"fal" is not a provider/)
+    expect(toFamily(state).endpoints[1]!.provider).toBe("fal")
+    expect(validateEditor(state)).toContainEqual(
+      expect.objectContaining({
+        where: { endpoint: 1 },
+        path: "endpoints.1.provider",
+      })
+    )
+  })
+
+  it("flags an unknown kind until one is chosen", () => {
+    let state = fromRaw(raw, "broken")
+    expect(validateEditor(state)).toContainEqual(
+      expect.objectContaining({ where: "family", path: "kind" })
+    )
+    state = editorReducer(state, { type: "setKind", kind: "video" })
+    expect(validateEditor(state).some((i) => i.path === "kind")).toBe(false)
+  })
+})
+
+describe("schemas that fail to load", () => {
+  function failed(): EditorState {
+    let state = editorReducer(emptyEditor(), {
+      type: "addEndpoint",
+      provider: "replicate",
+      model: "bytedance/seedance-2.5",
+    })
+    state = editorReducer(state, { type: "setName", name: "X" })
+    return editorReducer(state, {
+      type: "endpointFailed",
+      index: 0,
+      message: "404",
+    })
+  }
+
+  it("will not save a new endpoint that maps nothing", () => {
+    expect(validateEditor(failed())).toContainEqual(
+      expect.objectContaining({
+        where: { endpoint: 0 },
+        message: expect.stringMatching(/didn't load/),
+      })
+    )
+  })
+
+  it("keeps an endpoint with an existing mapping as it is", () => {
+    const bundled = bundledSeedance()
+    let state = fromFamily(
+      { ...bundled, endpoints: [bundled.endpoints[0]!] },
+      null
+    )
+    state = editorReducer(state, {
+      type: "endpointFailed",
+      index: 0,
+      message: "offline",
+    })
+    expect(validateEditor(state)).toEqual([])
+  })
+
+  it("retries, and takes a success that lands after the failure", () => {
+    let state = editorReducer(failed(), { type: "retryEndpoint", index: 0 })
+    expect(state.endpoints[0]).toMatchObject({ loading: true, error: null })
+
+    state = editorReducer(failed(), {
+      type: "endpointLoaded",
+      index: 0,
+      descriptor: seedanceDescriptor(),
+    })
+    expect(state.endpoints[0]!.rows.length).toBeGreaterThan(0)
+  })
+
+  it("loads again under a corrected slug", () => {
+    const state = editorReducer(failed(), {
+      type: "changeEndpointModel",
+      index: 0,
+      model: "bytedance/seedance-2.0",
+    })
+    expect(state.endpoints[0]).toMatchObject({
+      model: "bytedance/seedance-2.0",
+      loading: true,
+      error: null,
+    })
+  })
+})
+
+describe("kind", () => {
+  it("flags an endpoint whose model makes another kind", () => {
+    let state = withSeedance()
+    expect(validateEditor(state)).toEqual([])
+    state = editorReducer(state, { type: "setKind", kind: "image" })
+    expect(validateEditor(state)).toContainEqual(
+      expect.objectContaining({
+        where: { endpoint: 0 },
+        message: expect.stringMatching(/makes video/),
+      })
+    )
+  })
+})
+
+describe("isDirty", () => {
+  it("is false until the draft differs from what was opened", () => {
+    const bundled = bundledSeedance()
+    let state = withBaseline(fromFamily(bundled, "seedance-2-5"))
+    expect(isDirty(state)).toBe(false)
+    // Loading a schema is not an edit.
+    state = editorReducer(state, {
+      type: "endpointLoaded",
+      index: 0,
+      descriptor: seedanceDescriptor(),
+    })
+    expect(isDirty(state)).toBe(false)
+    // Nor is looking at another endpoint.
+    state = editorReducer(state, { type: "setActive", index: 1 })
+    expect(isDirty(state)).toBe(false)
+
+    state = editorReducer(state, { type: "setName", name: "Other" })
+    expect(isDirty(state)).toBe(true)
+    state = editorReducer(state, { type: "setName", name: bundled.name })
+    expect(isDirty(state)).toBe(false)
+  })
+
+  it("pre-filling a new mapping from its model is not an edit", () => {
+    let state = withBaseline(
+      editorReducer(emptyEditor(), {
+        type: "addEndpoint",
+        provider: "replicate",
+        model: "bytedance/seedance-2.5",
+      })
+    )
+    state = editorReducer(state, {
+      type: "endpointLoaded",
+      index: 0,
+      descriptor: seedanceDescriptor(),
+    })
+    expect(isDirty(state)).toBe(false)
+  })
+
+  it("is clean again once saved", () => {
+    let state = withBaseline(withSeedance())
+    state = editorReducer(state, { type: "setName", name: "Mine" })
+    state = editorReducer(state, { type: "saved" })
+    expect(isDirty(state)).toBe(false)
+    expect(state.replaceId).toBe(state.id)
+  })
+})
+
+describe("taken ids and undo", () => {
+  it("auto-slugs around ids that arrive later", () => {
+    let state = editorReducer(emptyEditor(), {
+      type: "setTakenIds",
+      ids: ["kling"],
+    })
+    state = editorReducer(state, { type: "setName", name: "Kling" })
+    expect(state.id).toBe("kling-2")
+  })
+
+  it("restores an endpoint's rows", () => {
+    const before = withSeedance()
+    const rows = before.endpoints[0]!.rows
+    let state = editorReducer(before, {
+      type: "setTarget",
+      index: 0,
+      field: "image",
+      target: { kind: "advanced" },
+    })
+    state = editorReducer(state, {
+      type: "restoreRows",
+      uid: before.endpoints[0]!.uid,
+      rows,
+    })
+    expect(keyOf(row(state, "image"))).toBe("first_frame")
+  })
+})
+
+describe("inputTarget", () => {
+  const required: FieldRow = {
+    field: "image",
+    schema: { type: "string", format: "uri" },
+    isUri: true,
+    isArray: false,
+    required: true,
+    missing: false,
+    guess: { kind: "image", max: null },
+    target: { kind: "advanced" },
+    baseline: { kind: "advanced" },
+    suggestion: null,
+    touched: false,
+  }
+
+  it("starts a new input required when the provider requires the field", () => {
+    expect(inputTarget(required, "character")).toMatchObject({
+      key: "character",
+      input: { field: "image", kind: "image", required: true },
+    })
+  })
+
+  it("keeps required off when the person turned it off", () => {
+    const off: FieldRow = {
+      ...required,
+      target: {
+        kind: "input",
+        key: "character",
+        input: { field: "image", kind: "image" },
+      },
+    }
+    const next = inputTarget(off, "style")
+    expect(next.kind === "input" && next.input.required).toBeFalsy()
+  })
+
+  it("keeps the label only while the role stays", () => {
+    const labelled: FieldRow = {
+      ...required,
+      target: {
+        kind: "input",
+        key: "character",
+        input: { field: "image", kind: "image", label: "Face" },
+      },
+    }
+    const same = inputTarget(labelled, "character")
+    const other = inputTarget(labelled, "style")
+    expect(same.kind === "input" && same.input.label).toBe("Face")
+    expect(other.kind === "input" && other.input.label).toBeFalsy()
   })
 })

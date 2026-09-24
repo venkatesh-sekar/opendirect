@@ -162,6 +162,14 @@ function ValueMapBody({
               const duplicate =
                 pair.canonical.trim() !== "" &&
                 seen.get(pair.canonical.trim()) !== index
+              // Half a pair is kept here, never silently dropped, and says
+              // what it still needs.
+              const incomplete =
+                pair.canonical.trim() !== "" && pair.provider === null
+                  ? "Pick what to send. This value isn't saved until then."
+                  : pair.canonical.trim() === "" && pair.provider !== null
+                    ? "Name the canonical value. This row isn't saved until then."
+                    : null
               return (
                 <tr key={index} className="align-top">
                   <td className="py-1 pr-2">
@@ -179,6 +187,9 @@ function ValueMapBody({
                       <p className="mt-1 text-destructive">
                         Already listed above; the first one is used.
                       </p>
+                    ) : null}
+                    {incomplete ? (
+                      <p className="mt-1 text-destructive">{incomplete}</p>
                     ) : null}
                   </td>
                   <td className="py-1 pr-2">

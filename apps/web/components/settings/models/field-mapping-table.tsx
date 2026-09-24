@@ -20,12 +20,16 @@
  * ⛔ Presentational: dispatches to the editor's reducer, fetches nothing.
  */
 import { useId, useState, type Dispatch } from "react"
+import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowTurnBackwardIcon, SparklesIcon } from "@hugeicons/core-free-icons"
+import {
+  ArrowTurnBackwardIcon,
+  Search01Icon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons"
 import {
   CONTROL_NAMES,
   PROVIDER_NAMES,
-  ROLE_LABELS,
   SHAPE_NAMES,
   slotKeyRole,
   type ControlName,
@@ -58,6 +62,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import { CONTROL_META } from "@/lib/registry/control-meta"
 import {
   ROLE_ORDER,
+  inputTarget,
   sameTarget,
   type EditorAction,
   type EditorEndpoint,
@@ -65,7 +70,7 @@ import {
   type FieldRow,
   type RowTarget,
 } from "@/lib/registry/editor-state"
-import { KIND_META, ROLE_META } from "@/lib/registry/role-meta"
+import { KIND_META, ROLE_META, roleMeta } from "@/lib/registry/role-meta"
 
 import { ValueMapEditor, enumOf } from "./value-map-editor"
 
@@ -77,13 +82,17 @@ export interface FieldMappingTableProps {
   dispatch: Dispatch<EditorAction>
 }
 
-type RowFilter = "all" | "mapped" | "inputs"
+type RowFilter = "all" | "mapped" | "inputs" | "problems"
 
 const FILTERS: ReadonlyArray<{ value: RowFilter; label: string }> = [
   { value: "all", label: "All fields" },
   { value: "mapped", label: "Mapped" },
   { value: "inputs", label: "Inputs only" },
+  { value: "problems", label: "Problems" },
 ]
+
+/** Longer than this, a description folds to two lines with a toggle. */
+const LONG_DESCRIPTION = 140
 
 const KINDS: MappingInput["kind"][] = ["image", "video", "audio", "any"]
 
@@ -125,28 +134,22 @@ function targetValue(target: RowTarget): string {
 
 function targetLabel(target: RowTarget): string {
   if (target.kind === "input") {
-    const role = slotKeyRole(target.key)
+    // Defensive: a key that is not a role reads as reference.
+    const label = roleMeta(target.key).label
     const position = target.key.split(":")[1]
-    return position ? `${ROLE_LABELS[role]} ${position}` : ROLE_LABELS[role]
+    return position ? `${label} ${position}` : label
   }
   if (target.kind === "control") return CONTROL_META[target.control].label
   return "Advanced"
 }
 
-/** A new input for a row: keeps what still applies of the current one. */
-function inputFor(row: FieldRow, role: ReferenceRole): RowTarget {
-  const current = row.target.kind === "input" ? row.target : null
-  const sameRole = current !== null && slotKeyRole(current.key) === role
-  const input: MappingInput = {
-    field: row.field,
-    kind: current?.input.kind ?? row.guess?.kind ?? "any",
-  }
-  if (current?.input.required ?? row.required) input.required = true
-  const max = current?.input.max ?? row.guess?.max ?? undefined
-  if (row.isArray && max !== undefined && max !== null) input.max = max
-  if (sameRole && current.input.label) input.label = current.input.label
-  if (current?.input.shape) input.shape = current.input.shape
-  return { kind: "input", key: role, input }
+/** "Image · up to 30 · required · “Face photo”". */
+function inputSummary(input: MappingInput): string {
+  const parts = [KIND_META[input.kind]?.label ?? input.kind]
+  if (input.max !== undefined) parts.push(`up to ${input.max}`)
+  if (input.required) parts.push("required")
+  if (input.label) parts.push(`“${input.label}”`)
+  return parts.join(" · ")
 }
 
 function describeField(row: FieldRow): string | null {
@@ -181,7 +184,7 @@ function MapsToSelect({
         if (next === "advanced") return onChange({ kind: "advanced" })
         const [kind, name] = next.split(":") as [string, string]
         if (kind === "input") {
-          return onChange(inputFor(row, name as ReferenceRole))
+          return onChange(inputTarget(row, name as ReferenceRole))
         }
         const control = name as ControlName
         const values =
@@ -206,7 +209,7 @@ function MapsToSelect({
           {() => {
             const target = row.target
             if (target.kind === "input") {
-              const meta = ROLE_META[slotKeyRole(target.key)]
+              const meta = roleMeta(target.key)
               return (
                 <>
                   <HugeiconsIcon icon={meta.icon} aria-hidden />
@@ -317,7 +320,6 @@ function InputDetails({
   onChange: (input: MappingInput) => void
 }) {
   const { input } = target
-  const role = slotKeyRole(target.key)
   const requiredId = useId()
   const set = (patch: Partial<MappingInput>) => {
     const next: MappingInput = { ...input, ...patch }
@@ -395,7 +397,7 @@ function InputDetails({
 
       <Input
         aria-label={`Label for ${row.field}`}
-        placeholder={`Label (${ROLE_LABELS[role]})`}
+        placeholder={`Label (${roleMeta(target.key).label})`}
         maxLength={80}
         className="h-8 min-w-36 flex-1"
         value={input.label ?? ""}
@@ -455,26 +457,19 @@ function SuggestionCell({
   if (same) {
     if (suggestion.target.kind === "advanced") return null
     return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Badge
-              variant={style.variant}
-              tabIndex={0}
-              className={cn("font-normal", style.className)}
-            />
-          }
-        >
-          <HugeiconsIcon
-            icon={SparklesIcon}
-            data-icon="inline-start"
-            aria-hidden
-          />
-          Suggested · {style.label}
-          <span className="sr-only">. {suggestion.why}</span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-xs">{suggestion.why}</TooltipContent>
-      </Tooltip>
+      <Badge
+        variant={style.variant}
+        title={suggestion.why}
+        className={cn("font-normal", style.className)}
+      >
+        <HugeiconsIcon
+          icon={SparklesIcon}
+          data-icon="inline-start"
+          aria-hidden
+        />
+        Suggested · {style.label}
+        <span className="sr-only">. {suggestion.why}</span>
+      </Badge>
     )
   }
 
@@ -516,7 +511,10 @@ function Row({
   dispatch: Dispatch<EditorAction>
 }) {
   const issueId = useId()
+  const detailsId = useId()
   const description = describeField(row)
+  const [descriptionOpen, setDescriptionOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
   const setTarget = (target: RowTarget) =>
     dispatch({ type: "setTarget", index, field: row.field, target })
   const { target } = row
@@ -546,19 +544,25 @@ function Row({
           ) : null}
         </div>
         {description ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <p
-                  tabIndex={0}
-                  className="mt-1 line-clamp-2 rounded-sm text-xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              }
-            >
-              {description}
-            </TooltipTrigger>
-            <TooltipContent className="max-w-sm">{description}</TooltipContent>
-          </Tooltip>
+          <p
+            className={cn(
+              "mt-1 text-xs text-muted-foreground",
+              !descriptionOpen && "line-clamp-2"
+            )}
+          >
+            {description}
+          </p>
+        ) : null}
+        {description && description.length > LONG_DESCRIPTION ? (
+          <button
+            type="button"
+            className="rounded-sm text-xs text-muted-foreground underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            aria-expanded={descriptionOpen}
+            onClick={() => setDescriptionOpen((on) => !on)}
+          >
+            {descriptionOpen ? "Less" : "More"}
+            <span className="sr-only"> about {row.field}</span>
+          </button>
         ) : null}
       </td>
       <td className="md:w-56 md:py-3 md:pr-3 md:align-top">
@@ -584,11 +588,32 @@ function Row({
       </td>
       <td className="min-w-0 md:py-3 md:pr-3 md:align-top">
         {target.kind === "input" ? (
-          <InputDetails
-            row={row}
-            target={target}
-            onChange={(input) => setTarget({ ...target, input })}
-          />
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              aria-expanded={detailsOpen || issues.length > 0}
+              aria-controls={detailsId}
+              aria-label={`Details for ${row.field}: ${inputSummary(target.input)}`}
+              className="h-auto justify-start py-0.5 font-normal text-muted-foreground"
+              onClick={() => setDetailsOpen((on) => !on)}
+            >
+              {inputSummary(target.input)}
+              <span aria-hidden className="text-foreground">
+                {detailsOpen || issues.length > 0 ? "Hide" : "Edit"}
+              </span>
+            </Button>
+            {detailsOpen || issues.length > 0 ? (
+              <div id={detailsId}>
+                <InputDetails
+                  row={row}
+                  target={target}
+                  onChange={(input) => setTarget({ ...target, input })}
+                />
+              </div>
+            ) : null}
+          </div>
         ) : target.kind === "control" ? (
           enumOf(row.schema) || CONTROL_META[target.control].vocabulary ? (
             target.control === "count" ? null : (
@@ -636,6 +661,7 @@ export function FieldMappingTable({
   dispatch,
 }: FieldMappingTableProps) {
   const [filter, setFilter] = useState<RowFilter>("all")
+  const [query, setQuery] = useState("")
   const mine = issues.filter(
     (issue) => issue.where !== "family" && issue.where.endpoint === index
   )
@@ -646,13 +672,42 @@ export function FieldMappingTable({
   for (const row of endpoint.rows) {
     if (row.target.kind === "control") usedBy.set(row.target.control, row.field)
   }
-  const visible = endpoint.rows.filter((row) =>
-    filter === "all"
-      ? true
-      : filter === "mapped"
-        ? row.target.kind !== "advanced"
-        : row.target.kind === "input" || row.isUri
+  const broken = new Set(
+    mine.flatMap((issue) =>
+      issue.where !== "family" && issue.where.field !== undefined
+        ? [issue.where.field]
+        : []
+    )
   )
+  const needle = query.trim().toLowerCase()
+  const visible = endpoint.rows.filter((row) => {
+    if (needle) {
+      const text = `${row.field} ${describeField(row) ?? ""}`.toLowerCase()
+      if (!text.includes(needle)) return false
+    }
+    switch (filter) {
+      case "all":
+        return true
+      case "mapped":
+        return row.target.kind !== "advanced"
+      case "inputs":
+        return row.target.kind === "input" || row.isUri
+      case "problems":
+        return broken.has(row.field)
+    }
+  })
+
+  /** Runs a bulk change, with a toast that can put the rows back. */
+  function bulk(action: EditorAction, done: string) {
+    const { uid, rows } = endpoint
+    dispatch(action)
+    toast.success(done, {
+      action: {
+        label: "Undo",
+        onClick: () => dispatch({ type: "restoreRows", uid, rows }),
+      },
+    })
+  }
   const where = `${PROVIDER_NAMES[endpoint.provider]} ${endpoint.model}`
 
   return (
@@ -673,6 +728,18 @@ export function FieldMappingTable({
               onClick={() => setFilter(option.value)}
             >
               {option.label}
+              {option.value === "problems" ? (
+                <span
+                  className={cn(
+                    "text-xs tabular-nums",
+                    broken.size > 0
+                      ? "text-destructive"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {broken.size}
+                </span>
+              ) : null}
             </Button>
           ))}
         </div>
@@ -681,7 +748,12 @@ export function FieldMappingTable({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => dispatch({ type: "applyAllSuggestions", index })}
+            onClick={() =>
+              bulk(
+                { type: "applyAllSuggestions", index },
+                "Applied the suggestions to every row you haven't changed"
+              )
+            }
           >
             <HugeiconsIcon icon={SparklesIcon} data-icon="inline-start" />
             Apply all suggestions
@@ -690,7 +762,12 @@ export function FieldMappingTable({
             type="button"
             size="sm"
             variant="ghost"
-            onClick={() => dispatch({ type: "resetEndpoint", index })}
+            onClick={() =>
+              bulk(
+                { type: "resetEndpoint", index },
+                "Reset every row to its pre-fill"
+              )
+            }
           >
             <HugeiconsIcon
               icon={ArrowTurnBackwardIcon}
@@ -699,6 +776,29 @@ export function FieldMappingTable({
             Reset endpoint
           </Button>
         </div>
+      </div>
+
+      <div className="relative">
+        <HugeiconsIcon
+          icon={Search01Icon}
+          className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden
+        />
+        <Input
+          type="search"
+          aria-label="Search fields"
+          placeholder="Search fields and descriptions"
+          className="h-8 pl-8"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && query) {
+              event.preventDefault()
+              event.stopPropagation()
+              setQuery("")
+            }
+          }}
+        />
       </div>
 
       {loose.length > 0 ? (
@@ -751,7 +851,7 @@ export function FieldMappingTable({
         <p className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
           {endpoint.rows.length === 0
             ? "This model's schema has no fields."
-            : "No fields match this filter."}
+            : "No fields match. Clear the search or pick another filter."}
         </p>
       ) : null}
     </div>

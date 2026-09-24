@@ -13,6 +13,7 @@ import { createElement, type ReactNode } from "react"
 import {
   formatFamilyJson,
   modelFamilySchema,
+  parseModelKey,
   suggestEndpointMapping,
   type IpcChannel,
   type ModelFamily,
@@ -77,16 +78,33 @@ function saved(family: unknown): UserOverride {
   return override({ family: parsed, id: parsed.id, raw: family })
 }
 
+/** Per-test replies, consulted before the defaults. */
+let handlers: Partial<Record<IpcChannel, (input: unknown) => unknown>>
+
+/** A descriptor for any key, built on the recorded Seedance schema. */
+function descriptorForKey(input: unknown) {
+  const key = (input as { key: string }).key
+  const parsed = parseModelKey(key)!
+  return seedanceDescriptor({
+    key,
+    provider: parsed.provider,
+    slug: parsed.slug,
+  })
+}
+
 beforeEach(() => {
+  handlers = {}
   invoke.mockReset()
   toast.success.mockReset()
   toast.error.mockReset()
   invoke.mockImplementation(async (channel: IpcChannel, input: unknown) => {
+    const handler = handlers[channel]
+    if (handler) return handler(input)
     switch (channel) {
       case "models:list":
         return { models: [seedanceSummary], failures: [] }
       case "models:get":
-        return seedanceDescriptor()
+        return descriptorForKey(input)
       case "registry:families":
         return []
       case "registry:overrides:list":
@@ -341,5 +359,229 @@ describe("ModelsSettings → mapping editor", () => {
       )
     )
     expect(await waitForRows()).toHaveTextContent("First frame")
+  })
+})
+
+describe("MappingEditor, review fixes", () => {
+  it("opens a stored mapping whose slot key is not a role, and says so", async () => {
+    const stored = override({
+      key: "bad",
+      id: "bad",
+      family: null,
+      raw: {
+        id: "bad",
+        name: "Bad",
+        kind: "video",
+        endpoints: [
+          {
+            provider: "replicate",
+            model: "bytedance/seedance-2.5",
+            inputs: { charcter: { field: "reference_images", kind: "image" } },
+            controls: {},
+          },
+        ],
+      },
+      issues: [{ path: "endpoints.0.inputs.charcter", message: "bad key" }],
+    })
+    open({ from: { kind: "override", override: stored } })
+
+    const row = await screen.findByRole("row", { name: "reference_images" })
+    expect(row).toHaveTextContent(/"charcter" is not a role/)
+    expect(
+      within(row).getByRole("combobox", {
+        name: "Maps to for reference_images",
+      })
+    ).toHaveTextContent("Reference")
+    expect(screen.getByRole("button", { name: "Save mapping" })).toBeDisabled()
+  })
+
+  it("does not call looking at another endpoint a change", async () => {
+    const user = userEvent.setup()
+    const base = family({ id: "mine", name: "Mine" })
+    const two = {
+      ...base,
+      endpoints: [
+        base.endpoints[0]!,
+        { ...base.endpoints[0]!, provider: "openrouter" as const },
+      ],
+    }
+    const onClose = open({
+      from: { kind: "override", override: override({ family: two }) },
+    })
+    await waitForRows()
+    await user.click(screen.getByRole("tab", { name: /OpenRouter/ }))
+    await user.keyboard("{Escape}")
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(screen.queryByRole("alertdialog")).toBeNull()
+  })
+
+  it("retries a schema that failed to load, and will not save it meanwhile", async () => {
+    const user = userEvent.setup()
+    let fail = true
+    handlers["models:get"] = (input) => {
+      if (fail) throw new Error("Replicate said 503")
+      return descriptorForKey(input)
+    }
+    open({ from: { kind: "blank" } })
+    await pickSeedance(user)
+
+    expect(await screen.findByText("Replicate said 503")).toBeVisible()
+    expect(screen.getByText(/didn't load, so it maps nothing/)).toBeVisible()
+    expect(screen.getByRole("button", { name: "Save mapping" })).toBeDisabled()
+
+    fail = false
+    await user.click(screen.getByRole("button", { name: "Retry" }))
+    expect(await waitForRows()).toHaveTextContent("First frame")
+  })
+
+  it("loads an endpoint again under a corrected slug", async () => {
+    const user = userEvent.setup()
+    handlers["models:get"] = (input) => {
+      const key = (input as { key: string }).key
+      if (key.endsWith("typo")) throw new Error("Not found")
+      return descriptorForKey(input)
+    }
+    open({ from: { kind: "blank" } })
+    await user.click(
+      await screen.findByRole("button", { name: /add endpoint/i })
+    )
+    await user.click(
+      await screen.findByRole("option", { name: /use a model slug/i })
+    )
+    const slug = await screen.findByRole("textbox", { name: "Model slug" })
+    expect(slug).toHaveFocus()
+    await user.type(slug, "bytedance/typo")
+    await user.click(screen.getByRole("button", { name: "Add" }))
+
+    expect(await screen.findByText("Not found")).toBeVisible()
+    const fix = screen.getByRole("textbox", { name: "Model slug" })
+    await user.clear(fix)
+    await user.type(fix, "bytedance/seedance-2.5")
+    await user.click(screen.getByRole("button", { name: "Load this slug" }))
+
+    expect(await waitForRows()).toBeVisible()
+  })
+
+  it("warns, then asks, before replacing another custom mapping", async () => {
+    const user = userEvent.setup()
+    handlers["registry:overrides:list"] = () => [
+      override({ key: "taken", family: family({ id: "seedance-2-5" }) }),
+    ]
+    open({ from: { kind: "blank" } })
+    await pickSeedance(user)
+    await waitForRows()
+    const id = screen.getByRole("textbox", { name: "ID" })
+    await waitFor(() => expect(id).toHaveValue("seedance-2-5-2"))
+
+    await user.clear(id)
+    await user.type(id, "seedance-2-5")
+    expect(
+      screen.getByText(/already have a custom mapping with this ID/)
+    ).toBeVisible()
+    const save = screen.getByRole("button", { name: "Save mapping" })
+    await waitFor(() => expect(save).toBeEnabled())
+    await user.click(save)
+
+    const confirm = await screen.findByRole("alertdialog", {
+      name: "Replace your mapping seedance-2-5?",
+    })
+    expect(invoke).not.toHaveBeenCalledWith(
+      "registry:overrides:save",
+      expect.anything()
+    )
+    await user.click(
+      within(confirm).getByRole("button", { name: "Replace it" })
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "registry:overrides:save",
+        expect.anything()
+      )
+    )
+  })
+
+  it("jumps to the first problem", async () => {
+    const user = userEvent.setup()
+    open({ from: { kind: "blank" } })
+    await pickSeedance(user)
+    await waitForRows()
+    const id = screen.getByRole("textbox", { name: "ID" })
+    await user.clear(id)
+    await user.type(id, "Bad Id")
+    await user.click(screen.getByRole("tab", { name: /Replicate/ }))
+    screen.getByRole("button", { name: "Save mapping" }).focus()
+
+    await user.click(screen.getByRole("button", { name: /1 problem to fix/ }))
+    await waitFor(() => expect(id).toHaveFocus())
+  })
+
+  it("saves and exports an unsaved mapping, and stays open", async () => {
+    const user = userEvent.setup()
+    handlers["registry:overrides:export"] = () => ({ path: "/tmp/x.json" })
+    const onClose = open({
+      from: {
+        kind: "override",
+        override: override({ family: family({ id: "mine", name: "Mine" }) }),
+      },
+    })
+    await waitForRows()
+    expect(screen.getByRole("button", { name: "Export JSON…" })).toBeEnabled()
+
+    const name = screen.getByRole("textbox", { name: "Name" })
+    await user.type(name, " 2")
+    await user.click(screen.getByRole("button", { name: "Save & export…" }))
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("registry:overrides:export", {
+        id: "mine",
+      })
+    )
+    expect(invoke).toHaveBeenCalledWith(
+      "registry:overrides:save",
+      expect.anything()
+    )
+    expect(onClose).not.toHaveBeenCalled()
+    expect(
+      await screen.findByRole("button", { name: "Export JSON…" })
+    ).toBeEnabled()
+  })
+
+  it("marks catalog models whose provider has no key", async () => {
+    const user = userEvent.setup()
+    handlers["models:list"] = () => ({
+      models: [
+        seedanceSummary,
+        {
+          ...seedanceSummary,
+          key: "openrouter:bytedance/seedance-2.5",
+          provider: "openrouter",
+        },
+      ],
+      failures: [],
+    })
+    open({ from: { kind: "blank" } })
+    await user.click(
+      await screen.findByRole("button", { name: /add endpoint/i })
+    )
+    const options = await screen.findAllByRole("option", {
+      name: /Seedance 2\.5/,
+    })
+    const keyless = options.find((o) => /No key/.test(o.textContent ?? ""))
+    expect(keyless).toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("shows the preview from a bar below wide screens", async () => {
+    const user = userEvent.setup()
+    open({ from: { kind: "blank" } })
+    await pickSeedance(user)
+    await waitForRows()
+    await user.click(screen.getByRole("button", { name: "Show preview" }))
+    expect(
+      screen.getAllByRole("list", { name: "Slots on the canvas" }).length
+    ).toBeGreaterThan(0)
+    expect(
+      screen.getByRole("button", { name: "Hide preview" })
+    ).toHaveAttribute("aria-expanded", "true")
   })
 })
