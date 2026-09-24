@@ -160,25 +160,42 @@ function ModelRow({
   /** Roles guessed from field names: said on the row, dashed like a slot. */
   unverified?: boolean
 }) {
+  const price = unavailable ? (
+    <Badge variant="ghost">unavailable</Badge>
+  ) : (
+    <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+      {formatPriceHint(summary.priceHint)}
+    </span>
+  )
+  const provider = (
+    <Badge variant="outline">{PROVIDER_LABELS[summary.provider]}</Badge>
+  )
+  if (!unverified) {
+    return (
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate">{summary.name}</span>
+        {provider}
+        {price}
+      </div>
+    )
+  }
+  // A third badge leaves a one-line row no room for the name, so an
+  // unverified row takes two lines, like a family's.
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2">
-      <span className="truncate">{summary.name}</span>
-      <Badge variant="outline">{PROVIDER_LABELS[summary.provider]}</Badge>
-      {unverified ? (
+    <div className="flex min-w-0 flex-1 flex-col gap-1">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="truncate">{summary.name}</span>
+        {price}
+      </div>
+      <div className="flex min-w-0 items-center gap-1">
+        {provider}
         <Badge
           variant="outline"
           className="border-dashed font-normal text-muted-foreground"
         >
           unverified
         </Badge>
-      ) : null}
-      {unavailable ? (
-        <Badge variant="ghost">unavailable</Badge>
-      ) : (
-        <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-          {formatPriceHint(summary.priceHint)}
-        </span>
-      )}
+      </div>
     </div>
   )
 }
