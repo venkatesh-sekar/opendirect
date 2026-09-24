@@ -100,7 +100,7 @@ export const settingsSchema = z.object({
   registryUrl: z
     .string()
     .url()
-    .refine((url) => url.startsWith("https:"), {
+    .refine((url) => /^https:/i.test(url), {
       message: "The registry URL must start with https://.",
     })
     .nullable(),

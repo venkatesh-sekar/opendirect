@@ -178,7 +178,7 @@ function SkippedMappings({ warnings }: { warnings: RegistryWarning[] }) {
 const HTTPS_ONLY = "The registry URL must start with https://."
 
 function urlProblem(value: string): string | null {
-  if (!value.startsWith("https://")) return HTTPS_ONLY
+  if (!/^https:\/\//i.test(value)) return HTTPS_ONLY
   try {
     new URL(value)
     return null

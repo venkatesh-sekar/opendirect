@@ -193,14 +193,23 @@ const SETTINGS_KEY = "settings"
 export function createSettings(store: SettingsStore): SettingsApi {
   function read(): Settings {
     const raw = store.get(SETTINGS_KEY)
-    const merged = {
-      ...settingsDefaults,
-      ...(typeof raw === "object" && raw !== null ? raw : {}),
+    const stored: Record<string, unknown> =
+      typeof raw === "object" && raw !== null && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {}
+    // A hand-edited or half-migrated file must not brick the app, and one bad
+    // field must not cost the user every other preference: each field is
+    // checked on its own, and only the ones that fail fall back to defaults.
+    const fields = settingsSchema.shape
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(fields) as (keyof Settings)[]) {
+      const parsed =
+        key in stored
+          ? fields[key].safeParse(stored[key])
+          : { success: false as const }
+      out[key] = parsed.success ? parsed.data : settingsDefaults[key]
     }
-    const parsed = settingsSchema.safeParse(merged)
-    // A hand-edited or half-migrated file must not brick the app: fall back to
-    // the defaults rather than throwing on every read.
-    return parsed.success ? parsed.data : { ...settingsDefaults }
+    return out as Settings
   }
 
   return {

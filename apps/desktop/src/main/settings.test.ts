@@ -239,6 +239,29 @@ describe("settings store", () => {
     expect(() => settings.set({ maxConcurrentJobs: 99 })).toThrow()
   })
 
+  it("falls back only the invalid field, keeping every valid one", () => {
+    const store = fakeStore()
+    store.set("settings", {
+      theme: "dark",
+      maxConcurrentJobs: 4,
+      providerOrder: ["openrouter"],
+      registryUrl: "http://example.test/registry",
+    })
+    expect(createSettings(store).get()).toMatchObject({
+      theme: "dark",
+      maxConcurrentJobs: 4,
+      providerOrder: ["openrouter"],
+      registryUrl: null,
+    })
+  })
+
+  it("accepts a registry URL whose scheme is upper case", () => {
+    const settings = createSettings(fakeStore())
+    expect(
+      settings.set({ registryUrl: "HTTPS://example.test/registry" }).registryUrl
+    ).toBe("HTTPS://example.test/registry")
+  })
+
   it("repairs a corrupt persisted blob by falling back to defaults", () => {
     const store = fakeStore()
     store.set("settings", { maxConcurrentJobs: "lots" })
