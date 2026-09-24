@@ -6,9 +6,10 @@
  * files, not about a fixture.
  */
 import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { describe, expect, it } from "vitest"
 import {
+  REFERENCE_ROLES,
   modelFamilySchema,
   type ModelSummary,
   type ReferenceRole,
@@ -17,6 +18,7 @@ import {
 
 import {
   buildPickerRows,
+  countRoles,
   type PickerFilter,
   type PickerRow,
 } from "./picker-rows"
@@ -33,7 +35,10 @@ const families: RegistryFamilyEntry[] = BUNDLED.map((id) => ({
   family: modelFamilySchema.parse(
     JSON.parse(
       readFileSync(
-        resolve(process.cwd(), "registry/models", `${id}.json`),
+        // Relative to this file, so it passes from any working directory.
+        fileURLToPath(
+          new URL(`../../../../registry/models/${id}.json`, import.meta.url)
+        ),
         "utf8"
       )
     )
@@ -114,7 +119,7 @@ function build(
 const keys = (rows: PickerRow[]) => rows.map((row) => row.key)
 
 describe("buildPickerRows", () => {
-  it("collapses a family's endpoints into one row, priced at its cheapest", () => {
+  it("collapses a family's endpoints into one row, priced where it can run", () => {
     const { families: rows, models } = build()
 
     const seedance = rows.filter((row) => row.key === "family:seedance-2-5")
@@ -122,7 +127,8 @@ describe("buildPickerRows", () => {
     const row = seedance[0]!
     expect(row.type).toBe("family")
     if (row.type !== "family") return
-    expect(row.priceHint?.amount).toBe(0.2)
+    // OpenRouter is cheaper, but only Replicate holds a key.
+    expect(row.priceHint?.amount).toBe(0.3)
     expect(row.providers).toEqual([
       { id: "replicate", configured: true },
       { id: "openrouter", configured: false },
@@ -141,6 +147,65 @@ describe("buildPickerRows", () => {
     expect(keys(models)).not.toContain("openrouter:bytedance/seedance-2.5")
     expect(keys(models)).not.toContain("replicate:bytedance/seedance-2.0")
     expect(keys(models)).toEqual(["replicate:x/y", "replicate:acme/sketch"])
+  })
+
+  it("prices at the cheapest endpoint when every provider is configured", () => {
+    const { families: rows } = buildPickerRows({
+      families,
+      summaries,
+      capabilities: {},
+      configured: ["replicate", "openrouter"],
+      filter: filter(),
+    })
+    const row = rows.find((r) => r.key === "family:seedance-2-5")
+    expect(row?.type === "family" && row.priceHint?.amount).toBe(0.2)
+  })
+
+  it("never compares prices charged per different units", () => {
+    const perOutput = summaries.map((s) =>
+      s.key === "openrouter:bytedance/seedance-2.5"
+        ? {
+            ...s,
+            priceHint: {
+              amount: 0.01,
+              unit: "output",
+              basis: "per_output" as const,
+              source: "provider_api" as const,
+            },
+          }
+        : s
+    )
+    const { families: rows } = buildPickerRows({
+      families,
+      summaries: perOutput,
+      capabilities: {},
+      configured: ["replicate", "openrouter"],
+      filter: filter(),
+    })
+    const row = rows.find((r) => r.key === "family:seedance-2-5")
+    // The first endpoint's unit wins; $0.01/output is not "cheaper" than
+    // $0.30/second.
+    expect(row?.type === "family" && row.priceHint).toMatchObject({
+      amount: 0.3,
+      unit: "second",
+    })
+  })
+
+  it("falls back to an unconfigured provider's price when it is the only one", () => {
+    const onlyOpenRouter = summaries.map((s) =>
+      s.key === "replicate:bytedance/seedance-2.5"
+        ? { ...s, priceHint: null }
+        : s
+    )
+    const { families: rows } = buildPickerRows({
+      families,
+      summaries: onlyOpenRouter,
+      capabilities: {},
+      configured: ["replicate"],
+      filter: filter(),
+    })
+    const row = rows.find((r) => r.key === "family:seedance-2-5")
+    expect(row?.type === "family" && row.priceHint?.amount).toBe(0.2)
   })
 
   it("lists a family even when no summary backs it", () => {
@@ -163,6 +228,7 @@ describe("buildPickerRows", () => {
     expect(result.models).toEqual([])
     // Both unmapped models would show (as not inspected) with the switch on.
     expect(result.hiddenUnverified).toBe(2)
+    expect(result.hiddenUninspected).toBe(2)
   })
 
   it("shows an unmapped model whose cached capabilities match, as unverified", () => {
@@ -248,5 +314,74 @@ describe("buildPickerRows", () => {
       "replicate:acme/sketch",
     ])
     expect(keys(build({ search: "x/y" }).models)).toEqual(["replicate:x/y"])
+  })
+})
+
+describe("countRoles", () => {
+  function counts(
+    overrides: Partial<PickerFilter> = {},
+    capabilities: Record<string, ReferenceRole[]> = {}
+  ) {
+    return countRoles({
+      families,
+      summaries,
+      capabilities,
+      configured: ["replicate"],
+      filter: filter(overrides),
+    })
+  }
+
+  /** The definition: the rows that would stand with the role pressed. */
+  function expected(
+    role: ReferenceRole,
+    overrides: Partial<PickerFilter>,
+    capabilities: Record<string, ReferenceRole[]>
+  ) {
+    const current = overrides.roles ?? []
+    const rows = build(
+      {
+        ...overrides,
+        roles: current.includes(role) ? current : [...current, role],
+      },
+      capabilities
+    )
+    return (
+      rows.families.length +
+      rows.models.filter((row) => row.roles !== null).length
+    )
+  }
+
+  const cases: Array<
+    [string, Partial<PickerFilter>, Record<string, ReferenceRole[]>]
+  > = [
+    ["no filter", {}, {}],
+    ["unverified off", {}, { "replicate:x/y": ["character", "style"] }],
+    [
+      "unverified on",
+      { includeUnverified: true },
+      { "replicate:x/y": ["character", "style"], "replicate:acme/sketch": [] },
+    ],
+    [
+      "a role pressed",
+      { includeUnverified: true, roles: ["character"] },
+      { "replicate:x/y": ["character", "style"] },
+    ],
+    ["a kind and a search", { kind: "video", search: "seedance" }, {}],
+  ]
+
+  it.each(cases)(
+    "matches one buildPickerRows per role (%s)",
+    (_name, overrides, capabilities) => {
+      const result = counts(overrides, capabilities)
+      for (const role of REFERENCE_ROLES) {
+        expect(result[role], role).toBe(expected(role, overrides, capabilities))
+      }
+    }
+  )
+
+  it("counts both Seedance families for First frame, and nothing for Character", () => {
+    const result = counts()
+    expect(result.first_frame).toBe(2)
+    expect(result.character).toBe(0)
   })
 })

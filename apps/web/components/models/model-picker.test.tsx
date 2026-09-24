@@ -272,8 +272,10 @@ describe("ModelPicker — families and capability filters", () => {
     await user.click(screen.getByRole("button", { name: /First frame/ }))
     expect(screen.getByText("Seedance 2.5")).toBeVisible()
     expect(screen.queryByText("Model 0")).toBeNull()
+    // None of them has been inspected, and the line says so: the chip
+    // counts only what is known to take a role.
     expect(screen.getByTestId("unverified-hidden")).toHaveTextContent(
-      "3 unverified models hidden"
+      "3 unverified models hidden, none inspected yet"
     )
 
     await user.click(screen.getByRole("button", { name: /First frame/ }))
@@ -329,5 +331,44 @@ describe("ModelPicker — families and capability filters", () => {
       `/settings?tab=models&map=${encodeURIComponent("replicate:acme/model-2")}`,
     ])
     expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("keeps the map button out of the Tab order and says how to reach it", async () => {
+    await open()
+
+    const row = screen
+      .getByText("Model 2")
+      .closest('[data-slot="command-item"]') as HTMLElement
+    expect(
+      within(row).getByRole("button", { name: /Map this model/ })
+    ).toHaveAttribute("tabindex", "-1")
+    expect(row).toHaveAccessibleDescription(/map this model/i)
+  })
+
+  it("maps the highlighted model with Ctrl+E, and picks nothing", async () => {
+    const onChange = vi.fn()
+    const user = await open({}, { onChange })
+
+    await user.click(screen.getByPlaceholderText("Search models…"))
+    await user.type(screen.getByPlaceholderText("Search models…"), "model 1")
+    await waitFor(() =>
+      expect(
+        screen.getByText("Model 1").closest('[data-slot="command-item"]')
+      ).toHaveAttribute("data-selected", "true")
+    )
+    await user.keyboard("{Control>}e{/Control}")
+
+    expect(pushed).toEqual([
+      `/settings?tab=models&map=${encodeURIComponent("replicate:acme/model-1")}`,
+    ])
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("does nothing on Ctrl+E when a family is highlighted", async () => {
+    const user = await open()
+
+    await user.type(screen.getByPlaceholderText("Search models…"), "seedance")
+    await user.keyboard("{Control>}e{/Control}")
+    expect(pushed).toEqual([])
   })
 })

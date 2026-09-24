@@ -73,8 +73,13 @@ export interface PickerRows {
   families: FamilyPickerRow[]
   /** Matching unmapped models, then (under a role filter) uninspected ones. */
   models: ModelPickerRow[]
-  /** Unmapped models a role filter hides while unverified ones are off. */
+  /**
+   * Unmapped models a role filter hides while unverified ones are off: the
+   * ones the switch would bring back, whether inspected or not.
+   */
   hiddenUnverified: number
+  /** How many of `hiddenUnverified` main has not inspected yet. */
+  hiddenUninspected: number
 }
 
 /**
@@ -135,43 +140,121 @@ function takesAll(
   return wanted.every((role) => roles.includes(role))
 }
 
-/** The lowest published rate among a family's endpoints; null if none has one. */
-function cheapest(hints: Array<PriceHint | null>): PriceHint | null {
-  let best: PriceHint | null = null
-  for (const hint of hints) {
-    if (hint && (best === null || hint.amount < best.amount)) best = hint
+/**
+ * The family's price hint: the lowest published rate among the endpoints
+ * the user can run (a provider with a key), or among all of them when none
+ * can run or none of the runnable ones has a rate. Rates are only compared
+ * in one unit — the first priced endpoint's, in manifest order — because
+ * $0.01 per output is not "cheaper" than $0.30 per second.
+ */
+function familyPrice(
+  entry: RegistryFamilyEntry,
+  summaryByKey: Map<string, ModelSummary>,
+  configured: readonly ProviderId[]
+): PriceHint | null {
+  const priced: Array<{ hint: PriceHint; runnable: boolean }> = []
+  for (const endpoint of entry.family.endpoints) {
+    const hint = summaryByKey.get(
+      modelKey(endpoint.provider, endpoint.model)
+    )?.priceHint
+    if (hint)
+      priced.push({ hint, runnable: configured.includes(endpoint.provider) })
+  }
+  const pool = priced.some((p) => p.runnable)
+    ? priced.filter((p) => p.runnable)
+    : priced
+  const first = pool[0]
+  if (!first) return null
+  let best = first.hint
+  for (const { hint } of pool) {
+    if (hint.unit === best.unit && hint.amount < best.amount) best = hint
   }
   return best
 }
 
-export function buildPickerRows(input: PickerRowsInput): PickerRows {
-  const { families, summaries, capabilities, configured, filter } = input
+interface Candidates {
+  /** Families past kind and search, with their union roles. */
+  families: Array<{ entry: RegistryFamilyEntry; roles: ReferenceRole[] }>
+  /** Unmapped summaries past kind and search, with cached roles or null. */
+  models: Array<{ summary: ModelSummary; roles: ReferenceRole[] | null }>
+}
+
+/** Kind and search, which every other rule narrows further. */
+function candidates(input: PickerRowsInput): Candidates {
+  const { families, summaries, capabilities, filter } = input
   const needles = terms(filter.search)
-  const roleFilter = filter.roles.length > 0
   const kindMatches = (kind: string) =>
     filter.kind === "all" || kind === filter.kind
-
   const byEndpoint = endpointFamilies(families)
-  const summaryByKey = new Map(summaries.map((s) => [s.key, s]))
 
-  const familyRows: FamilyPickerRow[] = []
+  const out: Candidates = { families: [], models: [] }
   const seen = new Set<string>()
   for (const entry of families) {
     const { family } = entry
     if (seen.has(family.id)) continue
     seen.add(family.id)
     if (!kindMatches(family.kind) || family.endpoints.length === 0) continue
-
     const roles = familyRoles(entry)
-    if (roleFilter && !takesAll(roles, filter.roles)) continue
     if (
       needles.length > 0 &&
       !matchesTerms(familyHaystack(entry, roles), needles)
     )
       continue
+    out.families.push({ entry, roles })
+  }
+
+  for (const summary of summaries) {
+    if (byEndpoint.has(summary.key)) continue
+    if (!kindMatches(summary.kind)) continue
+    const text = `${summary.name} ${summary.key}`.toLowerCase()
+    if (needles.length > 0 && !matchesTerms(text, needles)) continue
+    const roles = Object.hasOwn(capabilities, summary.key)
+      ? (capabilities[summary.key] ?? null)
+      : null
+    out.models.push({ summary, roles })
+  }
+  return out
+}
+
+/**
+ * Each "Takes" chip's count, in one pass: how many rows would *take* the
+ * role were it pressed alongside the current ones — families, plus
+ * inspected unverified models while those are included. Models nobody has
+ * inspected are not counted; nothing says they take it. Equal, role by
+ * role, to counting `buildPickerRows` with the role added.
+ */
+export function countRoles(
+  input: PickerRowsInput
+): Record<ReferenceRole, number> {
+  const { filter } = input
+  const counts = Object.fromEntries(
+    REFERENCE_ROLES.map((role) => [role, 0])
+  ) as Record<ReferenceRole, number>
+  const { families, models } = candidates(input)
+
+  const tally = (roles: readonly ReferenceRole[]) => {
+    if (!takesAll(roles, filter.roles)) return
+    for (const role of roles) counts[role] += 1
+  }
+  for (const { roles } of families) tally(roles)
+  if (filter.includeUnverified) {
+    for (const { roles } of models) if (roles !== null) tally(roles)
+  }
+  return counts
+}
+
+export function buildPickerRows(input: PickerRowsInput): PickerRows {
+  const { summaries, configured, filter } = input
+  const roleFilter = filter.roles.length > 0
+  const summaryByKey = new Map(summaries.map((s) => [s.key, s]))
+  const found = candidates(input)
+
+  const familyRows: FamilyPickerRow[] = []
+  for (const { entry, roles } of found.families) {
+    if (roleFilter && !takesAll(roles, filter.roles)) continue
 
     const providers: FamilyPickerRow["providers"] = []
-    for (const endpoint of family.endpoints) {
+    for (const endpoint of entry.family.endpoints) {
       if (providers.some((p) => p.id === endpoint.provider)) continue
       providers.push({
         id: endpoint.provider,
@@ -181,32 +264,19 @@ export function buildPickerRows(input: PickerRowsInput): PickerRows {
 
     familyRows.push({
       type: "family",
-      key: familyKey(family.id),
+      key: familyKey(entry.family.id),
       entry,
       roles,
       providers,
-      priceHint: cheapest(
-        family.endpoints.map(
-          (endpoint) =>
-            summaryByKey.get(modelKey(endpoint.provider, endpoint.model))
-              ?.priceHint ?? null
-        )
-      ),
+      priceHint: familyPrice(entry, summaryByKey, configured),
     })
   }
 
   const matched: ModelPickerRow[] = []
   const uninspected: ModelPickerRow[] = []
   let hiddenUnverified = 0
-  for (const summary of summaries) {
-    if (byEndpoint.has(summary.key)) continue
-    if (!kindMatches(summary.kind)) continue
-    const text = `${summary.name} ${summary.key}`.toLowerCase()
-    if (needles.length > 0 && !matchesTerms(text, needles)) continue
-
-    const roles = Object.hasOwn(capabilities, summary.key)
-      ? capabilities[summary.key]!
-      : null
+  let hiddenUninspected = 0
+  for (const { summary, roles } of found.models) {
     const row: ModelPickerRow = {
       type: "model",
       key: summary.key,
@@ -224,6 +294,7 @@ export function buildPickerRows(input: PickerRowsInput): PickerRows {
     if (!wouldShow) continue
     if (!filter.includeUnverified) {
       hiddenUnverified += 1
+      if (roles === null) hiddenUninspected += 1
       continue
     }
     if (roles === null) uninspected.push(row)
@@ -234,5 +305,6 @@ export function buildPickerRows(input: PickerRowsInput): PickerRows {
     families: familyRows,
     models: [...matched, ...uninspected],
     hiddenUnverified,
+    hiddenUninspected,
   }
 }

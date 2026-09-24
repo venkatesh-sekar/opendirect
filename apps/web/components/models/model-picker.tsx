@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useId, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useHotkeys } from "react-hotkeys-hook"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -49,6 +49,7 @@ import {
 import { formatPriceHint } from "@/lib/price"
 import {
   buildPickerRows,
+  countRoles,
   endpointFamilies,
   type FamilyPickerRow,
   type ModelPickerRow,
@@ -249,49 +250,87 @@ function FamilyRow({ row }: { row: FamilyPickerRow }) {
   )
 }
 
-/**
- * Settings → Models, with the mapping editor open on `modelKey` when given
- * (`?map=`). The router is only asked for inside the open popup, so a picker
- * that is merely mounted needs no app router around it.
- */
-function useOpenMappingEditor(onNavigate: () => void) {
-  const router = useRouter()
-  return (modelKey?: string) => {
-    onNavigate()
-    router.push(
-      modelKey
-        ? `/settings?tab=models&map=${encodeURIComponent(modelKey)}`
-        : "/settings?tab=models"
-    )
-  }
+/** Settings → Models, with the mapping editor open on `modelKey` if given. */
+function mappingHref(modelKey?: string): string {
+  return modelKey
+    ? `/settings?tab=models&map=${encodeURIComponent(modelKey)}`
+    : "/settings?tab=models"
 }
 
-/** The row's "Map this model…" action; shown on hover, selection or focus. */
-function MapModelButton({
-  modelKey,
-  name,
-  onNavigate,
+interface Navigator {
+  push: (href: string) => void
+}
+
+/**
+ * Lends the router to the picker. It is rendered only inside the open popup,
+ * so a picker that is merely mounted (in a canvas bar, a form, their tests)
+ * needs no app router around it.
+ */
+function RouterBridge({
+  onReady,
 }: {
-  modelKey: string
-  name: string
-  onNavigate: () => void
+  onReady: (navigator: Navigator | null) => void
 }) {
-  const openEditor = useOpenMappingEditor(onNavigate)
+  const router = useRouter()
+  // Read at call time, so a router whose identity changes per render (as
+  // test doubles' do) cannot re-run the effect below into a render loop.
+  const routerRef = useRef(router)
+  useEffect(() => {
+    routerRef.current = router
+  }, [router])
+  useEffect(() => {
+    onReady({ push: (href) => routerRef.current.push(href) })
+    return () => onReady(null)
+  }, [onReady])
+  return null
+}
+
+/** "⌘E" on a Mac, "Ctrl+E" elsewhere. Read only inside the open popup. */
+function mapShortcutLabel(): string {
+  const platform =
+    typeof navigator === "undefined"
+      ? ""
+      : `${navigator.platform} ${navigator.userAgent}`
+  return /Mac|iPhone|iPad/.test(platform) ? "⌘E" : "Ctrl+E"
+}
+
+function isMapShortcut(event: React.KeyboardEvent): boolean {
+  return (
+    (event.metaKey || event.ctrlKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    event.key.toLowerCase() === "e"
+  )
+}
+
+/**
+ * The row's "Map this model…" action for the pointer: shown on hover or
+ * selection. It is out of the Tab order — one stop per row would bury the
+ * list — and the keyboard reaches it through the shortcut instead, which
+ * each row's accessible description names.
+ */
+function MapModelButton({
+  name,
+  onOpen,
+}: {
+  name: string
+  onOpen: () => void
+}) {
   return (
     <Button
       type="button"
       size="icon-xs"
       variant="ghost"
+      tabIndex={-1}
       aria-label={`Map this model… (${name})`}
       title="Map this model…"
-      className="opacity-0 group-hover/command-item:opacity-100 group-data-selected/command-item:opacity-100 focus-visible:opacity-100"
-      // The row selects on click and on Enter; this button does neither.
+      className="opacity-0 group-hover/command-item:opacity-100 group-data-selected/command-item:opacity-100"
+      // The row selects on click; this button does not.
       onPointerDown={(event) => event.stopPropagation()}
-      onKeyDown={(event) => event.stopPropagation()}
       onClick={(event) => {
         event.stopPropagation()
         event.preventDefault()
-        openEditor(modelKey)
+        onOpen()
       }}
     >
       <HugeiconsIcon icon={PencilEdit02Icon} aria-hidden />
@@ -299,18 +338,43 @@ function MapModelButton({
   )
 }
 
-function CreateMappingButton({ onNavigate }: { onNavigate: () => void }) {
-  const openEditor = useOpenMappingEditor(onNavigate)
-  return (
-    <Button
-      type="button"
-      size="xs"
-      variant="outline"
-      onClick={() => openEditor()}
-    >
-      Create a mapping
-    </Button>
-  )
+/**
+ * Where the chip row can still scroll, so its edges can fade there: a row
+ * cut off at the popup's edge with no hint reads as "that is all of them".
+ */
+function useScrollEdges() {
+  const [node, setNode] = useState<HTMLDivElement | null>(null)
+  const [edges, setEdges] = useState({ start: false, end: false })
+
+  const measure = useCallback(() => {
+    if (!node) return
+    const start = node.scrollLeft > 1
+    const end = node.scrollLeft + node.clientWidth < node.scrollWidth - 1
+    setEdges((prev) =>
+      prev.start === start && prev.end === end ? prev : { start, end }
+    )
+  }, [node])
+
+  useEffect(() => {
+    // A ResizeObserver reports once on observe, so this measures on mount
+    // too; without one (tests), the row simply never fades.
+    if (!node || typeof ResizeObserver === "undefined") return
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [node, measure])
+
+  const fade = 16
+  const mask =
+    edges.start || edges.end
+      ? `linear-gradient(to right, ${edges.start ? "transparent" : "black"}, black ${fade}px, black calc(100% - ${fade}px), ${edges.end ? "transparent" : "black"})`
+      : undefined
+  return {
+    setNode,
+    onScroll: measure,
+    style: mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined,
+    edges,
+  }
 }
 
 /**
@@ -353,6 +417,16 @@ export function ModelPicker({
   const [query, setQuery] = useState("")
   const takesId = useId()
   const switchId = useId()
+  const mapHintId = useId()
+  // The row cmdk highlights, controlled so ⌘E / Ctrl+E can act on it.
+  const [highlighted, setHighlighted] = useState("")
+  const [navigator, setNavigator] = useState<Navigator | null>(null)
+  const {
+    setNode: setChipRow,
+    onScroll: onChipScroll,
+    style: chipRowStyle,
+    edges: chipEdges,
+  } = useScrollEdges()
 
   const models = useModels(kinds)
   const recommended = useRecommendedModels()
@@ -480,25 +554,11 @@ export function ModelPicker({
     [rowInput, pickerFilter]
   )
 
-  /**
-   * Each chip's count: how many rows would stand if it were (or while it is)
-   * pressed — families plus inspected unverified models when those are on.
-   * Models nobody has inspected are not counted: nothing says they take it.
-   */
-  const roleCounts = useMemo(() => {
-    const counts = {} as Record<ReferenceRole, number>
-    for (const role of ROLE_FILTERS) {
-      const withRole = roles.includes(role) ? roles : [...roles, role]
-      const rows = buildPickerRows({
-        ...rowInput,
-        filter: { ...pickerFilter, roles: withRole },
-      })
-      counts[role] =
-        rows.families.length +
-        rows.models.filter((row) => row.roles !== null).length
-    }
-    return counts
-  }, [rowInput, pickerFilter, roles])
+  /** Each chip's count: the rows known to take that role (one pass). */
+  const roleCounts = useMemo(
+    () => countRoles({ ...rowInput, filter: pickerFilter }),
+    [rowInput, pickerFilter]
+  )
 
   /**
    * Recommended rows, resolved against the filtered result: a key that is a
@@ -630,27 +690,39 @@ export function ModelPicker({
     )
   }
 
+  function openMappingEditor(modelKey?: string) {
+    if (!navigator) return
+    setOpen(false)
+    navigator.push(mappingHref(modelKey))
+  }
+
+  /** cmdk item value → the unmapped model key it maps, for the shortcut. */
+  const mappable = new Map<string, string>()
+
   function modelItem(row: ModelPickerRow, prefix = "") {
     const unverified = roles.length > 0 || row.roles !== null
+    const itemValue = `${prefix}${row.summary.name} ${row.key}`
+    mappable.set(itemValue, row.key)
     return (
       <CommandItem
         key={`${prefix}${row.key}`}
-        value={`${prefix}${row.summary.name} ${row.key}`}
+        value={itemValue}
         aria-selected={value === row.key}
+        aria-describedby={mapHintId}
         data-checked={value === row.key}
         onSelect={() => pick(row.key)}
       >
         <ModelRow summary={row.summary} unverified={unverified} />
         <MapModelButton
-          modelKey={row.key}
           name={row.summary.name}
-          onNavigate={() => setOpen(false)}
+          onOpen={() => openMappingEditor(row.key)}
         />
       </CommandItem>
     )
   }
 
   const hidden = result.hiddenUnverified
+  const hiddenUninspected = result.hiddenUninspected
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -675,7 +747,19 @@ export function ModelPicker({
         className="w-[min(26rem,calc(100vw-2rem))] p-0"
         align="start"
       >
-        <Command shouldFilter={false}>
+        {open ? <RouterBridge onReady={setNavigator} /> : null}
+        <Command
+          shouldFilter={false}
+          value={highlighted}
+          onValueChange={setHighlighted}
+          onKeyDown={(event) => {
+            if (!isMapShortcut(event)) return
+            const modelKey = mappable.get(highlighted)
+            if (modelKey === undefined) return
+            event.preventDefault()
+            openMappingEditor(modelKey)
+          }}
+        >
           <CommandInput
             placeholder="Search models…"
             value={query}
@@ -709,17 +793,31 @@ export function ModelPicker({
               Takes
             </span>
             <div
+              ref={setChipRow}
               role="group"
               aria-labelledby={takesId}
-              className="flex min-w-0 flex-1 gap-1 overflow-x-auto [scrollbar-width:none]"
+              onScroll={onChipScroll}
+              style={chipRowStyle}
+              data-scroll-start={chipEdges.start}
+              data-scroll-end={chipEdges.end}
+              className="flex min-w-0 flex-1 gap-1 overflow-x-auto scroll-smooth [scrollbar-width:none]"
             >
               {ROLE_FILTERS.map((role) => {
                 const pressed = roles.includes(role)
+                const count = roleCounts[role]
                 return (
                   <button
                     key={role}
                     type="button"
                     aria-pressed={pressed}
+                    title={`${count} ${count === 1 ? "model is" : "models are"} known to take ${ROLE_META[role].label.toLowerCase()}`}
+                    // A chip tabbed to past the fade scrolls itself in.
+                    onFocus={(event) =>
+                      event.currentTarget.scrollIntoView?.({
+                        block: "nearest",
+                        inline: "nearest",
+                      })
+                    }
                     onClick={() => toggleRole(role)}
                     className={cn(
                       "inline-flex shrink-0 items-center rounded-4xl border pr-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -733,7 +831,7 @@ export function ModelPicker({
                       className="border-transparent bg-transparent"
                     />
                     <span className="text-xs text-muted-foreground tabular-nums">
-                      {roleCounts[role]}
+                      {count}
                     </span>
                   </button>
                 )
@@ -753,7 +851,7 @@ export function ModelPicker({
                 title="Include unverified models in capability filters"
                 className="text-xs text-muted-foreground"
               >
-                <span aria-hidden>unverified</span>
+                <span aria-hidden>+ unverified</span>
                 <span className="sr-only">Include unverified</span>
               </label>
             </div>
@@ -811,7 +909,14 @@ export function ModelPicker({
                           Include unverified
                         </Button>
                       ) : null}
-                      <CreateMappingButton onNavigate={() => setOpen(false)} />
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => openMappingEditor()}
+                      >
+                        Create a mapping
+                      </Button>
                     </div>
                   </>
                 ) : (
@@ -890,6 +995,11 @@ export function ModelPicker({
                 className="flex flex-wrap items-center gap-1 px-3 py-2 text-xs text-muted-foreground"
               >
                 {hidden} unverified {hidden === 1 ? "model" : "models"} hidden
+                {hiddenUninspected === hidden
+                  ? ", none inspected yet"
+                  : hiddenUninspected > 0
+                    ? `, ${hiddenUninspected} not inspected yet`
+                    : null}
                 <span aria-hidden>·</span>
                 <Button
                   type="button"
@@ -915,6 +1025,15 @@ export function ModelPicker({
               </CommandItem>
             </CommandGroup>
           </CommandList>
+          {/* Named by every unmapped row as its description, and shown so a
+              keyboard user can find the action the Tab order leaves out. */}
+          <p
+            id={mapHintId}
+            className="border-t px-3 py-1.5 text-xs text-muted-foreground"
+          >
+            <kbd className="font-sans">{mapShortcutLabel()}</kbd> Map this
+            model… (on an unverified row)
+          </p>
         </Command>
       </PopoverContent>
     </Popover>
