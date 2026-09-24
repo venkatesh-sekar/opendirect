@@ -94,11 +94,14 @@ function requireProject(): OpenContext {
  */
 function submitDeps(): Required<SubmitDeps> {
   const fetched = new Map<string, Promise<ModelDescriptor>>()
-  const getModel = (key: string) => {
-    let descriptor = fetched.get(key)
+  // Keyed by family too: two families may map one endpoint, and each run is
+  // annotated with the mapping it was built from.
+  const getModel = (key: string, family: string | null) => {
+    const cacheKey = JSON.stringify([key, family])
+    let descriptor = fetched.get(cacheKey)
     if (descriptor === undefined) {
-      descriptor = annotatedModel(key, { refresh: true })
-      fetched.set(key, descriptor)
+      descriptor = annotatedModel(key, { refresh: true, family })
+      fetched.set(cacheKey, descriptor)
     }
     return descriptor
   }

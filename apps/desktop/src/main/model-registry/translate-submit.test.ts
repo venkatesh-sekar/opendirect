@@ -170,8 +170,10 @@ describe("translateSubmission", () => {
     const d = deps()
     await translateSubmission(request(), d)
 
+    // With the family, so it is annotated with this family's mapping even
+    // when another family also maps the endpoint.
     expect(d.getModel.mock.calls).toEqual([
-      ["replicate:bytedance/seedance-2.5"],
+      ["replicate:bytedance/seedance-2.5", "seedance-2-5"],
     ])
   })
 

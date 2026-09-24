@@ -145,6 +145,13 @@ export interface DescribeOptions {
   filled?: readonly string[]
   /** Re-fetch the concrete descriptor (as a submit does). */
   refresh?: boolean
+  /**
+   * For a concrete key: annotate with this family's mapping rather than
+   * whichever family won the endpoint — two may map it, and a family's run
+   * is checked against its own. Ignored when that family does not map the
+   * endpoint.
+   */
+  family?: string | null
 }
 
 interface ResolvedFamily {
@@ -277,9 +284,19 @@ export async function describeModel(
   const descriptor = await source
     .catalog()
     .getModel(key, options.refresh ? { refresh: true } : undefined)
+  const registry = source.registry()
+  const requested = options.family ? registry.family(options.family) : null
+  const mapsEndpoint =
+    requested?.family.endpoints.some(
+      (endpoint) =>
+        endpoint.provider === descriptor.provider &&
+        endpoint.model === descriptor.slug
+    ) ?? false
   return annotateDescriptor(
     descriptor,
-    source.registry().familyForEndpoint(descriptor.provider, descriptor.slug)
+    mapsEndpoint
+      ? requested
+      : registry.familyForEndpoint(descriptor.provider, descriptor.slug)
   )
 }
 

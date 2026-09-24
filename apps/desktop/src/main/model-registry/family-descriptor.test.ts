@@ -328,6 +328,59 @@ describe("describeModel", () => {
     })
   })
 
+  it("annotates with the requested family when two families map the endpoint", async () => {
+    const seedance = entry("seedance-2-5")
+    const [replicate] = seedance.family.endpoints
+    // A second family on the very same endpoint, mapping only its first
+    // frame — under its own label. Listed later, it wins the endpoint index.
+    const mine: RegistryFamilyEntry = {
+      ...seedance,
+      family: {
+        ...seedance.family,
+        id: "my-seedance",
+        name: "My Seedance",
+        endpoints: [
+          {
+            ...replicate!,
+            inputs: {
+              first_frame: {
+                ...replicate!.inputs.first_frame!,
+                label: "Opening shot",
+              },
+            },
+          },
+        ],
+      },
+    }
+    const { source } = fakeSource({ families: [seedance, mine] })
+    const key = "replicate:bytedance/seedance-2.5"
+    const imageLabel = (descriptor: ModelDescriptor) =>
+      descriptor.referenceSlots.find((slot) => slot.field === "image")?.label
+
+    const winner = await describeModel(source, key)
+    const loser = await describeModel(source, key, { family: "seedance-2-5" })
+
+    expect(winner.mappedBy?.familyId).toBe("my-seedance")
+    expect(imageLabel(winner)).toBe("Opening shot")
+    // The losing family is checked against its own mapping, not the winner's.
+    expect(loser.mappedBy?.familyId).toBe("seedance-2-5")
+    expect(imageLabel(loser)).toBe(
+      "First frame (not with reference images, videos or audio)"
+    )
+  })
+
+  it("falls back to the endpoint's own family when the requested one does not map it", async () => {
+    const { source } = fakeSource()
+
+    const result = await describeModel(
+      source,
+      "replicate:bytedance/seedance-2.5",
+      { family: "flux-schnell" }
+    )
+
+    expect(result.mappedBy?.familyId).toBe("seedance-2-5")
+  })
+
   it("passes refresh through to the catalog", async () => {
     const { source, getModel } = fakeSource()
 

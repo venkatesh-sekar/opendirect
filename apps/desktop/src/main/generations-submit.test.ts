@@ -72,7 +72,11 @@ const descriptor: ModelDescriptor = {
 
 function deps(overrides: Partial<ModelDescriptor> = {}) {
   return {
-    getModel: vi.fn(async () => ({ ...descriptor, ...overrides })),
+    getModel: vi.fn(async (key: string, family?: string | null) => {
+      void key
+      void family
+      return { ...descriptor, ...overrides }
+    }),
   }
 }
 
@@ -226,7 +230,8 @@ describe("submitGeneration", () => {
     await submitGeneration(context(), catalog, request())
     expect(catalog.getModel).toHaveBeenCalledTimes(1)
     expect(catalog.getModel).toHaveBeenCalledWith(
-      "replicate:bytedance/seedance-2.5"
+      "replicate:bytedance/seedance-2.5",
+      null
     )
   })
 
@@ -509,6 +514,21 @@ describe("family requests", () => {
     expect(listInputs(opened.handle.db, generation.id)).toEqual([
       expect.objectContaining({ slotField: "reference_images", position: 0 }),
     ])
+  })
+
+  it("validates against the requested family's own mapping of the endpoint", async () => {
+    // Two families may map one endpoint; the one that loses the endpoint
+    // index must still be checked against its own slots, not the winner's.
+    const d = familyDeps()
+    await submitGeneration(context(), d, familyRequest())
+
+    expect(d.getModel).toHaveBeenCalledWith(
+      "replicate:bytedance/seedance-2.5",
+      "seedance-2-5"
+    )
+    expect(
+      d.getModel.mock.calls.every(([, family]) => family === "seedance-2-5")
+    ).toBe(true)
   })
 
   it("translates a batch once, then plans it on the concrete model", async () => {

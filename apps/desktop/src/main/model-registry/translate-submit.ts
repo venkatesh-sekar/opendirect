@@ -37,8 +37,11 @@ export interface TranslateDeps {
   family(id: string): RegistryFamilyEntry | null
   configured(): ProviderId[]
   providerOrder(): ProviderId[]
-  /** The annotated concrete descriptor. */
-  getModel(key: string): Promise<ModelDescriptor>
+  /**
+   * The concrete descriptor, annotated with `family`'s own mapping — which
+   * matters when two families map the one endpoint.
+   */
+  getModel(key: string, family: string | null): Promise<ModelDescriptor>
 }
 
 /** "A", "A and B", "A, B and C". */
@@ -94,7 +97,7 @@ export async function translateSubmission(
   }
 
   const key = endpointKey(choice.endpoint)
-  const descriptor = await deps.getModel(key)
+  const descriptor = await deps.getModel(key, id)
   const { params, references } = translateFamilyRequest({
     family,
     endpoint: choice.endpoint,

@@ -43,7 +43,13 @@ export interface SubmitContext {
 
 /** The catalog, as the one thing submission needs from it. */
 export interface SubmitDeps {
-  getModel(key: string): Promise<ModelDescriptor>
+  /**
+   * The annotated concrete descriptor. `family` is the family a translated
+   * request came from (null for a concrete one): two families can map the
+   * same endpoint, and a run is checked against the mapping it was built
+   * from, not whichever family won the endpoint.
+   */
+  getModel(key: string, family: string | null): Promise<ModelDescriptor>
   preflight?(
     descriptor: ModelDescriptor,
     requests: GenerationRequest[]
@@ -83,7 +89,7 @@ async function resolveForSubmission(
     )
   }
 
-  const descriptor = await deps.getModel(request.modelKey)
+  const descriptor = await deps.getModel(request.modelKey, request.familyId)
   const slots = new Set(descriptor.referenceSlots.map((slot) => slot.field))
 
   for (const reference of request.references) {
