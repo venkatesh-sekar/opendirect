@@ -96,10 +96,9 @@ export function createOverrideStore(store: SettingsStore): OverrideStore {
   function read(): StoredOverride[] {
     const value = store.get(OVERRIDES_KEY)
     if (!Array.isArray(value)) return []
-    const seen = new Map<string, number>()
-    // Anything that is not even an entry is not a mapping; there is nothing
-    // in it to list or fix.
-    return value.flatMap((entry: unknown) => {
+    const entries = value.flatMap((entry: unknown) => {
+      // Anything that is not even an entry is not a mapping; there is nothing
+      // in it to list or fix.
       if (typeof entry !== "object" || entry === null || !("raw" in entry)) {
         return []
       }
@@ -111,12 +110,24 @@ export function createOverrideStore(store: SettingsStore): OverrideStore {
         typeof stored.key === "string" && stored.key !== ""
           ? stored.key
           : derivedKey(raw, updatedAt)
-      // A copied entry repeats a key; the nth copy gets `#n`, which depends
-      // only on the entries before it with that same key.
-      const count = (seen.get(base) ?? 0) + 1
-      seen.set(base, count)
-      const key = count === 1 ? base : `${base}#${count}`
-      return [{ key, raw, updatedAt }]
+      return [{ base, raw, updatedAt }]
+    })
+    // A copied entry repeats a key; the copy gets the first free `#n`. A
+    // suffix never takes a key some entry has stored as its own (`x#2` next
+    // to two `x`s), so a key the UI holds always names one entry.
+    const reserved = new Set(entries.map((entry) => entry.base))
+    const used = new Set<string>()
+    return entries.map(({ base, raw, updatedAt }) => {
+      let key = base
+      for (
+        let n = 2;
+        used.has(key) || (key !== base && reserved.has(key));
+        n++
+      ) {
+        key = `${base}#${n}`
+      }
+      used.add(key)
+      return { key, raw, updatedAt }
     })
   }
 

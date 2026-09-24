@@ -170,6 +170,49 @@ describe("createOverrideStore", () => {
     expect(overrides.list().map((o) => o.id)).toEqual(["new"])
   })
 
+  it("updates a legacy entry that has an id without changing its key", () => {
+    const store = memoryStore({
+      [OVERRIDES_KEY]: [
+        { raw: family("old", "before"), updatedAt: 1 },
+        { raw: family("other"), updatedAt: 1 },
+      ],
+    })
+    const overrides = createOverrideStore(store)
+    const [legacy] = overrides.list()
+
+    const saved = overrides.save(family("old", "after"), null, 2)
+
+    expect(saved.key).toBe(legacy!.key)
+    // Persisted, so a fresh store (the next launch) sees the same key.
+    const stored = store.data[OVERRIDES_KEY] as Array<{ key: string }>
+    expect(stored[0]?.key).toBe(legacy!.key)
+    const reread = createOverrideStore(store).list()
+    expect(reread.map((o) => [o.key, o.family?.name])).toEqual([
+      [legacy!.key, "after"],
+      [reread[1]!.key, "other"],
+    ])
+  })
+
+  it("never gives a copied entry a key another entry already holds", () => {
+    const store = memoryStore({
+      [OVERRIDES_KEY]: [
+        { key: "x", raw: family("x", "first"), updatedAt: 1 },
+        { key: "x", raw: family("x", "second"), updatedAt: 1 },
+        { key: "x#2", raw: family("y", "third"), updatedAt: 1 },
+      ],
+    })
+    const overrides = createOverrideStore(store)
+
+    const listed = overrides.list()
+    expect(new Set(listed.map((o) => o.key)).size).toBe(3)
+
+    overrides.delete(listed[2]!.key)
+    expect(overrides.list().map((o) => o.family?.name)).toEqual([
+      "first",
+      "second",
+    ])
+  })
+
   it("lists a stored entry that no longer validates, with its issues", () => {
     const broken = { id: "broken", name: "", kind: "image", endpoints: [] }
     const overrides = createOverrideStore(
