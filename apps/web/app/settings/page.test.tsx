@@ -146,7 +146,7 @@ describe("SettingsPage", () => {
     renderPage()
 
     const dialog = await screen.findByRole("dialog", { name: "New mapping" })
-    expect(dialog).toHaveTextContent("replicate:kwaivgi/kling-v3")
+    expect(dialog).toHaveTextContent("kwaivgi/kling-v3")
 
     await user.keyboard("{Escape}")
 

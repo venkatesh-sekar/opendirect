@@ -99,7 +99,7 @@ describe("ModelsSettings", () => {
     )
 
     const dialog = await screen.findByRole("dialog", { name: "New mapping" })
-    expect(dialog).toHaveTextContent("replicate:kwaivgi/kling-v3")
+    expect(dialog).toHaveTextContent("kwaivgi/kling-v3")
 
     await user.keyboard("{Escape}")
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
@@ -135,6 +135,6 @@ describe("ModelsSettings", () => {
 
     expect(
       await screen.findByRole("dialog", { name: "New mapping" })
-    ).toHaveTextContent(key)
+    ).toHaveTextContent("kwaivgi/kling-v3")
   })
 })

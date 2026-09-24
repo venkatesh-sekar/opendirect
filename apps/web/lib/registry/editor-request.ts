@@ -29,17 +29,28 @@ export interface MappingEditorRequest {
   from: MappingEditorSource
 }
 
-/** The id a duplicate gets: `<id>-custom`, kept inside the 64-character limit. */
-export function customCopyId(id: string): string {
-  const suffix = "-custom"
-  return `${id.slice(0, 64 - suffix.length)}${suffix}`
+/**
+ * The id a duplicate gets: `<id>-custom`, or `-custom-2`, `-custom-3`… when
+ * that is taken, always inside the 64-character limit — so duplicating twice
+ * never silently replaces the first copy.
+ */
+export function customCopyId(id: string, taken: Iterable<string> = []): string {
+  const used = new Set(taken)
+  for (let n = 1; ; n += 1) {
+    const suffix = n === 1 ? "-custom" : `-custom-${n}`
+    const candidate = `${id.slice(0, 64 - suffix.length)}${suffix}`
+    if (!used.has(candidate)) return candidate
+  }
 }
 
 /** A copy of a family to become the user's own mapping. */
-export function duplicateAsCustom(family: ModelFamily): ModelFamily {
+export function duplicateAsCustom(
+  family: ModelFamily,
+  taken: Iterable<string> = []
+): ModelFamily {
   return {
     ...structuredClone(family),
-    id: customCopyId(family.id),
+    id: customCopyId(family.id, taken),
     name: `${family.name} (custom)`.slice(0, 80),
   }
 }

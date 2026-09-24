@@ -249,6 +249,35 @@ describe("FamilyList", () => {
     })
   })
 
+  it("gives a second duplicate an id of its own", async () => {
+    const user = userEvent.setup()
+    const onOpenEditor = vi.fn()
+    data.overrides = [
+      ...data.overrides,
+      override({
+        key: "stored-8",
+        family: { ...seedance.family, id: "seedance-2-5-custom" },
+      }),
+    ]
+    renderWithProviders(<FamilyList onOpenEditor={onOpenEditor} />)
+    await screen.findByText("Seedance 2.5")
+    // The stored mappings (and so the ids in use) have loaded.
+    await screen.findByTestId("invalid-override")
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Seedance 2.5" })
+    )
+    await user.click(
+      await screen.findByRole("menuitem", { name: /Duplicate as custom/ })
+    )
+
+    expect(onOpenEditor).toHaveBeenCalledWith({
+      from: expect.objectContaining({
+        family: expect.objectContaining({ id: "seedance-2-5-custom-2" }),
+      }),
+    })
+  })
+
   it("lists an invalid stored mapping first, with its issue, Fix and Delete", async () => {
     const user = userEvent.setup()
     const onOpenEditor = vi.fn()

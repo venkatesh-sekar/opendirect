@@ -215,6 +215,8 @@ interface FamilyRowProps {
    * its Edit and Delete, disabled, rather than silently losing them.
    */
   storedUnavailable: boolean
+  /** Every id in use, so a duplicate never lands on one. */
+  takenIds: readonly string[]
   onOpenEditor: (request: MappingEditorRequest) => void
   onDelete: (target: DeleteTarget) => void
 }
@@ -223,6 +225,7 @@ function FamilyRow({
   entry,
   stored,
   storedUnavailable,
+  takenIds,
   onOpenEditor,
   onDelete,
 }: FamilyRowProps) {
@@ -313,7 +316,7 @@ function FamilyRow({
                   from: {
                     kind: "duplicate",
                     source: family,
-                    family: duplicateAsCustom(family),
+                    family: duplicateAsCustom(family, takenIds),
                   },
                 })
               }
@@ -504,6 +507,15 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
     return result
   }, [all])
   const storedUnavailable = !overrides.isSuccess
+  const takenIds = useMemo(
+    () => [
+      ...all.map((entry) => entry.family.id),
+      ...(overrides.data ?? []).flatMap((entry) =>
+        entry.id === null ? [] : [entry.id]
+      ),
+    ],
+    [all, overrides.data]
+  )
 
   const visible = all.filter(
     (entry) =>
@@ -715,6 +727,7 @@ export function FamilyList({ onOpenEditor }: FamilyListProps) {
               entry={entry}
               stored={storedById.get(entry.family.id) ?? null}
               storedUnavailable={storedUnavailable}
+              takenIds={takenIds}
               onOpenEditor={onOpenEditor}
               onDelete={askDelete}
             />
