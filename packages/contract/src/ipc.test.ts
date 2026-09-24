@@ -440,6 +440,13 @@ describe("generation submission", () => {
     const parsed = input.parse(request)
     expect(parsed.providerOverride).toBeNull()
     expect(parsed.familyId).toBeNull()
+    expect(parsed.shapes).toBeNull()
+    expect(
+      input.parse({
+        ...request,
+        shapes: { elements: "kling-elements", image: null },
+      }).shapes
+    ).toEqual({ elements: "kling-elements", image: null })
     expect(
       input.parse({
         ...request,

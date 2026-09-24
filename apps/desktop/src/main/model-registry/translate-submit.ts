@@ -13,7 +13,12 @@
  * ⛔ Reject, never drop. Anything that cannot be translated — no endpoint,
  * an input the endpoint does not take, a required input left empty, a raw
  * field over a mapped one — throws, and no row exists and nothing is paid
- * for. A `provider:slug` request is returned as the very same object.
+ * for. A `provider:slug` request is returned as the very same object (with
+ * any `familyId`/`shapes` a caller claimed cleared).
+ *
+ * The translated request records each mapped field's shape, so the runner
+ * shapes the payload as it was queued even if the registry changes or the
+ * catalog is unreachable by the time it runs.
  */
 import {
   chooseEndpoint,
@@ -48,7 +53,12 @@ export async function translateSubmission(
   deps: TranslateDeps
 ): Promise<GenerationRequest> {
   const id = parseFamilyKey(request.modelKey)
-  if (id === null) return request
+  if (id === null) {
+    // Only main sets these, on a request it translated: a concrete run's
+    // shapes come from its own descriptor, and it came from no family.
+    if (request.familyId === null && request.shapes === null) return request
+    return { ...request, familyId: null, shapes: null }
+  }
 
   const entry = deps.family(id)
   if (entry === null) {
@@ -93,5 +103,19 @@ export async function translateSubmission(
     references: request.references,
   })
 
-  return { ...request, modelKey: key, params, references, familyId: id }
+  const shapes = Object.fromEntries(
+    Object.values(choice.endpoint.inputs).map((input) => [
+      input.field,
+      input.shape ?? null,
+    ])
+  )
+
+  return {
+    ...request,
+    modelKey: key,
+    params,
+    references,
+    familyId: id,
+    shapes,
+  }
 }

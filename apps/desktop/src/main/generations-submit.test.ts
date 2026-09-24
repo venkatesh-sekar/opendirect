@@ -92,6 +92,7 @@ function request(
     mentionedContainerIds: null,
     providerOverride: null,
     familyId: null,
+    shapes: null,
     ...overrides,
   }
 }
@@ -520,6 +521,24 @@ describe("family requests", () => {
       expect(generation.modelSlug).toBe("bytedance/seedance-2.5")
       expect(JSON.parse(generation.requestJson!).familyId).toBe("seedance-2-5")
     }
+  })
+
+  it("prices the translated run in main, not the renderer's quote", async () => {
+    const preflight = vi.fn(
+      async (_descriptor: ModelDescriptor, requests: GenerationRequest[]) =>
+        requests.map((one) => ({ ...one, estimatedCostUsd: 0.42 }))
+    )
+    const generation = await submitGeneration(
+      context(),
+      { ...familyDeps(), preflight },
+      familyRequest({ estimatedCostUsd: 99 })
+    )
+
+    const [descriptor, requests] = preflight.mock.calls[0]!
+    expect(descriptor.key).toBe("replicate:bytedance/seedance-2.5")
+    expect(requests[0]!.modelKey).toBe("replicate:bytedance/seedance-2.5")
+    expect(requests[0]!.references[0]!.slotField).toBe("reference_images")
+    expect(generation.estimatedCostUsd).toBeCloseTo(0.42)
   })
 
   it("writes no row when the request cannot be translated", async () => {

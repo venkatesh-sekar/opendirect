@@ -103,6 +103,7 @@ function request(
     mentionedContainerIds: null,
     providerOverride: null,
     familyId: null,
+    shapes: null,
     ...overrides,
   }
 }
@@ -124,6 +125,45 @@ describe("translateSubmission", () => {
     // Everything else rides along untouched.
     expect(translated.prompt).toBe("a bellhop opens the lift")
     expect(translated.containerId).toBe("c1")
+  })
+
+  it("records each mapped field's shape, so the runner never has to look it up", async () => {
+    const seedance = entry("seedance-2-5")!
+    const [replicate, openrouter] = seedance.family.endpoints
+    const shaped: RegistryFamilyEntry = {
+      ...seedance,
+      family: {
+        ...seedance.family,
+        endpoints: [
+          {
+            ...replicate!,
+            inputs: {
+              ...replicate!.inputs,
+              reference: {
+                ...replicate!.inputs.reference!,
+                shape: "kling-elements",
+              },
+            },
+          },
+          openrouter!,
+        ],
+      },
+    }
+
+    const translated = await translateSubmission(
+      request({
+        references: [{ slotField: "reference", assetId: "a1", position: 0 }],
+      }),
+      deps({ family: () => shaped })
+    )
+
+    expect(translated.shapes).toEqual({
+      image: null,
+      last_frame_image: null,
+      reference_audios: null,
+      reference_images: "kling-elements",
+      reference_videos: null,
+    })
   })
 
   it("asks for the chosen endpoint's descriptor only", async () => {
@@ -250,5 +290,23 @@ describe("translateSubmission", () => {
     expect(await translateSubmission(concrete, d)).toBe(concrete)
     expect(d.family).not.toHaveBeenCalled()
     expect(d.getModel).not.toHaveBeenCalled()
+  })
+
+  it("does not let a concrete request claim a family or shapes", async () => {
+    // Only main sets these, on a request it translated itself; a concrete
+    // run's shapes come from its own descriptor.
+    const claimed = request({
+      modelKey: "replicate:bytedance/seedance-2.5",
+      params: { duration: 5 },
+      references: [{ slotField: "image", assetId: "a1", position: 0 }],
+      familyId: "seedance-2-5",
+      shapes: { image: "kling-elements" },
+    })
+
+    expect(await translateSubmission(claimed, deps())).toEqual({
+      ...claimed,
+      familyId: null,
+      shapes: null,
+    })
   })
 })

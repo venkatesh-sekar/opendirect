@@ -126,6 +126,7 @@ export function buildGenerationRequest(
     providerOverride: input.providerOverride ?? null,
     // Main's to set, on the request it translates from a family key.
     familyId: null,
+    shapes: null,
   }
 }
 

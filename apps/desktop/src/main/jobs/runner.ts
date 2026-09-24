@@ -139,6 +139,53 @@ class UnknownShape extends TerminalJobError {
   }
 }
 
+/**
+ * A family run whose row does not say how its inputs are shaped. Translation
+ * always records them, so this is a damaged or hand-edited row; guessing
+ * from today's registry could send a payload the run was not queued with.
+ */
+class UnrecordedShapes extends TerminalJobError {
+  constructor() {
+    super(
+      "This run came from a model family but does not record how its inputs are shaped, so it was not sent. Generate it again."
+    )
+    this.name = "UnrecordedShapes"
+  }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/**
+ * What the queued request recorded about shapes: the family it was
+ * translated from, and each provider field's shape. Both null for a
+ * concrete run (or a row from before shapes were recorded).
+ */
+function recordedShapes(requestJson: string | null): {
+  familyId: string | null
+  shapes: Map<string, string | null> | null
+} {
+  let request: unknown = null
+  try {
+    request = requestJson === null ? null : JSON.parse(requestJson)
+  } catch {
+    request = null
+  }
+  if (!isObject(request)) return { familyId: null, shapes: null }
+  const familyId =
+    typeof request.familyId === "string" ? request.familyId : null
+  const shapes = isObject(request.shapes)
+    ? new Map(
+        Object.entries(request.shapes).map(([field, shape]) => [
+          field,
+          typeof shape === "string" ? shape : null,
+        ])
+      )
+    : null
+  return { familyId, shapes }
+}
+
 /** A run's references, twice: as the provider needs them, and as we record them. */
 interface ResolvedReferences {
   /** Real URLs — uploaded or `data:` — sent to the provider. */
@@ -276,10 +323,19 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
   async function referenceParams(
     provider: ModelProvider,
     generationId: string,
-    modelKey: string
+    modelKey: string,
+    requestJson: string | null
   ): Promise<ResolvedReferences> {
     const inputs = listInputs(db, generationId)
     if (inputs.length === 0) return { params: {}, redacted: {} }
+
+    // A family run's shapes were recorded when it was translated: those are
+    // the ones it was queued (and priced) with, whatever the registry or the
+    // catalog says now.
+    const recorded = recordedShapes(requestJson)
+    if (recorded.familyId !== null && recorded.shapes === null) {
+      throw new UnrecordedShapes()
+    }
 
     let slots: RunnerModelShape["referenceSlots"] = []
     if (deps.getModel) {
@@ -292,9 +348,9 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       }
     }
     const multiple = new Map(slots.map((slot) => [slot.field, slot.multiple]))
-    const shapes = new Map(
-      slots.map((slot) => [slot.field, slot.shape ?? null])
-    )
+    const shapes =
+      recorded.shapes ??
+      new Map(slots.map((slot) => [slot.field, slot.shape ?? null]))
     // Checked before any upload, so an unknown shape costs nothing at all.
     for (const input of inputs) {
       const shape = shapes.get(input.slotField) ?? null
@@ -480,7 +536,8 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
     const references = await referenceParams(
       provider,
       generation.id,
-      `${generation.provider}:${generation.modelSlug}`
+      `${generation.provider}:${generation.modelSlug}`,
+      generation.requestJson
     )
     const params = { ...own, ...references.params }
     if (cancelled.has(jobId) || disposed) return

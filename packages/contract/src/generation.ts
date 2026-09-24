@@ -80,6 +80,13 @@ export const generationRequestSchema = z.object({
    * it to the endpoint it chose — so this is how the row remembers it.
    */
   familyId: z.string().nullable().default(null),
+  /**
+   * Set by main on the translated request: each mapped provider field's
+   * named shape (design §3), or null for a plain one. Recorded at submit so
+   * the runner applies the shapes the run was queued with — not whatever the
+   * registry says later, and not nothing when the catalog is unreachable.
+   */
+  shapes: z.record(z.string(), z.string().nullable()).nullable().default(null),
 })
 export type GenerationRequest = z.output<typeof generationRequestSchema>
 

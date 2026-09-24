@@ -783,6 +783,92 @@ describe("shapes", () => {
     ])
   })
 
+  it("uses the shapes recorded at submit, even when the catalog is unreachable", async () => {
+    const [front, side] = await twoAssets()
+    const provider = uploading(
+      fakeProvider({ states: [{ status: "succeeded" }] })
+    )
+    const generation = queued({
+      request: {
+        modelKey: "replicate:bytedance/seedance-2.5",
+        familyId: "kling",
+        shapes: { elements: "kling-elements" },
+      },
+      inputs: [
+        { assetId: front!.id, slotField: "elements", position: 0 },
+        { assetId: side!.id, slotField: "elements", position: 1 },
+      ],
+    })
+    build(provider, {
+      getModel: async () => {
+        throw new Error("offline")
+      },
+    }).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(provider.submissions[0]!.params.elements).toEqual([
+      {
+        frontal_image_url: urlOf(front!),
+        reference_image_urls: [urlOf(side!)],
+      },
+    ])
+  })
+
+  it("prefers the recorded shapes over a registry that changed since", async () => {
+    const [front] = await twoAssets()
+    const provider = uploading(
+      fakeProvider({ states: [{ status: "succeeded" }] })
+    )
+    const generation = queued({
+      request: {
+        modelKey: "replicate:bytedance/seedance-2.5",
+        familyId: "kling",
+        shapes: { elements: null },
+      },
+      inputs: [{ assetId: front!.id, slotField: "elements", position: 0 }],
+    })
+    build(provider, {
+      getModel: async () => ({
+        referenceSlots: [
+          {
+            field: "elements",
+            label: "Characters",
+            multiple: true,
+            shape: "kling-elements",
+          },
+        ],
+      }),
+    }).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(provider.submissions[0]!.params.elements).toEqual([urlOf(front!)])
+  })
+
+  it("fails a family run whose shapes were not recorded, before any upload", async () => {
+    const [front] = await twoAssets()
+    const provider = uploading(
+      fakeProvider({ states: [{ status: "succeeded" }] })
+    )
+    const upload = vi.spyOn(provider, "uploadReference")
+    const submit = vi.spyOn(provider, "submit")
+    const generation = queued({
+      request: {
+        modelKey: "replicate:bytedance/seedance-2.5",
+        familyId: "kling",
+      },
+      inputs: [{ assetId: front!.id, slotField: "elements", position: 0 }],
+    })
+    build(provider).enqueue(generation.id)
+    await runner!.idle()
+
+    expect(upload).not.toHaveBeenCalled()
+    expect(submit).not.toHaveBeenCalled()
+    const failed = getGeneration(opened.handle.db, generation.id)!
+    expect(failed.status).toBe("failed")
+    expect(failed.error).toMatch(/does not record how its inputs are shaped/)
+    expect(waits).toEqual([])
+  })
+
   it("fails a shape this version does not have before anything is paid for", async () => {
     const [front] = await twoAssets()
     const provider = uploading(
