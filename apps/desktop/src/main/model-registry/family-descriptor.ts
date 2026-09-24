@@ -327,9 +327,11 @@ function quote(descriptor: ModelDescriptor, params: Record<string, unknown>) {
  * Marks each filled slot's provider field as populated, for the estimator
  * only: a tier such as Replicate's `video_in` is chosen by whether a field
  * like `reference_videos` has a value, and a family quote carries no
- * references. The placeholder is never a URL and never sent anywhere.
+ * references. A list field gets one placeholder per filled key mapped to it,
+ * capped by the mapping's `max` and the schema's `maxItems`. The placeholder
+ * is never a URL and never sent anywhere. Exported for its tests.
  */
-function withFilledInputs(
+export function withFilledInputs(
   params: Record<string, unknown>,
   endpoint: MappingEndpoint,
   descriptor: ModelDescriptor,
@@ -339,11 +341,32 @@ function withFilledInputs(
   const properties = (
     descriptor.inputSchema as { properties?: Record<string, unknown> }
   ).properties
-  for (const key of filled) {
+
+  // Field → how many filled keys map to it, and the tightest mapping max.
+  const byField = new Map<string, { count: number; max: number }>()
+  for (const key of new Set(filled)) {
     const input = endpoint.inputs[key]
-    if (input === undefined || out[input.field] !== undefined) continue
-    const property = properties?.[input.field] as { type?: unknown } | undefined
-    out[input.field] = property?.type === "array" ? ["filled"] : "filled"
+    if (input === undefined) continue
+    const seen = byField.get(input.field) ?? { count: 0, max: Infinity }
+    byField.set(input.field, {
+      count: seen.count + 1,
+      max: Math.min(seen.max, input.max ?? Infinity),
+    })
+  }
+
+  for (const [field, { count, max }] of byField) {
+    if (out[field] !== undefined) continue
+    const property = properties?.[field] as
+      | { type?: unknown; maxItems?: unknown }
+      | undefined
+    if (property?.type !== "array") {
+      out[field] = "filled"
+      continue
+    }
+    const maxItems =
+      typeof property.maxItems === "number" ? property.maxItems : Infinity
+    const length = Math.max(1, Math.min(count, max, maxItems))
+    out[field] = Array.from({ length }, () => "filled")
   }
   return out
 }

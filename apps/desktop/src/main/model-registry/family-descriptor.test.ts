@@ -26,6 +26,7 @@ import {
   describeModel,
   estimateFor,
   registryCapabilities,
+  withFilledInputs,
   type ModelSource,
 } from "./family-descriptor"
 import { fixtureInputSchema } from "./fixture-schemas"
@@ -636,6 +637,74 @@ describe("estimateFor", () => {
     )
 
     expect(quote).toMatchObject({ confidence: "estimated", amount: 0.4 })
+  })
+})
+
+describe("withFilledInputs", () => {
+  const schema = (properties: Record<string, unknown>) =>
+    fixtureDescriptor("replicate", "me/test", {
+      inputSchema: { type: "object", properties },
+    })
+  const endpoint = (inputs: Record<string, { field: string; max?: number }>) =>
+    ({
+      provider: "replicate",
+      model: "me/test",
+      inputs: Object.fromEntries(
+        Object.entries(inputs).map(([key, input]) => [
+          key,
+          { kind: "image", ...input },
+        ])
+      ),
+      controls: {},
+    }) as unknown as Parameters<typeof withFilledInputs>[1]
+
+  it("puts one placeholder per filled key that maps to a list field", () => {
+    const result = withFilledInputs(
+      {},
+      endpoint({
+        reference: { field: "refs" },
+        "reference:2": { field: "refs" },
+        first_frame: { field: "image" },
+      }),
+      schema({ refs: { type: "array" }, image: { type: "string" } }),
+      ["reference", "reference:2", "first_frame"]
+    )
+
+    expect(result).toEqual({ refs: ["filled", "filled"], image: "filled" })
+  })
+
+  it("never puts more placeholders than the field takes", () => {
+    const result = withFilledInputs(
+      {},
+      endpoint({
+        reference: { field: "refs", max: 1 },
+        "reference:2": { field: "refs", max: 1 },
+      }),
+      schema({ refs: { type: "array", maxItems: 5 } }),
+      ["reference", "reference:2"]
+    )
+    expect(result.refs).toEqual(["filled"])
+
+    const bySchema = withFilledInputs(
+      {},
+      endpoint({
+        reference: { field: "refs" },
+        "reference:2": { field: "refs" },
+      }),
+      schema({ refs: { type: "array", maxItems: 1 } }),
+      ["reference", "reference:2"]
+    )
+    expect(bySchema.refs).toEqual(["filled"])
+  })
+
+  it("leaves a field the params already set alone, and ignores unmapped keys", () => {
+    const result = withFilledInputs(
+      { refs: ["x"] },
+      endpoint({ reference: { field: "refs" } }),
+      schema({ refs: { type: "array" } }),
+      ["reference", "style"]
+    )
+    expect(result).toEqual({ refs: ["x"] })
   })
 })
 
