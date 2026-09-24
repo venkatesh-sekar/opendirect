@@ -9,6 +9,7 @@ import {
   availableSlots,
   familyAvailability,
   filledSlotKeys,
+  menuFilled,
   modelOptionsForNode,
   slotRoleText,
 } from "./slots"
@@ -137,5 +138,21 @@ describe("slotRoleText", () => {
         slot({ field: "reference_images", role: "reference", verified: false })
       )
     ).toBe("Reference · unverified")
+  })
+})
+
+describe("menuFilled", () => {
+  const filled = ["first_frame", "reference"]
+
+  it("leaves out the edge's own slot when it is the only wire there", () => {
+    expect(menuFilled(filled, "reference", 1)).toEqual(["first_frame"])
+  })
+
+  it("keeps the slot when another wire still fills it", () => {
+    expect(menuFilled(filled, "reference", 2)).toEqual(filled)
+  })
+
+  it("keeps everything for an edge with no slot", () => {
+    expect(menuFilled(filled, null, 0)).toEqual(filled)
   })
 })

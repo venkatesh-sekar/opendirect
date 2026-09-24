@@ -550,7 +550,6 @@ export function CanvasReferenceStrip({
                 data-testid="strip-group"
                 data-slot={key}
                 data-unavailable={unavailable}
-                aria-disabled={unavailable === "empty" ? true : undefined}
                 className={cn(
                   "flex min-w-0 flex-col gap-1",
                   unavailable === "filled" &&

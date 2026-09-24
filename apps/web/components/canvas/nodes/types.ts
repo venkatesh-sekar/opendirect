@@ -36,6 +36,12 @@ export type CanvasFlowEdge = Edge<
      * node's prompt bar does. Only a family key reads them.
      */
     targetModelOptions: TargetModelOptions
+    /**
+     * How many wires into the target carry this edge's `slotField` (this one
+     * included; 0 for an edge with no slot), so its menu knows whether moving
+     * it would empty the slot (`menuFilled`).
+     */
+    slotWires: number
   },
   "reference"
 >

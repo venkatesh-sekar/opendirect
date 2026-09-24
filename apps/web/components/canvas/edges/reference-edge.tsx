@@ -57,6 +57,7 @@ import { useModel } from "@/hooks/use-models"
 import {
   familyAvailability,
   isUnresolvedSlot,
+  menuFilled,
   slotLabel,
   slotRoleText,
 } from "@/lib/canvas/slots"
@@ -265,7 +266,11 @@ function SlotMenuItem({
       variant={selected ? "secondary" : "ghost"}
       disabled={unavailable}
       focusableWhenDisabled
-      aria-label={slot.label}
+      // A disabled item that is the edge's own slot says so: it is where the
+      // wire sits now, not an option that happens to be greyed out.
+      aria-label={
+        unavailable && selected ? `${slot.label} (current)` : slot.label
+      }
       aria-describedby={detailId}
       data-slot-field={slot.field}
       className="h-auto w-full items-start justify-start gap-2 py-1.5 text-left whitespace-normal aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-disabled:hover:bg-transparent"
@@ -277,7 +282,12 @@ function SlotMenuItem({
         aria-hidden
       />
       <span className="flex min-w-0 flex-col">
-        <span className="truncate">{slot.label}</span>
+        <span className="truncate">
+          {slot.label}
+          {unavailable && selected ? (
+            <span className="text-muted-foreground"> (current)</span>
+          ) : null}
+        </span>
         <span
           id={detailId}
           className={cn(
@@ -303,15 +313,16 @@ const SlotControl = memo(function SlotControl({
   const descriptor = model.data
   const slotField = data?.edge.slotField ?? null
   const filled = data?.targetModelOptions.filled
+  const slotWires = data?.slotWires ?? 0
   // Judged as if this wire were not yet placed: the menu answers where it may
-  // go. (Another wire in the same slot still counts in the run's check.)
+  // go.
   const availability = useMemo(
     () =>
       familyAvailability(
         descriptor,
-        (filled ?? []).filter((key) => key !== slotField)
+        menuFilled(filled ?? [], slotField, slotWires)
       ),
-    [descriptor, filled, slotField]
+    [descriptor, filled, slotField, slotWires]
   )
   return (
     <EdgeSlotLabel

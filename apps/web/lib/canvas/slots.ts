@@ -211,6 +211,22 @@ export function familyAvailability(
 }
 
 /**
+ * What an edge's slot menu judges availability against: the node's filled
+ * slot keys as if this wire were not placed yet, so the menu answers "where
+ * may this wire go?". Its own slot is left out only when it is the only wire
+ * there (`slotWires === 1`); another wire still fills it otherwise, and the
+ * run's check would count it.
+ */
+export function menuFilled(
+  filled: readonly string[],
+  slotField: string | null,
+  slotWires: number
+): string[] {
+  if (slotField === null || slotWires > 1) return [...filled]
+  return filled.filter((key) => key !== slotField)
+}
+
+/**
  * The slots a new edge may land in: every slot for a concrete model, else
  * the family slots the current wiring leaves available.
  */

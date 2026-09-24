@@ -282,4 +282,34 @@ describe("EdgeSlotLabel", () => {
     await screen.findByRole("button", { name: "First Frame" })
     expect(screen.queryByRole("link", { name: /Map this model/ })).toBeNull()
   })
+
+  it("says which disabled item is the edge's own slot", async () => {
+    const user = userEvent.setup()
+    render(
+      <EdgeSlotLabel
+        slotField="soundtrack"
+        slots={[
+          slot({
+            field: "soundtrack",
+            label: "Reference audio",
+            role: "soundtrack",
+            verified: true,
+          }),
+        ]}
+        availability={{
+          soundtrack: {
+            available: false,
+            reason: "Not available on OpenRouter",
+          },
+        }}
+        onChange={() => {}}
+      />
+    )
+
+    await user.click(screen.getByTestId("edge-slot-label"))
+    const item = await screen.findByRole("button", {
+      name: "Reference audio (current)",
+    })
+    expect(item).toHaveAttribute("aria-disabled", "true")
+  })
 })

@@ -1328,7 +1328,10 @@ describe("family nodes", () => {
     expect(videos).toHaveTextContent("Not available on OpenRouter")
     const audio = groups.find((one) => one.dataset.slot === "soundtrack")!
     expect(audio).toHaveAttribute("data-unavailable", "empty")
-    expect(audio).toHaveAttribute("aria-disabled", "true")
+    expect(within(audio).getByTestId("slot-chip")).toHaveAttribute(
+      "aria-disabled",
+      "true"
+    )
   })
 
   it("blocks a run no endpoint can take, in the choice's words", async () => {

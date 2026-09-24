@@ -249,6 +249,35 @@ describe("toFlowEdges — a family target", () => {
       "reference",
     ])
   })
+  it("counts the wires sharing each edge's slot, so its menu knows whether moving it empties the slot", () => {
+    const into = (id: string, slotField: string | null): CanvasEdgeDto => ({
+      id,
+      projectId: "p",
+      sourceNodeId: `src-${id}`,
+      targetNodeId: "b",
+      slotField,
+      createdAt: 1,
+    })
+    const edges = [
+      into("r1", "reference"),
+      into("r2", "reference"),
+      into("f1", "first_frame"),
+      into("t1", null),
+    ]
+    const nodes = [node({ id: "b", modelKey: "family:seedance-2-5" })]
+    const cache = new Map<string, ReturnType<typeof toFlowEdges>[number]>()
+    const flow = toFlowEdges(edges, nodes, new Set(), cache)
+    expect(flow.map((edge) => edge.data?.slotWires)).toEqual([2, 2, 1, 0])
+
+    // One wire leaves the slot: its sibling is rebuilt with the new count.
+    const after = toFlowEdges(
+      [edges[0]!, { ...edges[1]!, slotField: "last_frame" }, edges[2]!],
+      nodes,
+      new Set(),
+      cache
+    )
+    expect(after[0]!.data?.slotWires).toBe(1)
+  })
 })
 
 describe("reconcileFlowNodes", () => {

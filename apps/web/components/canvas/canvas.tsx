@@ -280,16 +280,27 @@ export function toFlowEdges(
     }
     return options
   }
+  /** Wires per target and slot, keyed `target\nslot`. */
+  const wires = new Map<string, number>()
+  const wireKey = (edge: CanvasEdgeDto) =>
+    `${edge.targetNodeId}\n${edge.slotField}`
+  for (const edge of rows) {
+    if (edge.slotField === null) continue
+    wires.set(wireKey(edge), (wires.get(wireKey(edge)) ?? 0) + 1)
+  }
   const result = rows.map((edge) => {
     live.add(edge.id)
     const chosen = selected.has(edge.id)
     const targetModelKey = modelKeyOfNode(byId.get(edge.targetNodeId))
     const targetModelOptions = targetOptions(edge.targetNodeId)
+    const slotWires =
+      edge.slotField === null ? 0 : (wires.get(wireKey(edge)) ?? 0)
     const previous = cache.get(edge.id)
     if (
       previous?.data?.edge === edge &&
       previous.selected === chosen &&
       previous.data.targetModelKey === targetModelKey &&
+      previous.data.slotWires === slotWires &&
       sameOptions(previous.data.targetModelOptions, targetModelOptions)
     )
       return previous
@@ -299,7 +310,7 @@ export function toFlowEdges(
       target: edge.targetNodeId,
       type: "reference",
       selected: chosen,
-      data: { edge, targetModelKey, targetModelOptions },
+      data: { edge, targetModelKey, targetModelOptions, slotWires },
     }
     cache.set(edge.id, next)
     return next

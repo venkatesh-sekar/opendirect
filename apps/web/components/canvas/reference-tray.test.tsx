@@ -606,9 +606,11 @@ describe("CanvasReferenceStrip", () => {
     const group = screen
       .getAllByTestId("strip-group")
       .find((one) => one.dataset.slot === "soundtrack")!
-    expect(group).toHaveAttribute("aria-disabled", "true")
+    // `aria-disabled` is not allowed on a list item; the chip carries it.
+    expect(group).not.toHaveAttribute("aria-disabled")
     expect(group).toHaveAttribute("data-unavailable", "empty")
     const chip = within(group).getByTestId("slot-chip")
+    expect(chip).toHaveAttribute("aria-disabled", "true")
     expect(chip).toHaveAccessibleDescription(/Not available on OpenRouter/)
 
     const add = within(group).getByRole("button", {
@@ -625,7 +627,7 @@ describe("CanvasReferenceStrip", () => {
     const first = screen
       .getAllByTestId("strip-group")
       .find((one) => one.dataset.slot === "first_frame")!
-    expect(first).not.toHaveAttribute("aria-disabled")
+    expect(first).not.toHaveAttribute("data-unavailable")
     expect(
       within(first).getByRole("button", {
         name: "Add references to First Frame",
@@ -670,7 +672,6 @@ describe("CanvasReferenceStrip", () => {
     renderStrip(EMPTY, [FIRST, SLOTS[0]!])
 
     for (const group of screen.getAllByTestId("strip-group")) {
-      expect(group).not.toHaveAttribute("aria-disabled")
       expect(group).not.toHaveAttribute("data-unavailable")
     }
   })
