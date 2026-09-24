@@ -1,5 +1,11 @@
 # @opendirect/desktop
 
+## 0.3.0
+
+### Minor Changes
+
+- 8d9b6b0: Models that run on several providers now appear once, and each input says what it controls (first frame, character, style, …). The picker can filter by what a model takes, the canvas explains why a slot can't be used, and Settings → Models lets you map any model yourself.
+
 ## 0.2.0
 
 ### Minor Changes

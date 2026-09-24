@@ -197,6 +197,18 @@ highlighted, word and character counts, and Copy. Reference images are grouped
 by the model input they feed, with a +N count for overflow and an inline
 gallery to review them.
 
+### Model mappings
+
+A model that runs on several providers shows once in the picker, as a family.
+Each input slot says what it controls (first frame, character, style,
+reference, …), so the picker can filter to "takes a character" and the canvas
+can dim a slot that can't be combined with what is already wired, with the
+reason. Mappings ship with the app, update from this repo's `registry/`, and
+can be written for any model in **Settings → Models**: pick the model, check
+the suggested role for each field, and save. Models nobody has mapped still
+work, with their slots marked unverified. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) to send a mapping upstream.
+
 ### Portable workflow templates
 
 Open “Workflow templates” on the canvas to use a starter, save a template on this
