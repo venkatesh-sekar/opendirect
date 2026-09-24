@@ -218,6 +218,10 @@ function initialState(source: OpenSource, takenIds: string[]): EditorState {
 }
 
 function titleOf(source: OpenSource, state: EditorState): string {
+  // Saved from here (Save & export stays open): it is a stored mapping now.
+  if (source.kind !== "override" && state.replaceId !== null) {
+    return `Edit ${state.name || state.replaceId}`
+  }
   switch (source.kind) {
     case "blank":
     case "model":

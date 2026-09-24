@@ -569,6 +569,21 @@ describe("MappingEditor, review fixes", () => {
     ).toBeEnabled()
   })
 
+  it("titles a new mapping as an edit once it is saved", async () => {
+    const user = userEvent.setup()
+    handlers["registry:overrides:export"] = () => ({ path: "/tmp/x.json" })
+    open({ from: { kind: "blank" } })
+    await pickSeedance(user)
+    await waitForRows()
+    const save = screen.getByRole("button", { name: "Save & export…" })
+    await waitFor(() => expect(save).toBeEnabled())
+    await user.click(save)
+
+    expect(
+      await screen.findByRole("dialog", { name: "Edit Seedance 2.5" })
+    ).toBeVisible()
+  })
+
   it("marks catalog models whose provider has no key", async () => {
     const user = userEvent.setup()
     handlers["models:list"] = () => ({
