@@ -1344,6 +1344,10 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
                  on while reaching for a control. */
               align="start"
               offset={16}
+              // Outside the canvas's pan and drag: d3-zoom swallows a
+              // mousedown anywhere else, and a control that opens on
+              // mousedown (the provider override's Select) never opened.
+              className="nopan nodrag"
             >
               <PromptBar
                 node={selectedGenerateNode}

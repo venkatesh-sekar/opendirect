@@ -393,6 +393,15 @@ describe("the composer on a real canvas", () => {
     expect(fixture.state!().nodes.map((node) => node.id)).toContain("gen")
   })
 
+  it("keeps the prompt bar out of the canvas's pan and drag", async () => {
+    await mountComposer()
+    // React Flow's d3-zoom swallows a mousedown outside `.nopan`, so a
+    // control that opens on mousedown (the provider Select) never opened.
+    const controls = screen.getByTestId("prompt-bar-controls")
+    expect(controls.closest(".nopan")).not.toBeNull()
+    expect(controls.closest(".nodrag")).not.toBeNull()
+  })
+
   it("puts the composer's ✕ on the undo stack", async () => {
     const user = userEvent.setup()
     await mountComposer()
