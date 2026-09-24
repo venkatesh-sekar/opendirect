@@ -567,12 +567,26 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
       return
     }
 
+    // A family run keeps its family and shapes in the record: a retry of a
+    // run cancelled after this point submits again, and must shape its
+    // payload the way it was queued and priced, not the way the catalog
+    // says today.
+    const recorded = recordedShapes(generation.requestJson)
     updateStatus(db, generation.id, {
       status: "running",
       providerJobId: ref.id,
       // Recorded with its references named rather than expanded: this JSON
       // goes back to the renderer with every job update.
-      request: { ...own, ...references.redacted },
+      request: {
+        ...own,
+        ...references.redacted,
+        ...(recorded.familyId === null
+          ? {}
+          : {
+              familyId: recorded.familyId,
+              shapes: Object.fromEntries(recorded.shapes ?? []),
+            }),
+      },
     })
     move(jobId, "running")
 

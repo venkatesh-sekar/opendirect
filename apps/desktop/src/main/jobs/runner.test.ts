@@ -844,6 +844,62 @@ describe("shapes", () => {
     expect(provider.submissions[0]!.params.elements).toEqual([urlOf(front!)])
   })
 
+  it("keeps the recorded shapes when a run cancelled after it was sent is retried", async () => {
+    const [front, side] = await twoAssets()
+    const provider = uploading(
+      fakeProvider({
+        states: [
+          { status: "running" },
+          { status: "succeeded", outputUrls: ["https://x/out.mp4"] },
+        ],
+      })
+    )
+    const generation = queued({
+      request: {
+        modelKey: "replicate:bytedance/seedance-2.5",
+        familyId: "kling",
+        shapes: { elements: "kling-elements" },
+      },
+      inputs: [
+        { assetId: front!.id, slotField: "elements", position: 0 },
+        { assetId: side!.id, slotField: "elements", position: 1 },
+      ],
+    })
+    const underTest = build(provider, {
+      // The catalog cannot say how to shape anything: only the record can.
+      getModel: async () => {
+        throw new Error("offline")
+      },
+      // Cancelled between polls, after the provider accepted the run.
+      wait: async (ms: number) => {
+        waits.push(ms)
+        const job = getJobForGeneration(opened.handle.db, generation.id)
+        if (job && waits.length === 1) await underTest.cancel(job.id)
+      },
+    })
+    const job = underTest.enqueue(generation.id)
+    await underTest.idle()
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "canceled"
+    )
+
+    await underTest.retry(job.id)
+    await underTest.idle()
+
+    expect(provider.submissions).toHaveLength(2)
+    const shaped = [
+      {
+        frontal_image_url: urlOf(front!),
+        reference_image_urls: [urlOf(side!)],
+      },
+    ]
+    expect(provider.submissions[0]!.params.elements).toEqual(shaped)
+    expect(provider.submissions[1]!.params.elements).toEqual(shaped)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "succeeded"
+    )
+  })
+
   it("fails a family run whose shapes were not recorded, before any upload", async () => {
     const [front] = await twoAssets()
     const provider = uploading(
