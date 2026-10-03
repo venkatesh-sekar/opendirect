@@ -206,6 +206,38 @@ describe("MediaViewer", () => {
     expect(screen.queryByRole("button", { name: "Previous" })).toBeNull()
   })
 
+  it("offers Crop only on an image, and only when asked to, handing it back", async () => {
+    const onClose = vi.fn()
+    const onCrop = vi.fn()
+    const clip = asset({ id: "clip", kind: "video", mimeType: "video/mp4" })
+    const { unmount } = mount(
+      <MediaViewer assets={[asset()]} index={0} open onClose={vi.fn()} />
+    )
+    await screen.findByRole("dialog")
+    expect(screen.queryByRole("button", { name: "Crop" })).toBeNull()
+    unmount()
+
+    mount(
+      <MediaViewer
+        assets={[asset(), clip]}
+        index={1}
+        open
+        onClose={onClose}
+        onCrop={onCrop}
+      />
+    )
+    await screen.findByRole("dialog")
+    expect(screen.queryByRole("button", { name: "Crop" })).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Crop" }))
+    expect(onClose).toHaveBeenCalled()
+    expect(onCrop).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "asset-1" })
+    )
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
   it("has no file actions for an asset with no file on disk", async () => {
     mount(
       <MediaViewer

@@ -112,32 +112,70 @@ describe("CropImageDialog", () => {
   })
 })
 
-describe("AssetLibrary crop entry point", () => {
-  it("offers Crop on images only, and opens the crop dialog", async () => {
-    const user = userEvent.setup()
-    const clip = asset({ id: "clip", kind: "video", originalName: "clip.mp4" })
+describe("AssetLibrary crop entry points", () => {
+  const clip = asset({ id: "clip", kind: "video", originalName: "clip.mp4" })
+
+  function mountLibrary() {
     invoke.mockImplementation((channel: string) =>
       channel === "assets:list"
         ? Promise.resolve({ items: [SELFIE, clip], total: 2, nextOffset: null })
         : Promise.reject(new Error(`unexpected ${channel}`))
     )
-
     wrap(
       createElement(AssetLibrary, {
         node: container({ id: "venkz", name: "venkz" }),
       })
     )
+  }
 
-    const crop = await screen.findByRole("button", {
-      name: "Crop group selfie.jpg",
-    })
+  it("offers Crop… in an image card's menu only, and opens the crop dialog", async () => {
+    const user = userEvent.setup()
+    mountLibrary()
+
+    // No standalone button: Crop lives in the card menu, between Move and Delete.
+    await screen.findByRole("button", { name: "Preview group selfie.jpg" })
     expect(
-      screen.queryByRole("button", { name: "Crop clip.mp4" })
+      screen.queryByRole("button", { name: "Crop group selfie.jpg" })
     ).not.toBeInTheDocument()
 
-    await user.click(crop)
+    await user.click(
+      screen.getByRole("button", { name: "More actions for group selfie.jpg" })
+    )
+    expect(
+      (await screen.findAllByRole("menuitem")).map((item) => item.textContent)
+    ).toEqual(["Move to…", "Crop…", "Delete…"])
+    await user.click(screen.getByRole("menuitem", { name: "Crop…" }))
     expect(
       await screen.findByRole("heading", { name: "Crop group selfie.jpg" })
     ).toBeInTheDocument()
+  })
+
+  it("has no Crop… in a clip's menu", async () => {
+    const user = userEvent.setup()
+    mountLibrary()
+    await user.click(
+      await screen.findByRole("button", { name: "More actions for clip.mp4" })
+    )
+    expect(
+      (await screen.findAllByRole("menuitem")).map((item) => item.textContent)
+    ).toEqual(["Move to…", "Delete…"])
+  })
+
+  it("opens a card in the full-size viewer, whose Crop opens the crop dialog", async () => {
+    const user = userEvent.setup()
+    mountLibrary()
+
+    await user.click(
+      await screen.findByRole("button", { name: "Preview group selfie.jpg" })
+    )
+    expect(
+      await screen.findByRole("dialog", { name: "Full-size viewer" })
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Crop" }))
+
+    expect(
+      await screen.findByRole("heading", { name: "Crop group selfie.jpg" })
+    ).toBeInTheDocument()
+    expect(invoke).not.toHaveBeenCalledWith("assets:crop", expect.anything())
   })
 })

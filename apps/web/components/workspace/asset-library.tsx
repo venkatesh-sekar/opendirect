@@ -11,19 +11,23 @@
  * change with. A folder has no references and shows none of that.
  *
  * Every card also carries a menu — the ⋯ beside its name, or a right-click —
- * to move it to another container or delete it (`asset-card-menu.tsx`).
+ * to move it to another container, crop it (images) or delete it
+ * (`asset-card-menu.tsx`).
+ *
+ * Clicking a picture or a clip opens the full-size `MediaViewer`, walking the
+ * grid as filtered, with Crop in its toolbar on an image. Assets with no
+ * picture (text, prompts, audio) open a plain dialog instead.
  */
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { PlayIcon, PlusSignIcon } from "@hugeicons/core-free-icons"
+import { CropIcon, PlayIcon, PlusSignIcon } from "@hugeicons/core-free-icons"
 import type { AssetDto, ContainerNodeDto } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
@@ -40,14 +44,26 @@ import {
 import { formatDuration } from "@/lib/workspace/home"
 
 import { AssetTile, assetLabel } from "@/components/canvas/nodes/asset-tile"
+import { MediaViewer, isViewable } from "@/components/media/media-viewer"
 
 import {
+  type AssetCardAction,
   AssetCardContextMenu,
   AssetCardMenuButton,
   useAssetCardMenu,
 } from "./asset-card-menu"
 import { EmptySection } from "./container-card"
 import { CropImageDialog } from "./crop-image-dialog"
+
+/** A card's edits, for the slot between Move and Delete in its menu. */
+function cardEdits(
+  asset: AssetDto,
+  onCrop: (asset: AssetDto) => void
+): AssetCardAction[] {
+  return asset.kind === "image"
+    ? [{ id: "crop", label: "Crop…", icon: CropIcon, run: () => onCrop(asset) }]
+    : []
+}
 
 /** How many assets the grid asks for at a time, and the most it will hold. */
 const PAGE = 120
@@ -119,7 +135,14 @@ export function AssetLibrary({
     [assets.data, filter, references]
   )
   const total = assets.data?.total ?? 0
-  const image = assets.data?.items.find((asset) => asset.id === preview)
+  const previewed = assets.data?.items.find((asset) => asset.id === preview)
+  // Pictures and clips open the full-size viewer over the filtered grid;
+  // anything else (text, a prompt, audio) gets the plain dialog below.
+  const viewing =
+    previewed && isViewable(previewed)
+      ? shown.findIndex((asset) => asset.id === previewed.id)
+      : -1
+  const other = previewed && !isViewable(previewed) ? previewed : undefined
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,7 +226,10 @@ export function AssetLibrary({
           {shown.map((asset) => {
             const number = numbers.get(asset.id)
             const label = assetLabel(asset)
-            const actions = cardMenu.actionsFor(asset)
+            const actions = cardMenu.actionsFor(
+              asset,
+              cardEdits(asset, setCropping)
+            )
             return (
               <AssetCardContextMenu
                 key={asset.id}
@@ -239,17 +265,6 @@ export function AssetLibrary({
                   <span className="mr-auto truncate text-xs" title={label}>
                     {label}
                   </span>
-                  {asset.kind === "image" ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="ml-auto h-6 shrink-0 px-2 text-[11px] text-muted-foreground"
-                      aria-label={`Crop ${label}`}
-                      onClick={() => setCropping(asset)}
-                    >
-                      Crop
-                    </Button>
-                  ) : null}
                   {onToggleReference && asset.kind === "image" ? (
                     <Button
                       size="sm"
@@ -292,32 +307,27 @@ export function AssetLibrary({
         )
       ) : null}
 
-      <Dialog open={!!image} onOpenChange={() => setPreview(null)}>
+      <MediaViewer
+        assets={shown}
+        index={Math.max(viewing, 0)}
+        open={viewing >= 0}
+        onClose={() => setPreview(null)}
+        onCrop={setCropping}
+      />
+
+      <Dialog open={!!other} onOpenChange={() => setPreview(null)}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>{image ? assetLabel(image) : "Preview"}</DialogTitle>
+            <DialogTitle>{other ? assetLabel(other) : "Preview"}</DialogTitle>
             <DialogDescription>
-              {image?.generationId ? "Generated" : "Imported"} into {node.name}.
+              {other?.generationId ? "Generated" : "Imported"} into {node.name}.
             </DialogDescription>
           </DialogHeader>
-          {image ? (
+          {other ? (
             <AssetTile
-              asset={image}
+              asset={other}
               className="max-h-[65svh] w-full object-contain"
             />
-          ) : null}
-          {image?.kind === "image" ? (
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPreview(null)
-                  setCropping(image)
-                }}
-              >
-                Crop
-              </Button>
-            </DialogFooter>
           ) : null}
         </DialogContent>
       </Dialog>

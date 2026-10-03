@@ -8,13 +8,15 @@
  * seeing it at the size it was made. The viewer itself is
  * `yet-another-react-lightbox` — zoom, pan, swipe, keyboard and focus handling
  * are its job, not ours — and this file only turns assets into slides and adds
- * the two file actions the app already has: Open and Reveal in folder.
+ * the two file actions the app already has: Open and Reveal in folder — plus
+ * Crop, on an image, when the surface that opened it passes `onCrop`.
  *
- * Deliberately surface-agnostic: it takes assets, not nodes, so the Assets tab
- * can open the same viewer later without a second implementation.
+ * Deliberately surface-agnostic: it takes assets, not nodes, so the canvas and
+ * the Assets tab open the same viewer.
  *
  * ⛔ Read-only. Viewing an output changes nothing about it — not a canvas pick,
- * not a reference, and never a run.
+ * not a reference, and never a run. Crop only hands the asset back to the
+ * caller, which opens its own dialog; a crop is a new asset, never an edit.
  */
 import {
   useMemo,
@@ -32,18 +34,23 @@ import "yet-another-react-lightbox/styles.css"
 import "yet-another-react-lightbox/plugins/captions.css"
 import "yet-another-react-lightbox/plugins/counter.css"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Folder02Icon, LinkSquare02Icon } from "@hugeicons/core-free-icons"
+import {
+  CropIcon,
+  Folder02Icon,
+  LinkSquare02Icon,
+} from "@hugeicons/core-free-icons"
 import type { AssetDto } from "@opendirect/contract"
 import { toast } from "sonner"
 
 import { useOpenAsset, useRevealAsset } from "@/hooks/use-assets"
 
 // The lightbox types a button's label as one of its own label keys; these
-// are the two toolbar buttons this file adds.
+// are the toolbar buttons this file adds.
 declare module "yet-another-react-lightbox" {
   interface Labels {
     Open?: string
     "Reveal in folder"?: string
+    Crop?: string
   }
 }
 
@@ -64,6 +71,12 @@ export interface MediaViewerProps {
   onClose: () => void
   /** Extra caption per asset; the size and length are added either way. */
   caption?: (asset: AssetDto) => MediaCaption
+  /**
+   * Adds a Crop button while an image is on screen. The viewer does not crop;
+   * it closes and hands the image back, so the caller opens its crop dialog
+   * on top of the surface rather than under the lightbox.
+   */
+  onCrop?: (asset: AssetDto) => void
 }
 
 /** Images and clips with a file — the only things there is a full size of. */
@@ -122,6 +135,10 @@ function RevealIcon(props: { className?: string; style?: CSSProperties }) {
   return <HugeiconsIcon icon={Folder02Icon} {...props} />
 }
 
+function CropButtonIcon(props: { className?: string; style?: CSSProperties }) {
+  return <HugeiconsIcon icon={CropIcon} {...props} />
+}
+
 /**
  * Events from inside the lightbox stop here.
  *
@@ -140,6 +157,7 @@ export function MediaViewer({
   open,
   onClose,
   caption,
+  onCrop,
 }: MediaViewerProps) {
   const viewable = useMemo(() => assets.filter(isViewable), [assets])
   const slides = useMemo(
@@ -193,6 +211,21 @@ export function MediaViewer({
       ]
     : []
 
+  const cropButtons =
+    onCrop && shown?.kind === "image"
+      ? [
+          <IconButton
+            key="crop"
+            label="Crop"
+            icon={CropButtonIcon}
+            onClick={() => {
+              onClose()
+              onCrop(shown)
+            }}
+          />,
+        ]
+      : []
+
   const single = slides.length <= 1
 
   return (
@@ -222,7 +255,7 @@ export function MediaViewer({
         video={{ controls: true, playsInline: true }}
         captions={{ descriptionTextAlign: "center", descriptionMaxLines: 4 }}
         counter={{ separator: "of" }}
-        toolbar={{ buttons: [...fileButtons, "zoom", "close"] }}
+        toolbar={{ buttons: [...cropButtons, ...fileButtons, "zoom", "close"] }}
         on={{ view: ({ index: next }) => setCurrent(next) }}
         render={
           single ? { buttonPrev: () => null, buttonNext: () => null } : {}

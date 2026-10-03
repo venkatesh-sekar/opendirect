@@ -2,7 +2,8 @@
 
 /**
  * What you can do to one card in a container's asset grid: move it to another
- * container, or delete it from the project.
+ * container, edit it (the grid passes those in — Crop… on an image), or
+ * delete it from the project.
  *
  * The same list is reachable two ways — right-click anywhere on the card, or
  * the ⋯ button beside its name, which shows on hover and is in the tab order —
@@ -85,7 +86,7 @@ export interface AssetCardActionsInput {
   onDelete: () => void
   /**
    * Edits of the asset itself — e.g. "Crop…" — listed after Move and before
-   * the destructive group. Nothing passes any yet; this is the slot.
+   * the destructive group. The grid decides which apply to which card.
    */
   edits?: readonly AssetCardAction[]
 }
@@ -370,7 +371,11 @@ export function DeleteAssetDialog({
 export function useAssetCardMenu(
   container: Pick<ContainerNodeDto, "id" | "name">
 ): {
-  actionsFor: (asset: AssetDto) => AssetCardAction[]
+  /** The card's menu; `edits` go between Move and Delete (see `assetCardActions`). */
+  actionsFor: (
+    asset: AssetDto,
+    edits?: readonly AssetCardAction[]
+  ) => AssetCardAction[]
   dialogs: ReactNode
 } {
   const [moving, setMoving] = useState<AssetDto | null>(null)
@@ -378,10 +383,11 @@ export function useAssetCardMenu(
   const move = useMoveAsset()
   const remove = useDeleteAsset()
 
-  const actionsFor = (asset: AssetDto) =>
+  const actionsFor = (asset: AssetDto, edits?: readonly AssetCardAction[]) =>
     assetCardActions({
       onMove: () => setMoving(asset),
       onDelete: () => setDeleting(asset),
+      edits,
     })
 
   const moveTo = (asset: AssetDto, target: ContainerNodeDto) =>
