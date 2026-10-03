@@ -148,6 +148,27 @@
       "source": "https://replicate.com/prunaai/p-image",
       "note": "Per output image ($5 per thousand).",
       "tiers": { "*": 0.005 }
+    },
+    "replicate:openai/gpt-image-1.5": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/openai/gpt-image-1.5",
+      "note": "Per output image at the default (auto) or high quality; low ($0.013) and medium ($0.05) quality bill less, which is not modelled.",
+      "tiers": { "*": 0.136 }
+    },
+    "replicate:openai/gpt-image-2.5-flare": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/openai/gpt-image-2.5-flare",
+      "note": "Per output image, quoted at the dearest quality (max) so no run is under-quoted: low $0.012, medium $0.047, high $0.128, auto (the default) and xhigh $0.25, max $0.50. Quality is not modelled, so a default run is over-quoted.",
+      "tiers": { "*": 0.5 }
+    },
+    "replicate:openai/gpt-image-2.5-sunburst": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/openai/gpt-image-2.5-sunburst",
+      "note": "Per output image, quoted at the dearest quality (max) so no run is under-quoted: low $0.012, medium $0.047, high $0.128, auto (the default) and xhigh $0.25, max $0.50. Quality is not modelled, so a default run is over-quoted.",
+      "tiers": { "*": 0.5 }
     }
   }
 }

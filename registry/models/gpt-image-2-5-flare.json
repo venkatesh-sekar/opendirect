@@ -1,0 +1,30 @@
+{
+  "id": "gpt-image-2-5-flare",
+  "name": "GPT Image 2.5 Flare",
+  "kind": "image",
+  "description": "OpenAI's fastest GPT Image 2.5 model for high-quality, everyday generation and editing, with strong instruction following and sharp text rendering.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "openai/gpt-image-2.5-flare",
+      "inputs": {
+        "reference": {
+          "field": "input_images",
+          "kind": "image",
+          "label": "Input images"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "count": {
+          "field": "number_of_images"
+        }
+      }
+    }
+  ]
+}

@@ -15,7 +15,10 @@
 import index from "../../../../../registry/index.json"
 import flux2Pro from "../../../../../registry/models/flux-2-pro.json"
 import fluxSchnell from "../../../../../registry/models/flux-schnell.json"
+import gptImage15 from "../../../../../registry/models/gpt-image-1-5.json"
 import gptImage2 from "../../../../../registry/models/gpt-image-2.json"
+import gptImage25Flare from "../../../../../registry/models/gpt-image-2-5-flare.json"
+import gptImage25Sunburst from "../../../../../registry/models/gpt-image-2-5-sunburst.json"
 import hailuo23 from "../../../../../registry/models/hailuo-2-3.json"
 import ideogramV3Turbo from "../../../../../registry/models/ideogram-v3-turbo.json"
 import imagen4Fast from "../../../../../registry/models/imagen-4-fast.json"
@@ -39,7 +42,16 @@ export const BUNDLED_FAMILIES: ReadonlyArray<{ origin: string; raw: unknown }> =
   [
     { origin: "registry/models/flux-2-pro.json", raw: flux2Pro },
     { origin: "registry/models/flux-schnell.json", raw: fluxSchnell },
+    { origin: "registry/models/gpt-image-1-5.json", raw: gptImage15 },
     { origin: "registry/models/gpt-image-2.json", raw: gptImage2 },
+    {
+      origin: "registry/models/gpt-image-2-5-flare.json",
+      raw: gptImage25Flare,
+    },
+    {
+      origin: "registry/models/gpt-image-2-5-sunburst.json",
+      raw: gptImage25Sunburst,
+    },
     { origin: "registry/models/hailuo-2-3.json", raw: hailuo23 },
     { origin: "registry/models/ideogram-v3-turbo.json", raw: ideogramV3Turbo },
     { origin: "registry/models/imagen-4-fast.json", raw: imagen4Fast },

@@ -424,6 +424,23 @@ describe("curated pricing table", () => {
     expect(r.amount).toBeCloseTo(0.384, 6)
   })
 
+  it("quotes GPT Image 2.5 at its dearest quality, never below it", () => {
+    for (const slug of [
+      "openai/gpt-image-2.5-flare",
+      "openai/gpt-image-2.5-sunburst",
+    ]) {
+      const r = estimateCost({
+        provider: "replicate",
+        kind: "image",
+        slug,
+        pricingSkus: {},
+        params: { quality: "max" },
+      })
+      expect(r.amount).toBeCloseTo(0.5, 6)
+      expect(r.note).toMatch(/dearest quality/)
+    }
+  })
+
   it("prices a per-megapixel model by its target resolution", () => {
     const flux = (resolution: string) =>
       estimateCost({
