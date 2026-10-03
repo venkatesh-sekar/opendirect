@@ -28,7 +28,11 @@ import type {
   ProviderJobRef,
   ProviderJobState,
 } from "../providers/types"
-import { importFiles, listByContainer as listAssets } from "../repo/assets"
+import {
+  deleteAsset,
+  importFiles,
+  listByContainer as listAssets,
+} from "../repo/assets"
 import { createContainer } from "../repo/containers"
 import {
   createGeneration,
@@ -1170,6 +1174,117 @@ describe("never paying twice", () => {
     const row = getGeneration(opened.handle.db, generationId)!
     expect(row.providerJobId).toBe("pred-2")
     expect(row.status).toBe("succeeded")
+  })
+})
+
+describe("a deleted input", () => {
+  /** An imported picture, ready to be a run's reference. */
+  async function importedReference(name: string): Promise<string> {
+    const source = join(root, name)
+    await writeFile(source, Buffer.from([137, 80, 78, 71]))
+    const imported = await importFiles(
+      { db: opened.handle.db, project: opened.project },
+      { paths: [source], containerId }
+    )
+    return imported.assets[0]!.id
+  }
+
+  const ctx = () => ({ db: opened.handle.db, project: opened.project })
+  const withSlot = {
+    getModel: async () => ({
+      referenceSlots: [{ field: "image", label: "Image", multiple: false }],
+    }),
+  }
+
+  it("refuses to retry a failed run whose input was deleted, and sends nothing", async () => {
+    const assetId = await importedReference("gone.png")
+    const reference = { assetId, slotField: "image", position: 0 }
+    // A run that failed before it reached the provider: its request is the
+    // one the user queued, references and all.
+    const generation = queued({
+      status: "failed",
+      inputs: [reference],
+      request: { modelKey: "replicate:x", references: [reference] },
+    })
+    const job = createJob(opened.handle.db, {
+      generationId: generation.id,
+      state: "failed",
+    })
+    // Allowed: nothing is queued or running.
+    await deleteAsset(ctx(), assetId)
+
+    const provider = fakeProvider()
+    const underTest = build(provider, withSlot)
+    await expect(underTest.retry(job.id)).rejects.toThrow(
+      /An input image was deleted, so this run can't be retried/
+    )
+    await underTest.idle()
+
+    expect(provider.submissions).toHaveLength(0)
+    expect(getGeneration(opened.handle.db, generation.id)!.status).toBe(
+      "failed"
+    )
+    expect(getJobForGeneration(opened.handle.db, generation.id)!.state).toBe(
+      "failed"
+    )
+  })
+
+  it("refuses to restart a cancelled run whose input was deleted", async () => {
+    const assetId = await importedReference("cancelled.png")
+    const provider = fakeProvider({ states: [{ status: "running" }] })
+    const generation = queued({
+      inputs: [{ assetId, slotField: "image", position: 0 }],
+    })
+    const generationId = generation.id
+    const underTest = build(provider, {
+      ...withSlot,
+      // Cancelled between polls, so its recorded request is the redacted one
+      // the submit wrote — the input named by id, not the queued request.
+      wait: async (ms: number) => {
+        waits.push(ms)
+        const job = getJobForGeneration(opened.handle.db, generationId)
+        if (job && waits.length === 1) await underTest.cancel(job.id)
+      },
+    })
+    const job = underTest.enqueue(generationId)
+    await underTest.idle()
+    const cancelled = getGeneration(opened.handle.db, generationId)!
+    expect(cancelled.status).toBe("canceled")
+    expect(JSON.parse(cancelled.requestJson!)).toMatchObject({
+      image: { assetId, slot: "image" },
+    })
+
+    await deleteAsset(ctx(), assetId)
+
+    // The recorded request names the input by id; the input row is gone.
+    await expect(underTest.retry(job.id)).rejects.toThrow(/can't be retried/)
+    await underTest.idle()
+    expect(provider.submissions).toHaveLength(1)
+    expect(getGeneration(opened.handle.db, generationId)!.status).toBe(
+      "canceled"
+    )
+  })
+
+  it("still restarts a run whose inputs are all there", async () => {
+    const assetId = await importedReference("kept.png")
+    const reference = { assetId, slotField: "image", position: 0 }
+    const generation = queued({
+      status: "failed",
+      inputs: [reference],
+      request: { modelKey: "replicate:x", references: [reference] },
+    })
+    const job = createJob(opened.handle.db, {
+      generationId: generation.id,
+      state: "failed",
+    })
+
+    const provider = fakeProvider({ states: [{ status: "succeeded" }] })
+    const underTest = build(provider, withSlot)
+    await underTest.retry(job.id)
+    await underTest.idle()
+
+    expect(provider.submissions).toHaveLength(1)
+    expect(provider.submissions[0]!.params.image).toMatch(/^data:image\/png/)
   })
 })
 

@@ -186,6 +186,42 @@ function recordedShapes(requestJson: string | null): {
   return { familyId, shapes }
 }
 
+/**
+ * Every asset the run's recorded request names as an input.
+ *
+ * The request is recorded twice over a run's life: queued, it is the
+ * `GenerationRequest` with its `references`; once submitted, each reference
+ * field holds `{ assetId, slot }` marks instead (`ResolvedReferences.redacted`).
+ * Both are read, so either form says what the run was asked to be sent with.
+ */
+function recordedInputIds(requestJson: string | null): Set<string> {
+  let request: unknown = null
+  try {
+    request = requestJson === null ? null : JSON.parse(requestJson)
+  } catch {
+    request = null
+  }
+  const ids = new Set<string>()
+  if (!isObject(request)) return ids
+  if (Array.isArray(request.references)) {
+    for (const reference of request.references) {
+      if (isObject(reference) && typeof reference.assetId === "string")
+        ids.add(reference.assetId)
+    }
+  }
+  for (const value of Object.values(request)) {
+    for (const mark of Array.isArray(value) ? value : [value]) {
+      if (
+        isObject(mark) &&
+        typeof mark.assetId === "string" &&
+        typeof mark.slot === "string"
+      )
+        ids.add(mark.assetId)
+    }
+  }
+  return ids
+}
+
 /** A run's references, twice: as the provider needs them, and as we record them. */
 interface ResolvedReferences {
   /** Real URLs — uploaded or `data:` — sent to the provider. */
@@ -787,6 +823,20 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
         // the first attempt are usually signed and short-lived.
         updateStatus(db, job.generationId, { status: "running", error: null })
       } else {
+        // ⛔ A fresh submission rebuilds its references from
+        // `generation_inputs`, and deleting an asset cascades its input rows
+        // away. Sending the run anyway would pay for a request without the
+        // reference the user chose, so a missing one refuses the retry.
+        const present = new Set(
+          listInputs(db, generation.id).map((input) => input.asset.id)
+        )
+        for (const assetId of recordedInputIds(generation.requestJson)) {
+          if (!present.has(assetId)) {
+            throw new Error(
+              "An input image was deleted, so this run can't be retried. Generate it again with the inputs you want."
+            )
+          }
+        }
         updateStatus(db, job.generationId, {
           status: "queued",
           error: null,

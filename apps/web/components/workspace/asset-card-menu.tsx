@@ -341,7 +341,8 @@ export function DeleteAssetDialog({
           <AlertDialogDescription>
             The file is removed from the project, along with every container,
             reference list and canvas node that shows it. Runs that made or used
-            it keep their records. This cannot be undone.
+            it keep their records, but a run that used it can no longer be
+            retried. This cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

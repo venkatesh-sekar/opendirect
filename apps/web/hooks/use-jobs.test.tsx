@@ -5,16 +5,18 @@ import type { ReactNode } from "react"
 import type { JobDto } from "@opendirect/contract"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { queryKeys } from "./query-keys"
-import { subscribeToJobs, useJobs } from "./use-jobs"
+import { toast } from "sonner"
+import { subscribeToJobs, useJobs, useRetryJob } from "./use-jobs"
 
 const bridge = vi.hoisted(() => ({
   subscribe: vi.fn(),
   unsubscribe: vi.fn(),
   listener: null as null | ((job: JobDto) => void),
+  invoke: vi.fn((_channel: string, _input?: unknown) => Promise.resolve([])),
 }))
 vi.mock("@/lib/ipc", () => ({
   isBridgeAvailable: () => true,
-  invoke: () => Promise.resolve([]),
+  invoke: (channel: string, input?: unknown) => bridge.invoke(channel, input),
   subscribe: (_channel: string, callback: (job: JobDto) => void) => {
     bridge.subscribe()
     bridge.listener = callback
@@ -104,6 +106,32 @@ describe("shared job subscription", () => {
     expect(renders).toBe(before)
     act(() => bridge.listener!({ ...job("a"), progress: 0.5 }))
     await waitFor(() => expect(result.current?.[0]?.progress).toBe(0.5))
+    unmount()
+    client.clear()
+  })
+})
+
+describe("retrying a run", () => {
+  it("says why a retry was refused instead of failing silently", async () => {
+    const reason = "An input image was deleted, so this run can't be retried."
+    bridge.invoke.mockImplementationOnce(() =>
+      Promise.reject(new Error(reason))
+    )
+    const client = new QueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const { result, unmount } = renderHook(() => useRetryJob(), { wrapper })
+
+    act(() => result.current.mutate("job-1"))
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not retry the run",
+        expect.objectContaining({ description: reason })
+      )
+    )
+    expect(bridge.invoke).toHaveBeenCalledWith("jobs:retry", { id: "job-1" })
     unmount()
     client.clear()
   })

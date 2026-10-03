@@ -184,7 +184,13 @@ export function useResumeJob(): UseMutationResult<JobDto, Error, string> {
   })
 }
 
-/** ⛔ Re-submits the run — a paid call, from an explicit click only. */
+/**
+ * ⛔ Re-submits the run — a paid call, from an explicit click only.
+ *
+ * A refusal (the run is still going, or one of its inputs was deleted) is
+ * said in a toast: every surface with a Retry button shares this hook, and a
+ * click that silently does nothing reads as a broken button.
+ */
 export function useRetryJob(): UseMutationResult<JobDto, Error, string> {
   const client = useQueryClient()
   return useMutation({
@@ -194,5 +200,7 @@ export function useRetryJob(): UseMutationResult<JobDto, Error, string> {
         applyUpdate(current, job)
       )
     },
+    onError: (error) =>
+      toast.error("Could not retry the run", { description: error.message }),
   })
 }
