@@ -21,11 +21,12 @@ import { randomUUID } from "node:crypto"
 import { copyFile, mkdir, rename, rm, stat } from "node:fs/promises"
 import { basename, dirname, extname, join } from "node:path"
 
-import type {
-  AssetDto,
-  AssetKind,
-  AssetPage,
-  ImportResult,
+import {
+  ASSET_TIER_EDGES,
+  type AssetDto,
+  type AssetKind,
+  type AssetPage,
+  type ImportResult,
 } from "@opendirect/contract"
 import {
   and,
@@ -49,6 +50,7 @@ import {
   type Asset,
 } from "../db/schema"
 import { assetKindFor, contentTypeFor, mediaUrl } from "../media"
+import { tierRelPath } from "../media-tier-paths"
 import { assetRelPath, resolveAssetPath, type ProjectRef } from "../project"
 import { hashFile } from "./hash"
 import { createPreview, NO_PREVIEW, type Thumbnailer } from "./thumbnails"
@@ -238,7 +240,8 @@ export function moveToContainer(db: ProjectDatabase, input: MoveInput): void {
 const UNFINISHED_STATUSES = ["queued", "submitted", "running"]
 
 /**
- * Removes an asset from the project: the row, then its file and its preview.
+ * Removes an asset from the project: the row, then its file, its preview and
+ * the larger tiers the media protocol cached of it.
  *
  * The schema decides what happens to everything that pointed at it, by the
  * rule the rest of the app follows — a placement goes, a record stays:
@@ -301,8 +304,14 @@ export async function deleteAsset(
       .get() !== undefined
 
   const files: string[] = []
-  if (asset.relPath && !namedElsewhere(assets.relPath, asset.relPath))
+  if (asset.relPath && !namedElsewhere(assets.relPath, asset.relPath)) {
     files.push(asset.relPath)
+    // The 1024/2048px copies the `asset://` protocol cached for the canvas.
+    // Derived from the file, so they go when it goes — and stay while another
+    // row still names it.
+    for (const edge of ASSET_TIER_EDGES)
+      files.push(tierRelPath(asset.relPath, edge))
+  }
   if (
     asset.thumbnailRelPath &&
     !namedElsewhere(assets.thumbnailRelPath, asset.thumbnailRelPath)

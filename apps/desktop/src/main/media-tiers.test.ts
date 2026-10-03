@@ -13,7 +13,8 @@ import sharp from "sharp"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { mediaUrl } from "./media"
-import { resolveTieredMediaRequest, tierRelPath } from "./media-tiers"
+import { tierRelPath } from "./media-tier-paths"
+import { resolveTieredMediaRequest } from "./media-tiers"
 
 /** A real, decodable image of the given size. */
 async function writeImage(path: string, width: number, height: number) {

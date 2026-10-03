@@ -30,6 +30,7 @@ import {
   resolveMediaRequest,
   type MediaRequest,
 } from "./media"
+import { tierRelPath } from "./media-tier-paths"
 import { realAssetPath, type ProjectRef } from "./project"
 
 /** Formats a resize keeps intact. Not gif (animation) or svg (vector). */
@@ -45,11 +46,6 @@ const RESIZABLE_EXTENSIONS = new Set([
 
 /** Only original media is tiered; a thumbnail is already small. */
 const TIERED_FOLDERS = new Set(["assets", "generations"])
-
-/** Where the `edge` tier of `relPath` is cached, relative to the project. */
-export function tierRelPath(relPath: string, edge: AssetTierEdge): string {
-  return `thumbnails/w${edge}/${relPath.replace(/\.[^./]+$/, "")}.webp`
-}
 
 /** Renders in progress, so a burst of requests for one tier resizes once. */
 const inFlight = new Map<string, Promise<boolean>>()

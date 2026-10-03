@@ -1,12 +1,22 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
+
+import { ASSET_TIER_EDGES } from "@opendirect/contract"
 
 import { eq } from "drizzle-orm"
 import sharp from "sharp"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { canvasNodes, generationInputs, generations } from "../db/schema"
+import { tierRelPath } from "../media-tier-paths"
 import { createProject, openProject, type OpenProject } from "../project"
 import {
   addToContainer,
@@ -462,6 +472,31 @@ describe("deleteAsset", () => {
     expect(await exists(stored.relPath!)).toBe(false)
     expect(await exists(stored.thumbnailRelPath!)).toBe(false)
     expect(await exists(kept.relPath!)).toBe(true)
+  })
+
+  it("removes the cached 1024/2048 tiers too, and leaves another asset's", async () => {
+    const { db, sheet, face, assets } = await characterWithReferences()
+    const stored = assets.find((asset) => asset.id === sheet)!
+    const kept = assets.find((asset) => asset.id === face)!
+    const tiers = (relPath: string) =>
+      ASSET_TIER_EDGES.map((edge) => tierRelPath(relPath, edge))
+    // What the `asset://` protocol leaves behind once the canvas has zoomed.
+    for (const relPath of [
+      ...tiers(stored.relPath!),
+      ...tiers(kept.relPath!),
+    ]) {
+      await mkdir(dirname(join(opened.project.path, relPath)), {
+        recursive: true,
+      })
+      await writeFile(join(opened.project.path, relPath), "tier")
+    }
+
+    await deleteAsset({ db, project: opened.project }, sheet)
+
+    for (const relPath of tiers(stored.relPath!))
+      expect(await exists(relPath)).toBe(false)
+    for (const relPath of tiers(kept.relPath!))
+      expect(await exists(relPath)).toBe(true)
   })
 
   it("returns a character to automatic references when its last one goes", async () => {
