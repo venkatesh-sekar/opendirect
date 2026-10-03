@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import type { ReactElement } from "react"
 import {
   settingsDefaults,
+  type AiToolId,
   type AiToolModels,
   type AiTools,
   type AssetDto,
@@ -31,13 +32,21 @@ vi.mock("@/lib/ipc", () => ({
 /** The saved `aiModels` setting the menu reads; reset before each test. */
 let savedModels: AiToolModels = { claude: null, codex: null }
 
+/** The saved `preferredAiTool` setting — the default CLI. */
+let savedTool: AiToolId | null = null
+
 beforeEach(() => {
   savedModels = { claude: null, codex: null }
+  savedTool = null
   invoke.mockReset()
-  invoke.mockImplementation(async (channel: string) => {
-    if (channel === "settings:get") {
-      return { ...settingsDefaults, aiModels: savedModels }
+  invoke.mockImplementation(async (channel: string, patch?: object) => {
+    const current = {
+      ...settingsDefaults,
+      aiModels: savedModels,
+      preferredAiTool: savedTool,
     }
+    if (channel === "settings:get") return current
+    if (channel === "settings:set") return { ...current, ...patch }
     throw new Error(`Unexpected channel ${channel}`)
   })
 })
@@ -285,6 +294,104 @@ describe("HelperMenu", () => {
       "claude",
       expect.objectContaining({ model: "claude-opus-5-5[1m]" })
     )
+  })
+
+  describe("the default CLI and model", () => {
+    const both = () =>
+      tools({
+        codex: {
+          id: "codex",
+          available: true,
+          path: "/bin/codex",
+          version: "1",
+        },
+      })
+
+    it("opens on the saved default, even after detection resolved another", async () => {
+      savedTool = "codex"
+      savedModels = { claude: null, codex: "gpt-5.5" }
+      const onRun = vi.fn()
+      // Detection was cached while claude was still the preference.
+      render(
+        <HelperMenu
+          tools={both()}
+          helpers={["rethink-image"]}
+          images={[image("a1", "Lobby")]}
+          onRun={onRun}
+        />
+      )
+
+      await openMenu()
+      await userEvent.click(
+        screen.getByRole("button", { name: "Rethink image" })
+      )
+
+      expect(onRun).toHaveBeenCalledWith(
+        "rethink-image",
+        "codex",
+        expect.objectContaining({ model: "gpt-5.5" }),
+        expect.objectContaining({ id: "a1" })
+      )
+    })
+
+    it("falls back to what is installed when the saved CLI is gone", async () => {
+      savedTool = "codex"
+      const onRun = vi.fn()
+      render(
+        <HelperMenu
+          tools={tools()}
+          helpers={["improve-prompt"]}
+          onRun={onRun}
+        />
+      )
+
+      await openMenu()
+      await userEvent.click(
+        screen.getByRole("button", { name: "Improve prompt" })
+      )
+
+      expect(onRun).toHaveBeenCalledWith(
+        "improve-prompt",
+        "claude",
+        expect.anything()
+      )
+    })
+
+    it("keeps a menu choice for one run, until Set as default saves it", async () => {
+      const onRun = vi.fn()
+      const user = userEvent.setup()
+      render(
+        <HelperMenu tools={both()} helpers={["improve-prompt"]} onRun={onRun} />
+      )
+
+      await openMenu()
+      // Nothing differs from the default yet, so there is nothing to save.
+      expect(
+        screen.queryByRole("button", { name: "Set as default" })
+      ).toBeNull()
+
+      await user.click(screen.getByRole("radio", { name: "codex" }))
+      await user.click(
+        screen.getByRole("combobox", { name: "Model for codex" })
+      )
+      await user.click(await screen.findByRole("option", { name: /^GPT-5\.5/ }))
+      // A per-run override writes nothing.
+      expect(invoke).not.toHaveBeenCalledWith("settings:set", expect.anything())
+
+      await user.click(screen.getByRole("button", { name: "Set as default" }))
+
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith("settings:set", {
+          preferredAiTool: "codex",
+          aiModels: { claude: null, codex: "gpt-5.5" },
+        })
+      )
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: "Set as default" })
+        ).toBeNull()
+      )
+    })
   })
 
   it("hides the image helpers until there is an image to point them at", async () => {

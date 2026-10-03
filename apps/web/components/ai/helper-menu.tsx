@@ -9,7 +9,7 @@
  * optional, and a greyed-out teaser for something the user never installed is
  * an advertisement, not an affordance.
  *
- * When both CLIs are present the menu opens on the preferred one (the
+ * When both CLIs are present the menu opens on the default one (the
  * `preferredAiTool` setting) and lets the user switch for this run only.
  *
  * Above the helpers sit the two things a user may want to say about a run:
@@ -17,6 +17,10 @@
  * outfit"), which main adds to the helper's built-in prompt, and the model
  * the CLI is started with — the saved `aiModels` setting unless changed here
  * for this session.
+ *
+ * A choice made here is for this run only. "Set as default" is how it is
+ * kept: it writes the CLI and its model to the same two settings the AI
+ * helpers tab edits, so every ✨ menu opens on them from then on.
  *
  * A surface that hands it `images` also gets the image helpers (Explain /
  * Rethink image) and a row of thumbnails to pick which picture they look at;
@@ -46,7 +50,7 @@ import {
 import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { useSettings } from "@/lib/settings"
+import { useSettings, useUpdateSettings } from "@/lib/settings"
 import type { AiRunOptions } from "@/hooks/use-ai"
 
 import { AiModelPicker } from "./model-picker"
@@ -104,10 +108,19 @@ export function HelperMenu({
     Partial<Record<AiToolId, string | null>>
   >({})
   const settings = useSettings()
+  const update = useUpdateSettings()
 
   const available = installedTools(tools)
+  /**
+   * The default CLI: the saved one while it is installed, else what detection
+   * resolved. Read from settings rather than `tools.preferred`, which is
+   * cached from detection and would not see a default changed since.
+   */
+  const saved = settings.data?.preferredAiTool ?? null
+  const defaultTool =
+    (saved && tools?.[saved].available ? saved : tools?.preferred) ?? null
   const tool =
-    (chosen && tools?.[chosen].available ? chosen : tools?.preferred) ?? null
+    (chosen && tools?.[chosen].available ? chosen : defaultTool) ?? null
 
   /** The image helpers need an image; the others are always on offer. */
   const offered = helpers.filter(
@@ -121,6 +134,28 @@ export function HelperMenu({
 
   const model: string | null | undefined =
     tool in models ? models[tool] : settings.data?.aiModels[tool]
+  /** This run's choice differs from the saved default, so it can become it. */
+  const canSetDefault =
+    settings.data !== undefined &&
+    model !== undefined &&
+    (tool !== defaultTool || model !== settings.data.aiModels[tool])
+
+  function setAsDefault(): void {
+    if (!settings.data || !tool || model === undefined) return
+    update.mutate(
+      {
+        preferredAiTool: tool,
+        aiModels: { ...settings.data.aiModels, [tool]: model },
+      },
+      {
+        // The menu follows the default again; there is no override left.
+        onSuccess: () => {
+          setChosen(null)
+          setModels({})
+        },
+      }
+    )
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -250,6 +285,17 @@ export function HelperMenu({
               }
             />
           </div>
+          {canSetDefault ? (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="self-end text-muted-foreground"
+              disabled={update.isPending}
+              onClick={setAsDefault}
+            >
+              Set as default
+            </Button>
+          ) : null}
         </div>
 
         <ul className="flex flex-col pt-1">
