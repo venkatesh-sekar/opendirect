@@ -112,5 +112,14 @@ export const costQuoteSchema = z.object({
   /** Why it is an estimate, or why there is no number at all. */
   note: z.string().nullable(),
   sku: z.string().nullable(),
+  /**
+   * The per-unit rate the amount multiplies (USD per `second` / `output`).
+   * Present even on an `unknown` quote that only lacks a duration, so the UI
+   * can say what the model is billed at rather than "no pricing".
+   */
+  rate: z
+    .object({ amount: z.number().nonnegative(), unit: z.string() })
+    .nullable()
+    .optional(),
 })
 export type CostQuote = z.output<typeof costQuoteSchema>

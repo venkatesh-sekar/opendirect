@@ -39,6 +39,11 @@ import {
   type OpenRouterImageModel,
   type OpenRouterVideoModel,
 } from "./openrouter-schema"
+import {
+  curatedPrice,
+  curatedPriceHint,
+  curatedPricing,
+} from "./curated-pricing"
 import { deriveReferenceSlots } from "./reference-slots"
 import type {
   GenerationRequest,
@@ -72,6 +77,9 @@ const APP_HEADERS = {
 
 const PRICING_NOTE =
   "Rates published by OpenRouter for this model. The exact cost is reported by the API when the job completes."
+
+const CURATED_NOTE =
+  "OpenRouter publishes no pricing SKUs for this model, so this rate is copied by hand from its model page and is an unverified estimate."
 
 const NO_PRICING_NOTE =
   "OpenRouter publishes no pricing SKUs for this model; it reports the actual cost when the job completes."
@@ -145,8 +153,12 @@ function basisOf(skus: Record<string, string>): PricingBasis {
   return "unknown"
 }
 
-/** `pricing_skus`, verbatim — the keys differ per model and are never rewritten. */
-function pricingFor(skus: unknown): Pricing {
+/**
+ * `pricing_skus`, verbatim — the keys differ per model and are never
+ * rewritten. A model that publishes none falls back to the curated table
+ * (`registry/pricing.json`) when it has an entry, and is otherwise unknown.
+ */
+function pricingFor(skus: unknown, slug: string): Pricing {
   const entries: Record<string, string> = {}
   if (isObject(skus)) {
     for (const [key, value] of Object.entries(skus)) {
@@ -154,8 +166,12 @@ function pricingFor(skus: unknown): Pricing {
       else if (typeof value === "number") entries[key] = String(value)
     }
   }
-  if (Object.keys(entries).length === 0)
-    return { ...unknownPricing, note: NO_PRICING_NOTE }
+  if (Object.keys(entries).length === 0) {
+    const curated = curatedPrice("openrouter", slug)
+    return curated
+      ? curatedPricing(curated, CURATED_NOTE)
+      : { ...unknownPricing, note: NO_PRICING_NOTE }
+  }
 
   return {
     basis: basisOf(entries),
@@ -190,6 +206,10 @@ function priceHintOf(pricing: Pricing): PriceHint | null {
   // prices per second may also list a token SKU, and mixing the two would
   // advertise a rate that is not what the run is billed at.
   const matches = (key: string): boolean => {
+    // Curated tiers (`720p`, `720p:video_in`) share one basis; only the
+    // base tiers are a fair "from" price.
+    if (pricing.source === "local_table")
+      return !key.includes(":") && key !== "fallback"
     if (pricing.basis === "per_second")
       return key.startsWith("duration_seconds")
     if (pricing.basis === "per_token") return key.includes("token")
@@ -472,8 +492,8 @@ export function createOpenRouterProvider(
       commonControls: commonControlsOf(inputSchema),
       pricing:
         found.kind === "video"
-          ? pricingFor(found.model.pricing_skus)
-          : pricingFor(null),
+          ? pricingFor(found.model.pricing_skus, slug)
+          : pricingFor(null, slug),
       raw: found.model,
       fetchedAt: now(),
       family: null,
@@ -692,15 +712,24 @@ export function createOpenRouterProvider(
             summaryOf(
               model,
               "video",
-              priceHintOf(pricingFor(model.pricing_skus))
+              priceHintOf(pricingFor(model.pricing_skus, model.id))
             )
           )
       }
       if (wanted.has("image")) {
-        // The image catalog publishes no `pricing_skus` at all, so every image
-        // model is honestly "price unknown" rather than free.
-        for (const model of (await imageModels()).values())
-          summaries.push(summaryOf(model, "image", null))
+        // The image catalog publishes no `pricing_skus` at all, so an image
+        // model is honestly "price unknown" rather than free unless the
+        // curated table has its rate.
+        for (const model of (await imageModels()).values()) {
+          const curated = curatedPrice("openrouter", model.id)
+          summaries.push(
+            summaryOf(
+              model,
+              "image",
+              curated ? curatedPriceHint(curated) : null
+            )
+          )
+        }
       }
 
       return summaries

@@ -121,6 +121,7 @@ import { HelperMenu } from "@/components/ai/helper-menu"
 import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
 import { AdvancedParams } from "@/components/create/advanced-params"
 import { CostBadge } from "@/components/create/cost-badge"
+import { UnknownCostNotice } from "@/components/create/unknown-cost-notice"
 import { ModelPicker } from "@/components/models/model-picker"
 
 import { useCanvasSurface } from "./canvas-context"
@@ -920,15 +921,13 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
       {/* ---- end of the prompt ----------------------------------------- */}
 
       {unknownCost && descriptor && !cost.isFetching && (
-        <label className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs">
-          <input
-            type="checkbox"
-            checked={acceptedUnknownCost}
-            onChange={(event) => acceptUnknownCost(event.target.checked)}
-          />
-          I understand pricing is unavailable for this model. This run may incur
-          charges; the provider determines the final cost.
-        </label>
+        <UnknownCostNotice
+          quote={cost.data}
+          descriptor={descriptor}
+          checked={acceptedUnknownCost}
+          onCheckedChange={acceptUnknownCost}
+          className="border-amber-500/30 bg-amber-500/5"
+        />
       )}
 
       {/* One row that never wraps: a wrapped row puts Run on a line of its

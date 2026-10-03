@@ -14,7 +14,7 @@ import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it } from "vitest"
 
 import { server } from "../../../../../test/msw/server"
-import { REPLICATE_PRICING } from "./cost"
+import { CURATED_PRICING } from "./curated-pricing"
 import { dereferenceCogSchema, createReplicateProvider } from "./replicate"
 import type { ModelProvider } from "./types"
 
@@ -276,7 +276,9 @@ describe("createReplicateProvider", () => {
       // become the advertised "from" price.
       expect(bySlug.get("google/nano-banana-pro")?.priceHint?.amount).toBe(0.15)
 
-      const unpriced = summaries.find((s) => !(s.slug in REPLICATE_PRICING))
+      const unpriced = summaries.find(
+        (s) => !(`replicate:${s.slug}` in CURATED_PRICING)
+      )
       expect(unpriced?.priceHint ?? null).toBeNull()
     })
 
