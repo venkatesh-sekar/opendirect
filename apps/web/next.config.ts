@@ -7,8 +7,9 @@ const nextConfig: NextConfig = {
   output: "export",
   distDir: "out",
   images: { unoptimized: true },
-  // Electron serves from a custom protocol root; relative asset paths are required.
-  assetPrefix: process.env.NODE_ENV === "production" ? "./" : undefined,
+  // No assetPrefix: electron-serve serves the export at the `app://-/` root, so
+  // Next's default absolute `/_next/…` URLs resolve from every route. A
+  // relative prefix breaks chunk loads on nested routes like /characters/.
   trailingSlash: true,
 }
 
