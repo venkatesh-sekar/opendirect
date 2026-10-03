@@ -555,6 +555,28 @@ export const ipcContract = {
     input: z.object({ containerId: z.string(), assetId: z.string() }),
     output: okSchema,
   },
+  /**
+   * Re-files an asset from one container to another in one transaction. The
+   * asset, its file and everything that points at it are untouched; it stops
+   * being a reference (or pick) of the container it left.
+   */
+  "assets:move": {
+    input: z.object({
+      assetId: z.string(),
+      fromContainerId: z.string(),
+      toContainerId: z.string(),
+    }),
+    output: okSchema,
+  },
+  /**
+   * Removes an asset from the project, file included. Links, media nodes and
+   * reference-list entries go with it; generations stay. Refused while a run
+   * that takes it as an input has not finished.
+   */
+  "assets:delete": {
+    input: z.object({ id: z.string() }),
+    output: okSchema,
+  },
 
   /**
    * The pre-flight price for a set of form values, computed by
