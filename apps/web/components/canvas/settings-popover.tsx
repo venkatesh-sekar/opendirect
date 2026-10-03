@@ -377,9 +377,12 @@ export function SettingsPopover({
                   : "Settings"
                 : undefined
             }
-            title={compact ? summary || "Settings" : undefined}
+            // Its whole summary, whether the chip is an icon or the summary
+            // is truncated because the bar has let the chip shrink.
+            title={summary || "Settings"}
             // Stated, not measured: the summary changes with the model and a
-            // chip that resizes moves every control beside it.
+            // chip that resizes moves every control beside it. A caller may
+            // still let it shrink to a floor (`shrink min-w-*`).
             className={cn(
               compact
                 ? "size-8 shrink-0 justify-center px-0"

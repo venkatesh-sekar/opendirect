@@ -140,6 +140,12 @@ import { SettingsPopover } from "./settings-popover"
  */
 const EMPTY_GRID: IconGrid = { rows: [], fields: [] }
 
+/**
+ * The viewport width (px) below which the bar is narrower than its full
+ * 52rem — its `min(52rem, 100vw - 4rem)` width, plus the 4rem.
+ */
+export const BAR_FULL_WIDTH_VIEWPORT = 56 * 16
+
 export { MAX_BATCH }
 
 /** One node's unsubmitted composition. */
@@ -771,10 +777,15 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
    * nowhere to overflow to: wrapping pushes Run below the viewport and not
    * wrapping pushes it off the side. The count stepper and the cost badge are
    * the two controls that can be read and changed just as well from the
-   * settings popover, so below the sidebar's own breakpoint that is where they
-   * go — the prompt, the model and Run always stay on the bar itself.
+   * settings popover, so once the bar is narrower than its full width that is
+   * where they go — the prompt, the model and Run always stay on the bar.
+   *
+   * The bar is `min(52rem, 100vw - 4rem)`, so it is below its full width
+   * exactly when the viewport is below 56rem: a viewport query is the bar's
+   * own width, read on the first render. The sidebar's 768px breakpoint was
+   * not — between it and 56rem the full row was laid into a shorter bar.
    */
-  const narrow = useIsMobile()
+  const narrow = useIsMobile(BAR_FULL_WIDTH_VIEWPORT)
 
   const overflow = (
     <>
@@ -931,10 +942,12 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
 
       {/* One row that never wraps: a wrapped row puts Run on a line of its
           own, under a pointer that was on its way to where Run used to be.
-          Every child keeps its width and Run is always last; below the
-          sidebar's breakpoint the count and cost move into the settings
-          popover instead. The messages are *below* this row — see the end
-          of the bar. */}
+          Run is always last. The three labelled chips — model, provider,
+          settings — are the only children that give, truncating down to a
+          floor so the row ends inside the bar; every other child keeps its
+          width. Below the bar's full width the count and cost move into the
+          settings popover instead. The messages are *below* this row — see
+          the end of the bar. */}
       <div
         data-testid="prompt-bar-controls"
         className="flex min-w-0 flex-nowrap items-center gap-1 border-t pt-2"
@@ -977,7 +990,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             values={draft.common}
             onChange={setCommon}
             compact={narrow}
-            className="nokey"
+            // Gives with the model's chip, down to its own floor; its summary
+            // truncates and the full summary is its title.
+            className={cn("nokey", !narrow && "min-w-16 shrink")}
             footer={
               narrow ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -1122,7 +1137,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           {narrow ? null : "Full prompt"}
         </Button>
 
-        {/* Below the sidebar's own breakpoint these three live in the
+        {/* Below the bar's full width these three live in the
             settings popover instead — see `overflow` above. */}
         {narrow ? null : overflow}
 

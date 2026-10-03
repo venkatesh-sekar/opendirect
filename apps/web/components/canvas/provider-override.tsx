@@ -87,7 +87,17 @@ export function ProviderOverride({
   const blocked = family.choice.message
 
   return (
-    <span className={cn("nokey inline-flex shrink-0", className)}>
+    <span
+      className={cn(
+        "nokey inline-flex",
+        // Stated widths: a provider name arriving must not move Run. Wide, it
+        // gives with the model's chip down to a floor — the name truncates
+        // and the full name is the trigger's title — so the bar's row ends
+        // inside the bar.
+        compact ? "shrink-0" : "w-32 min-w-16 shrink",
+        className
+      )}
+    >
       <Select
         value={value ?? AUTO}
         onValueChange={(next: string | null) => {
@@ -107,10 +117,9 @@ export function ProviderOverride({
             "h-8 text-xs text-muted-foreground",
             // Seen, not only announced: a choice that cannot run is tinted.
             blocked && "border-destructive bg-destructive/10 text-destructive",
-            // Stated widths: a provider name arriving must not move Run.
             compact
               ? "w-8 justify-center px-0 [&>svg:last-child]:hidden"
-              : "w-32"
+              : "w-full min-w-0"
           )}
         >
           {compact ? (

@@ -46,7 +46,11 @@ import {
 import { server } from "../../../../test/msw/server"
 import { estimateForDescriptor } from "../../../desktop/src/main/providers/cost"
 import { createOpenRouterProvider } from "../../../desktop/src/main/providers/openrouter"
-import { clearPromptDrafts, PromptBar } from "./prompt-bar"
+import {
+  BAR_FULL_WIDTH_VIEWPORT,
+  clearPromptDrafts,
+  PromptBar,
+} from "./prompt-bar"
 
 const invoke = vi.hoisted(() => vi.fn())
 
@@ -68,8 +72,8 @@ vi.mock("@workspace/ui/hooks/use-mobile", async (importOriginal) => {
     await importOriginal<typeof import("@workspace/ui/hooks/use-mobile")>()
   return {
     ...actual,
-    useIsMobile: () => {
-      const real = actual.useIsMobile()
+    useIsMobile: (breakpoint?: number) => {
+      const real = actual.useIsMobile(breakpoint)
       return mobile.forced ?? real
     },
   }
@@ -1002,15 +1006,21 @@ describe("PromptBar", () => {
         screen.getByRole("button", { name: "Save prompt" })
       )
       expect(controls.lastElementChild).toContainElement(run)
-      // Every child keeps its width; the model's name is the one thing that
-      // may truncate, down to a floor, so the row gives there and not at Run.
+      // Every child keeps its width but the labelled chips, which may
+      // truncate down to a floor, so the row gives there and not at Run.
+      // Wide, the settings chip's summary gives too; narrow, it is an icon.
       for (const child of controls.children) {
         if (child === picker) {
           expect(child).toHaveClass("shrink", narrow ? "min-w-12" : "min-w-24")
+        } else if (child === chip && !narrow) {
+          expect(child).toHaveClass("shrink", "min-w-16")
+          expect(child).not.toHaveClass("shrink-0")
         } else {
           expect(child).toHaveClass("shrink-0")
         }
       }
+      // A truncated summary is still readable on hover.
+      expect(chip).toHaveAttribute("title", "5s · 720p")
       expect(Boolean(screen.queryByTestId("count-stepper"))).toBe(!narrow)
     })
   })
@@ -1289,6 +1299,33 @@ describe("PromptBar", () => {
    * window reflowed the bar one frame after every selection change. The
    * breakpoint is read synchronously now: the first paint is already right.
    */
+  /**
+   * The bar is `min(52rem, 100vw - 4rem)`: below a 56rem viewport it is
+   * shorter than the row it was laid out for, and the sidebar's 768px
+   * breakpoint left a band where cost, Save and Run hung off its edge.
+   */
+  it.each([
+    [BAR_FULL_WIDTH_VIEWPORT - 1, true],
+    [BAR_FULL_WIDTH_VIEWPORT, false],
+  ])("collapses at a %dpx viewport: %s", async (width, collapsed) => {
+    expect(BAR_FULL_WIDTH_VIEWPORT).toBe(56 * 16)
+    const wide = window.innerWidth
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: width,
+    })
+    try {
+      renderBar()
+      await screen.findByLabelText("Prompt")
+      expect(Boolean(screen.queryByTestId("count-stepper"))).toBe(!collapsed)
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: wide,
+      })
+    }
+  })
+
   it("collapses on the first paint at a narrow width, with no reflow", async () => {
     const wide = window.innerWidth
     Object.defineProperty(window, "innerWidth", {
