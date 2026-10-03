@@ -10,7 +10,7 @@
  *
  * ⛔ Nothing here runs a prompt. Detection is `which` and `--version`.
  */
-import type { AiToolId } from "@opendirect/contract"
+import { aiToolModelsDefaults, type AiToolId } from "@opendirect/contract"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -22,6 +22,7 @@ import {
 } from "@workspace/ui/components/card"
 import { Label } from "@workspace/ui/components/label"
 
+import { AiModelPicker } from "@/components/ai/model-picker"
 import { useAiTools, useRedetectAiTools } from "@/hooks/use-ai"
 import { useSettings, useUpdateSettings } from "@/lib/settings"
 
@@ -40,6 +41,7 @@ export function AiToolsForm() {
 
   const detected = tools.data
   const preferred = settings.data?.preferredAiTool ?? null
+  const models = settings.data?.aiModels ?? aiToolModelsDefaults
 
   return (
     <Card>
@@ -68,9 +70,30 @@ export function AiToolsForm() {
                   </Badge>
                 </div>
                 {status?.available ? (
-                  <p className="font-mono text-xs text-muted-foreground">
-                    {status.path}
-                  </p>
+                  <>
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {status.path}
+                    </p>
+                    {settings.data ? (
+                      <div className="mt-1 flex items-start gap-2 text-xs text-muted-foreground">
+                        <span className="flex h-8 shrink-0 items-center">
+                          Model
+                        </span>
+                        <AiModelPicker
+                          tool={id}
+                          value={models[id]}
+                          disabled={update.isPending}
+                          className="w-64"
+                          label={`Default ${id} model`}
+                          onChange={(next) =>
+                            update.mutate({
+                              aiModels: { ...models, [id]: next },
+                            })
+                          }
+                        />
+                      </div>
+                    ) : null}
+                  </>
                 ) : (
                   <p className="font-mono text-xs text-muted-foreground">
                     {install}

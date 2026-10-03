@@ -1069,7 +1069,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
           helpers={["improve-prompt", "suggest-shots"]}
           disabled={ai.state === "running"}
           className="size-8 shrink-0"
-          onRun={(helper, tool) => {
+          onRun={(helper, tool, options) => {
             setNotice(null)
             if (helper === "improve-prompt") {
               if (!draft.prompt.trim()) {
@@ -1084,7 +1084,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
                   prompt: draft.prompt,
                   modelName: descriptor?.name ?? null,
                 },
-                tool
+                tool,
+                options
               )
               return
             }
@@ -1094,7 +1095,8 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
                 containerName: container?.name?.trim() || "this sequence",
                 notes: draft.prompt.trim() || null,
               },
-              tool
+              tool,
+              options
             )
           }}
         />

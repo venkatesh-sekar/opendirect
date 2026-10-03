@@ -12,6 +12,12 @@
  * When both CLIs are present the menu opens on the preferred one (the
  * `preferredAiTool` setting) and lets the user switch for this run only.
  *
+ * Above the helpers sit the two things a user may want to say about a run:
+ * an optional direction in their own words ("more cinematic, keep the
+ * outfit"), which main adds to the helper's built-in prompt, and the model
+ * the CLI is started with — the saved `aiModels` setting unless changed here
+ * for this session.
+ *
  * ⛔ Nothing here applies an answer. Each item starts a run whose result goes
  * to `<HelperResultDialog/>` for the user to accept.
  */
@@ -20,6 +26,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { SparklesIcon } from "@hugeicons/core-free-icons"
 import {
   AI_HELPER_LABELS,
+  AI_INSTRUCTIONS_MAX_LENGTH,
   type AiHelperId,
   type AiToolId,
   type AiTools,
@@ -30,14 +37,24 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
+import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
+
+import { useSettings } from "@/lib/settings"
+import type { AiRunOptions } from "@/hooks/use-ai"
+
+import { AiModelPicker } from "./model-picker"
 
 export interface HelperMenuProps {
   /** The detection result; `undefined` while it is still being fetched. */
   tools: AiTools | undefined
   /** Which helpers this surface offers, in the order it offers them. */
   helpers: readonly AiHelperId[]
-  onRun: (helper: AiHelperId, tool: AiToolId) => void
+  /**
+   * `options.model` is undefined until settings have loaded — main then
+   * reads the saved model itself — and null for "the CLI's own default".
+   */
+  onRun: (helper: AiHelperId, tool: AiToolId, options: AiRunOptions) => void
   disabled?: boolean
   className?: string
   label?: string
@@ -59,6 +76,12 @@ export function HelperMenu({
 }: HelperMenuProps) {
   const [open, setOpen] = useState(false)
   const [chosen, setChosen] = useState<AiToolId | null>(null)
+  const [instructions, setInstructions] = useState("")
+  /** A model picked here, per tool; absent means "the saved setting". */
+  const [models, setModels] = useState<
+    Partial<Record<AiToolId, string | null>>
+  >({})
+  const settings = useSettings()
 
   const available = installedTools(tools)
   const tool =
@@ -66,6 +89,9 @@ export function HelperMenu({
 
   // The whole point: no CLI, no menu, no trace of one.
   if (!tool || helpers.length === 0) return null
+
+  const model: string | null | undefined =
+    tool in models ? models[tool] : settings.data?.aiModels[tool]
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -85,7 +111,15 @@ export function HelperMenu({
         <HugeiconsIcon icon={SparklesIcon} className="size-4" />
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-60 p-1">
+      <PopoverContent
+        align="end"
+        className="nokey w-72 p-1"
+        // Typing a direction must not reach the canvas's own shortcuts through
+        // React's tree; Escape still bubbles so the popover can close.
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") event.stopPropagation()
+        }}
+      >
         {available.length > 1 ? (
           <div
             role="radiogroup"
@@ -118,7 +152,33 @@ export function HelperMenu({
           </p>
         )}
 
-        <ul className="flex flex-col">
+        <div className="flex flex-col gap-2 border-b px-2 pt-1 pb-2">
+          <Textarea
+            aria-label="Direction for the helper"
+            placeholder="Optional direction, e.g. more cinematic, keep the outfit"
+            value={instructions}
+            maxLength={AI_INSTRUCTIONS_MAX_LENGTH}
+            rows={2}
+            className="min-h-14 resize-none text-xs md:text-xs"
+            onChange={(event) => setInstructions(event.target.value)}
+          />
+          <div className="flex items-start gap-2 text-xs text-muted-foreground">
+            <span className="flex h-8 shrink-0 items-center">Model</span>
+            <AiModelPicker
+              key={`${tool}:${settings.data ? "ready" : "loading"}`}
+              tool={tool}
+              value={model ?? null}
+              commitOn="change"
+              className="flex-1"
+              label={`Model for ${tool}`}
+              onChange={(next) =>
+                setModels((current) => ({ ...current, [tool]: next }))
+              }
+            />
+          </div>
+        </div>
+
+        <ul className="flex flex-col pt-1">
           {helpers.map((helper) => (
             <li key={helper}>
               <Button
@@ -127,7 +187,10 @@ export function HelperMenu({
                 className="w-full justify-start"
                 onClick={() => {
                   setOpen(false)
-                  onRun(helper, tool)
+                  onRun(helper, tool, {
+                    model,
+                    instructions: instructions.trim() || null,
+                  })
                 }}
               >
                 <HugeiconsIcon icon={SparklesIcon} className="size-4" />

@@ -58,6 +58,15 @@ export function useRedetectAiTools(): UseMutationResult<AiTools, Error, void> {
 
 export type AiRunState = "idle" | "running" | "done" | "error" | "canceled"
 
+/**
+ * What the user chose next to the ✨ menu for one run. `model` left undefined
+ * means "the saved setting"; null means "the CLI's own default".
+ */
+export interface AiRunOptions {
+  model?: string | null
+  instructions?: string | null
+}
+
 export interface AiHelperController {
   state: AiRunState
   helper: AiHelperId | null
@@ -65,7 +74,11 @@ export interface AiHelperController {
   error: string | null
   /** The CLI's own output as it arrives, for the dialog's live log. */
   log: string[]
-  run: (request: AiRunRequest["request"], tool?: AiToolId | null) => void
+  run: (
+    request: AiRunRequest["request"],
+    tool?: AiToolId | null,
+    options?: AiRunOptions
+  ) => void
   cancel: () => void
   reset: () => void
 }
@@ -98,8 +111,13 @@ export function useAiHelper(): AiHelperController {
   }, [])
 
   const run = useCallback(
-    (request: AiRunRequest["request"], tool?: AiToolId | null) => {
+    (
+      request: AiRunRequest["request"],
+      tool?: AiToolId | null,
+      options: AiRunOptions = {}
+    ) => {
       const runId = newRunId()
+      const instructions = options.instructions?.trim() || null
       runIdRef.current = runId
       setState("running")
       setHelper(request.helper)
@@ -107,7 +125,14 @@ export function useAiHelper(): AiHelperController {
       setError(null)
       setLog([])
 
-      invoke("ai:run", { runId, tool: tool ?? null, request })
+      invoke("ai:run", {
+        runId,
+        tool: tool ?? null,
+        request,
+        instructions,
+        // Omitted, not null, when unset: main then reads the saved setting.
+        ...(options.model !== undefined ? { model: options.model } : {}),
+      })
         .then((answer) => {
           if (runIdRef.current !== runId) return
           setResult(answer)
