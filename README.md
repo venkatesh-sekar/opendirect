@@ -128,9 +128,11 @@ instead of submitting again — so a crash, a restart or a Retry can never pay f
 the same run twice.
 
 **Costs are honest.** OpenRouter publishes prices and reports actual cost;
-Replicate publishes neither, so its figures come from a curated table shown as
-an explicit estimate, and a model with no usable rate reads **Cost unknown** —
-never `$0.00`.
+Replicate publishes neither, so its figures come from a curated table
+(`registry/pricing.json`) shown as an explicit estimate, and a model with no
+usable rate reads **Cost unknown** — never `$0.00`. Video estimates follow the
+resolution and duration you pick; until a duration is set, the badge shows the
+per-second rate (for example `$0.20/s`).
 
 **The AI helpers are your own CLI.** "Improve prompt" and friends spawn the
 `claude` or `codex` binary already on your `PATH`, on your subscription. If
