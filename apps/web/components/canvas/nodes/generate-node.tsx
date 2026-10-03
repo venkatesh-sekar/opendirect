@@ -30,11 +30,14 @@ import {
   Alert02Icon,
   InformationCircleIcon,
   RefreshIcon,
+  SearchAreaIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons"
 import {
   ContextMenu,
   ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@workspace/ui/components/context-menu"
 import type {
@@ -74,6 +77,7 @@ import {
 } from "@/components/board/card-actions"
 import { CompareView } from "@/components/board/compare-view"
 import { DetailsPanel } from "@/components/board/details-panel"
+import { MediaViewer, type MediaCaption } from "@/components/media/media-viewer"
 
 import { useCanvasSurface } from "../canvas-context"
 import { AssetTile } from "./asset-tile"
@@ -267,6 +271,7 @@ function ResultTile({
   node,
   picked,
   onPick,
+  onView,
 }: {
   asset: AssetDto
   /** The rest of this node's batch — the other side of a comparison. */
@@ -277,6 +282,8 @@ function ResultTile({
   node: CanvasNodeDto
   picked: boolean
   onPick: () => void
+  /** Opens the full-size viewer on this output. */
+  onView: () => void
 }) {
   const surface = useCanvasSurface()
   const [addToOpen, setAddToOpen] = useState(false)
@@ -314,8 +321,10 @@ function ResultTile({
             <button
               type="button"
               onClick={onPick}
+              onDoubleClick={onView}
               aria-pressed={picked}
               aria-label={picked ? "The pick" : "Make this the pick"}
+              title="Double-click to view full size"
               data-testid={`canvas-tile-${asset.id}`}
               className={cn(
                 "nodrag relative h-full w-full overflow-hidden rounded-md bg-muted",
@@ -335,6 +344,11 @@ function ResultTile({
         </ContextMenuTrigger>
 
         <ContextMenuContent>
+          <ContextMenuItem onClick={onView}>
+            <HugeiconsIcon icon={SearchAreaIcon} className="size-4" />
+            View full size
+          </ContextMenuItem>
+          <ContextMenuSeparator />
           <OutputActionMenuItems actions={actions} />
         </ContextMenuContent>
       </ContextMenu>
@@ -390,6 +404,7 @@ function ThumbTile({
   position,
   total,
   onPick,
+  onView,
 }: {
   asset: AssetDto
   picked: boolean
@@ -397,11 +412,13 @@ function ThumbTile({
   position: number
   total: number
   onPick: () => void
+  onView: () => void
 }) {
   return (
     <button
       type="button"
       onClick={onPick}
+      onDoubleClick={onView}
       aria-pressed={picked}
       aria-label={`Result ${position} of ${total}`}
       data-testid={`canvas-thumb-${asset.id}`}
@@ -448,7 +465,21 @@ export const DefaultCanvasPick = memo(function DefaultCanvasPick({
   return null
 })
 
-export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
+export interface GenerateNodeBodyProps {
+  node: CanvasNodeDto
+  /**
+   * Whether the full-size viewer is open, when the header owns the button
+   * that opens it. Left out, the body keeps that state itself.
+   */
+  viewing?: boolean
+  onViewingChange?: (open: boolean) => void
+}
+
+export function GenerateNodeBody({
+  node,
+  viewing,
+  onViewingChange,
+}: GenerateNodeBodyProps) {
   const surface = useCanvasSurface()
   /**
    * Which container's rows this node reads its siblings and outputs from.
@@ -520,6 +551,42 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
   const siblings = useMemo(
     () => rest.flatMap((tile) => (tile.asset ? [tile.asset] : [])),
     [rest]
+  )
+
+  /**
+   * The full-size viewer: every output of the batch, in tile order, opened on
+   * whichever one was double-clicked — or on the hero, from the header.
+   *
+   * ⛔ Walking outputs in the viewer is looking, not choosing: it leaves the
+   * pick, and so every downstream edge, exactly where it was.
+   */
+  const outputs = useMemo(
+    () => tiles.flatMap((tile) => (tile.asset ? [tile.asset] : [])),
+    [tiles]
+  )
+  const [ownViewing, setOwnViewing] = useState(false)
+  const isViewing = viewing ?? ownViewing
+  const setViewing = onViewingChange ?? setOwnViewing
+  const [viewFrom, setViewFrom] = useState<string | null>(null)
+  const view = useCallback(
+    (assetId: string) => {
+      setViewFrom(assetId)
+      setViewing(true)
+    },
+    [setViewing]
+  )
+  const closeViewer = useCallback(() => {
+    setViewing(false)
+    setViewFrom(null)
+  }, [setViewing])
+  const caption = useCallback(
+    (asset: AssetDto): MediaCaption => ({
+      title: <GenerateNodeTitle node={node} />,
+      prompt: asset.generationId
+        ? (runs.get(asset.generationId)?.prompt ?? null)
+        : null,
+    }),
+    [node, runs]
   )
 
   /**
@@ -616,6 +683,11 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
     (tile) => tile.asset !== null || tile.id !== hero?.id
   )
   const showStrip = strip.length > 1 && node.height >= STRIP_MIN_HEIGHT
+  const viewId = viewFrom ?? hero?.asset?.id ?? null
+  const viewIndex = Math.max(
+    0,
+    outputs.findIndex((asset) => asset.id === viewId)
+  )
 
   return (
     <div
@@ -637,6 +709,7 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
             node={node}
             picked={node.pickAssetId === hero.asset.id}
             onPick={() => choose(hero.asset!.id)}
+            onView={() => view(hero.asset!.id)}
           />
         ) : hero && (hero.state === "failed" || hero.state === "canceled") ? (
           <FailedTile tile={hero} />
@@ -667,6 +740,7 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
                 position={tiles.indexOf(tile) + 1}
                 total={total}
                 onPick={() => choose(tile.asset!.id)}
+                onView={() => view(tile.asset!.id)}
               />
             ) : (
               <div key={tile.id} className="h-14 w-44 shrink-0">
@@ -689,6 +763,14 @@ export function GenerateNodeBody({ node }: { node: CanvasNodeDto }) {
           No pick selected. Choose which result downstream nodes should use.
         </p>
       ) : null}
+
+      <MediaViewer
+        assets={outputs}
+        index={viewIndex}
+        open={isViewing}
+        onClose={closeViewer}
+        caption={caption}
+      />
     </div>
   )
 }
@@ -733,6 +815,29 @@ export function DetailsAction({
   )
 }
 
+/**
+ * The header's way into the full-size viewer — the same magnifier the media
+ * node wears, so "look at this properly" is one icon across the canvas.
+ *
+ * Shown once the node has a pick, which is the moment it has something to
+ * look at; double-clicking the picture does the same before then.
+ */
+export function ViewAction({ onView }: { onView: () => void }) {
+  return (
+    <Button
+      type="button"
+      size="icon"
+      variant="ghost"
+      aria-label="View full size"
+      title="View full size"
+      className="nodrag nopan size-5"
+      onClick={onView}
+    >
+      <HugeiconsIcon icon={SearchAreaIcon} className="size-3.5" />
+    </Button>
+  )
+}
+
 /** `image_gen` / `video_gen` as the header reads them, plus the model it ran. */
 function GenerateNodeTitle({ node }: { node: CanvasNodeDto }) {
   const modelKey = node.generation ? modelKeyOf(node.generation) : null
@@ -743,18 +848,29 @@ function GenerateNodeTitle({ node }: { node: CanvasNodeDto }) {
 
 export function GenerateNode({ data, selected }: NodeProps<CanvasFlowNode>) {
   const node = data.node
+  const [viewing, setViewing] = useState(false)
+  const canView = node.pickAssetId !== null
   return (
     <NodeFrame
       node={node}
       selected={selected === true}
       title={<GenerateNodeTitle node={node} />}
       actions={
-        node.generationId ? (
-          <DetailsAction generationId={node.generationId} node={node} />
+        canView || node.generationId ? (
+          <>
+            {canView ? <ViewAction onView={() => setViewing(true)} /> : null}
+            {node.generationId ? (
+              <DetailsAction generationId={node.generationId} node={node} />
+            ) : null}
+          </>
         ) : null
       }
     >
-      <GenerateNodeBody node={node} />
+      <GenerateNodeBody
+        node={node}
+        viewing={viewing}
+        onViewingChange={setViewing}
+      />
     </NodeFrame>
   )
 }
