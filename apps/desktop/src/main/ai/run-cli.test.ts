@@ -9,6 +9,8 @@ import {
   claudeArgs,
   codexArgs,
   parseClaudeResult,
+  resolveModel,
+  resolveRunModel,
   runClaude,
   runCodex,
   runTool,
@@ -134,6 +136,64 @@ describe("argument building", () => {
     const nasty = '"; rm -rf ~ #`whoami`$(id)'
     expect(claudeArgs({ allowedTools: [] })).not.toContain(nasty)
     expect(codexArgs()).not.toContain(nasty)
+  })
+
+  it("passes no --model flag when no model was chosen", () => {
+    expect(claudeArgs({ allowedTools: [] })).not.toContain("--model")
+    expect(claudeArgs({ allowedTools: [], model: null })).not.toContain(
+      "--model"
+    )
+    expect(codexArgs()).not.toContain("--model")
+    expect(codexArgs({ model: null })).not.toContain("--model")
+  })
+
+  it("passes claude's --model as its own argv element", () => {
+    const args = claudeArgs({ allowedTools: ["Read"], model: "opus" })
+    expect(args[args.indexOf("--model") + 1]).toBe("opus")
+    // The policy flags are unchanged by it.
+    expect(args).toContain("--permission-mode")
+    expect(args[args.indexOf("--allowedTools") + 1]).toBe("Read")
+  })
+
+  it("passes codex's --model before the stdin marker", () => {
+    const args = codexArgs({ model: "gpt-5.5" })
+    expect(args[args.indexOf("--model") + 1]).toBe("gpt-5.5")
+    expect(args.at(-1)).toBe("-")
+    expect(args[args.indexOf("--sandbox") + 1]).toBe("read-only")
+  })
+
+  it("trims a model and keeps full ids and suffixes intact", () => {
+    expect(resolveModel("  sonnet ")).toBe("sonnet")
+    expect(resolveModel("claude-opus-5-5[1m]")).toBe("claude-opus-5-5[1m]")
+    expect(resolveModel("us.anthropic.claude-opus-5-5")).toBe(
+      "us.anthropic.claude-opus-5-5"
+    )
+    expect(resolveModel(null)).toBeNull()
+    expect(resolveModel(undefined)).toBeNull()
+  })
+
+  it("refuses a model that would read as a flag or smuggle anything else", () => {
+    for (const bad of [
+      "--dangerously-skip-permissions",
+      "-p",
+      "opus --permission-mode bypassPermissions",
+      "opus;rm -rf ~",
+      "$(id)",
+      "a=b",
+      "",
+      "   ",
+      "x".repeat(101),
+    ]) {
+      expect(() => claudeArgs({ allowedTools: [], model: bad })).toThrow()
+      expect(() => codexArgs({ model: bad })).toThrow()
+    }
+  })
+
+  it("prefers the run's own model, including an explicit default, over the setting", () => {
+    expect(resolveRunModel(undefined, "opus")).toBe("opus")
+    expect(resolveRunModel("haiku", "opus")).toBe("haiku")
+    expect(resolveRunModel(null, "opus")).toBeNull()
+    expect(resolveRunModel(undefined, null)).toBeNull()
   })
 })
 
@@ -404,6 +464,59 @@ describe("runCodex", () => {
       tool: "codex",
       text: "a shot list",
     })
+  })
+
+  it("spawns codex with the chosen model and no shell", async () => {
+    const { spawn, child } = stubSpawn()
+    const running = runCodex({ prompt: "p", spawn, model: "gpt-6-sol" })
+
+    const [, args, options] = spawn.mock.calls[0] as [
+      string,
+      string[],
+      Record<string, unknown>,
+    ]
+    expect(args).toEqual([
+      "exec",
+      "--color",
+      "never",
+      "--skip-git-repo-check",
+      "--sandbox",
+      "read-only",
+      "--model",
+      "gpt-6-sol",
+      "-",
+    ])
+    expect(options.shell).toBe(false)
+    child.emit("close", 0, null)
+    await running
+  })
+})
+
+describe("model validation at spawn time", () => {
+  it("never spawns a child for an invalid model", async () => {
+    const { spawn } = stubSpawn()
+    await expect(
+      runClaude({ prompt: "p", spawn, model: "--dangerously-skip-permissions" })
+    ).rejects.toBeInstanceOf(AiToolError)
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it("hands claude the chosen model and still pipes the prompt in", async () => {
+    const { spawn, child } = stubSpawn()
+    const running = runClaude({
+      prompt: "make it better",
+      spawn,
+      model: "haiku",
+    })
+
+    const args = (spawn.mock.calls[0] as unknown[])[1] as string[]
+    expect(args[args.indexOf("--model") + 1]).toBe("haiku")
+    expect(args).not.toContain("make it better")
+    expect(child.stdin.written.join("")).toBe("make it better")
+
+    child.stdout.emit("data", Buffer.from(JSON.stringify({ result: "ok" })))
+    child.emit("close", 0, null)
+    await expect(running).resolves.toMatchObject({ text: "ok" })
   })
 })
 

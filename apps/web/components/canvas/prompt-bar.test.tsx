@@ -378,6 +378,9 @@ beforeEach(() => {
         return quote
       case "ai:tools":
         return aiTools
+      case "settings:get":
+        // Only the ✨ menu reads settings here: the saved model per CLI.
+        return { aiModels: { claude: "sonnet", codex: null } }
       case "ai:run":
         return {
           text: "a bellhop opens the lift, slowly",
@@ -780,6 +783,36 @@ describe("PromptBar", () => {
     expect(await screen.findByLabelText("Prompt")).toHaveValue(
       "a bellhop opens the lift, slowly"
     )
+  })
+
+  it("sends the typed direction and the chosen model with an AI helper run", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.type(await screen.findByLabelText("Prompt"), "a lift opens")
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Model for claude" })
+      ).toHaveTextContent("Sonnet")
+    )
+    await user.type(
+      screen.getByRole("textbox", { name: "Direction for the helper" }),
+      "more cinematic, keep the outfit"
+    )
+    await user.click(
+      await screen.findByRole("button", { name: /improve prompt/i })
+    )
+
+    await waitFor(() =>
+      expect(invoke.mock.calls.find(([c]) => c === "ai:run")).toBeDefined()
+    )
+    expect(invoke.mock.calls.find(([c]) => c === "ai:run")![1]).toMatchObject({
+      tool: "claude",
+      model: "sonnet",
+      instructions: "more cinematic, keep the outfit",
+      request: { helper: "improve-prompt", prompt: "a lift opens" },
+    })
   })
 
   it("says so rather than running the prompt helper on an empty prompt", async () => {

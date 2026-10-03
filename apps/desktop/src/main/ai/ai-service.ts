@@ -42,7 +42,7 @@ import {
   type HelperOutcome,
   type ResolvedHelperRequest,
 } from "./helpers"
-import { AiToolError, runTool } from "./run-cli"
+import { AiToolError, resolveRunModel, runTool } from "./run-cli"
 
 const execFile = promisify(execFileCallback)
 
@@ -67,6 +67,15 @@ function preferredSetting(): AiToolId | null {
     return getSettingsService().settings.get().preferredAiTool
   } catch {
     // Settings are unavailable before the app is ready; detection still works.
+    return null
+  }
+}
+
+/** The `aiModels` setting for one tool; null means "the CLI's own default". */
+function modelSetting(tool: AiToolId): string | null {
+  try {
+    return getSettingsService().settings.get().aiModels[tool]
+  } catch {
     return null
   }
 }
@@ -191,7 +200,11 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
   }
 
   const helper = input.request.helper
-  const resolved = await resolveRequest(input.request)
+  const resolved: ResolvedHelperRequest = {
+    ...(await resolveRequest(input.request)),
+    instructions: input.instructions ?? null,
+  }
+  const model = resolveRunModel(input.model, modelSetting(chosen))
 
   const controller = new AbortController()
   running.set(input.runId, controller)
@@ -216,9 +229,12 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
     const outcome: HelperOutcome = await runHelper(resolved, async (prompt) => {
       // The prompt itself is never logged: it is the user's own work and can
       // carry a file path. Its length is enough to debug with.
-      log.info(`AI helper ${helper} via ${chosen} (${prompt.length} chars)`)
+      log.info(
+        `AI helper ${helper} via ${chosen}${model ? ` (model ${model})` : ""} (${prompt.length} chars)`
+      )
       const run = await runTool(chosen, {
         prompt,
+        model,
         command: status.path ?? chosen,
         cwd: getCurrentProject()?.project.path,
         allowedTools: HELPER_TOOLS[helper],

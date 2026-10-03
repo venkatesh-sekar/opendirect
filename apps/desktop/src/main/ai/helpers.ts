@@ -18,12 +18,19 @@
  */
 import type { AiHelperId } from "@opendirect/contract"
 
-/** A helper request with its asset ids already resolved to real paths. */
-export type ResolvedHelperRequest =
+/**
+ * A helper request with its asset ids already resolved to real paths.
+ *
+ * `instructions` is the user's own direction for this run, typed next to the
+ * ✨ menu ("more cinematic, keep the outfit"). It is added to the built-in
+ * task prompt rather than replacing it, so the reply format still holds.
+ */
+export type ResolvedHelperRequest = (
   | { helper: "improve-prompt"; prompt: string; modelName?: string | null }
   | { helper: "describe-reference"; assetPath: string }
   | { helper: "analyze-video"; assetPath: string }
   | { helper: "suggest-shots"; containerName: string; notes?: string | null }
+) & { instructions?: string | null }
 
 export interface HelperOutcome {
   /** Always something to show; the dialog never renders an empty body. */
@@ -40,7 +47,26 @@ export type HelperRunner = (prompt: string) => Promise<string>
 const NO_PREAMBLE =
   "Reply with only the answer itself — no preamble, no explanation, no markdown fence."
 
+/**
+ * The user's direction, placed after the task and before the material it is
+ * about. It outranks the built-in style guidance (a user asking for "keep it
+ * short" means it), but not the reply format, which the parser depends on.
+ */
+export function directionLines(
+  instructions: string | null | undefined
+): string[] {
+  const text = instructions?.trim()
+  if (!text) return []
+  return [
+    "",
+    "Direction from the user — follow it, and let it override the guidance",
+    "above where they differ, but keep the reply format exactly as asked:",
+    text,
+  ]
+}
+
 export function helperPrompt(request: ResolvedHelperRequest): string {
+  const direction = directionLines(request.instructions)
   switch (request.helper) {
     case "improve-prompt": {
       const target = request.modelName
@@ -51,6 +77,7 @@ export function helperPrompt(request: ResolvedHelperRequest): string {
         "Keep the user's intent and subject exactly; make it concrete about",
         "shot, camera move, lighting, lens and mood. One paragraph, no lists.",
         NO_PREAMBLE,
+        ...direction,
         "",
         "Prompt:",
         request.prompt,
@@ -63,6 +90,7 @@ export function helperPrompt(request: ResolvedHelperRequest): string {
         "be used as a reference for a generative model: subject, framing,",
         "lighting, colour, texture and mood. One paragraph.",
         NO_PREAMBLE,
+        ...direction,
         "",
         `File: ${request.assetPath}`,
       ].join("\n")
@@ -74,6 +102,7 @@ export function helperPrompt(request: ResolvedHelperRequest): string {
         'Reply with only a JSON object: {"summary": string, "shots": string[]}',
         "where summary is one sentence and each shot is one line describing",
         "that beat — framing, camera move and action.",
+        ...direction,
         "",
         `File: ${request.assetPath}`,
       ].join("\n")
@@ -84,6 +113,7 @@ export function helperPrompt(request: ResolvedHelperRequest): string {
         `Suggest 6 to 10 shots for a sequence called "${request.containerName}".`,
         "Each shot is one line: framing, camera move, subject and action.",
         "Reply with only a JSON array of strings.",
+        ...direction,
       ]
       if (request.notes?.trim()) {
         lines.push("", `Notes: ${request.notes.trim()}`)

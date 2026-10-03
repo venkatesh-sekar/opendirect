@@ -29,7 +29,7 @@
  */
 import { spawn as nodeSpawn } from "node:child_process"
 
-import type { AiToolId } from "@opendirect/contract"
+import { aiModelSchema, type AiToolId } from "@opendirect/contract"
 
 /** A helper gets two minutes; past that it is a hang, not a slow answer. */
 export const AI_RUN_TIMEOUT_MS = 120_000
@@ -120,6 +120,11 @@ export interface RunOptions {
   signal?: AbortSignal
   /** What the helper needs to do its job; nothing else is permitted. */
   allowedTools?: readonly string[]
+  /**
+   * The CLI's `--model`. Null/omitted passes no flag, so the CLI uses its own
+   * default. Validated again here (`aiModelSchema`) before it reaches argv.
+   */
+  model?: string | null
   /** The environment to scrub and hand over. Defaults to `process.env`. */
   env?: NodeJS.ProcessEnv
   /** Live output for the progress log. Never the prompt. */
@@ -261,6 +266,37 @@ const CLAUDE_DENIED_TOOLS = [
 export interface ToolPolicy {
   /** What the helper genuinely needs — `Read` for the file-reading two. */
   allowedTools: readonly string[]
+  /** A model name (checked by `resolveModel`), or null for the CLI default. */
+  model?: string | null
+}
+
+/**
+ * The model, checked and trimmed — or null for "no `--model` flag".
+ *
+ * The contract already validated it at the IPC boundary; this is the second
+ * check, right where it becomes an argv element, so no other caller of
+ * `runTool` can hand a child process `--model --dangerously-…`.
+ */
+export function resolveModel(model: string | null | undefined): string | null {
+  if (model === null || model === undefined) return null
+  const parsed = aiModelSchema.safeParse(model)
+  if (!parsed.success) {
+    throw new Error(
+      `"${model.slice(0, 40)}" is not a valid model name: ${parsed.error.issues[0]?.message ?? "invalid"}`
+    )
+  }
+  return parsed.data
+}
+
+/**
+ * Which model a run uses: the request's own choice when it made one (null is
+ * a choice — "the CLI default"), otherwise the saved setting for that tool.
+ */
+export function resolveRunModel(
+  requested: string | null | undefined,
+  saved: string | null
+): string | null {
+  return requested !== undefined ? requested : saved
 }
 
 /**
@@ -275,9 +311,15 @@ export interface ToolPolicy {
  * `""` either registers a tool named "" or swallows the flag that follows it.
  * The deny list is what does the work in that case, and it is exhaustive by
  * name rather than by omission.
+ *
+ * `--model <model>` takes an alias (`fable`, `opus`, `sonnet`, `haiku`) or a
+ * full model name (Claude Code 2.1.288 `--help`); it is only passed when the
+ * user chose one, so the default is whatever their CLI is configured for.
  */
 export function claudeArgs(policy: ToolPolicy): string[] {
   const args = ["-p", "--output-format", "json", "--permission-mode", "plan"]
+  const model = resolveModel(policy.model)
+  if (model) args.push("--model", model)
   if (policy.allowedTools.length > 0) {
     args.push("--allowedTools", policy.allowedTools.join(","))
   }
@@ -294,19 +336,24 @@ export function claudeArgs(policy: ToolPolicy): string[] {
  * the captured text, `--skip-git-repo-check` lets it run in a project folder
  * that is not a git repository (most are not), and `--sandbox read-only` is
  * codex's equivalent of claude's denied tool list: a helper reads a reference
- * and answers, and may never write. All verified against `codex exec --help`
- * (codex-cli 0.154).
+ * and answers, and may never write. `--model <MODEL>` (short `-m`) is only
+ * passed when the user chose one. All verified against `codex exec --help`
+ * (codex-cli 0.155).
  */
-export function codexArgs(): string[] {
-  return [
+export function codexArgs(policy: Pick<ToolPolicy, "model"> = {}): string[] {
+  const args = [
     "exec",
     "--color",
     "never",
     "--skip-git-repo-check",
     "--sandbox",
     "read-only",
-    "-",
   ]
+  const model = resolveModel(policy.model)
+  if (model) args.push("--model", model)
+  // The stdin marker stays last: it is the positional prompt argument.
+  args.push("-")
+  return args
 }
 
 /**
@@ -356,7 +403,10 @@ const TOOLS: Record<AiToolId, ToolSpec> = {
   claude: { args: claudeArgs, parse: parseClaudeResult },
   // `codex exec` prints the assistant's answer on stdout and nothing else,
   // and its own `--sandbox read-only` stands in for a tool allowlist.
-  codex: { args: () => codexArgs(), parse: (stdout) => stdout.trim() },
+  codex: {
+    args: (policy) => codexArgs(policy),
+    parse: (stdout) => stdout.trim(),
+  },
 }
 
 /** Keeps captured output bounded without losing the most recent part of it. */
@@ -375,21 +425,34 @@ function runCli(tool: AiToolId, options: RunOptions): Promise<AiRunOutput> {
   const startedAt = Date.now()
 
   return new Promise<AiRunOutput>((resolve, reject) => {
+    let args: string[]
+    try {
+      args = spec.args({
+        allowedTools: options.allowedTools ?? [],
+        model: options.model ?? null,
+      })
+    } catch (error) {
+      // An invalid model never reaches a child process.
+      reject(
+        new AiToolError(
+          error instanceof Error ? error.message : String(error),
+          { tool }
+        )
+      )
+      return
+    }
+
     let child: ChildLike
     try {
-      child = spawn(
-        options.command ?? tool,
-        spec.args({ allowedTools: options.allowedTools ?? [] }),
-        {
-          // The whole point of this module. Never make it configurable.
-          shell: false,
-          cwd: options.cwd,
-          timeout: timeoutMs + SPAWN_TIMEOUT_MARGIN_MS,
-          windowsHide: true,
-          // Never inherited: the provider keys live in `process.env` in dev.
-          env: sanitizeEnv(tool, options.env),
-        }
-      )
+      child = spawn(options.command ?? tool, args, {
+        // The whole point of this module. Never make it configurable.
+        shell: false,
+        cwd: options.cwd,
+        timeout: timeoutMs + SPAWN_TIMEOUT_MARGIN_MS,
+        windowsHide: true,
+        // Never inherited: the provider keys live in `process.env` in dev.
+        env: sanitizeEnv(tool, options.env),
+      })
     } catch (error) {
       reject(
         new AiToolError(
