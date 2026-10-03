@@ -195,10 +195,53 @@ describe("settings store", () => {
       maxConcurrentJobs: 2,
       pollIntervalMs: 3000,
       preferredAiTool: null,
+      aiModels: { claude: null, codex: null },
       providerOrder: ["replicate", "openrouter"],
       remoteRegistry: true,
       registryUrl: null,
       includeUnverified: false,
+    })
+  })
+
+  it("round trips a model per local AI CLI, trimmed", () => {
+    const store = fakeStore()
+    createSettings(store).set({
+      aiModels: { claude: " opus ", codex: "gpt-5.5" },
+    })
+    expect(createSettings(store).get().aiModels).toEqual({
+      claude: "opus",
+      codex: "gpt-5.5",
+    })
+  })
+
+  it("refuses to save an AI model that would read as a CLI flag", () => {
+    const settings = createSettings(fakeStore())
+    expect(() =>
+      settings.set({
+        aiModels: { claude: "--dangerously-skip-permissions", codex: null },
+      })
+    ).toThrow()
+    expect(settings.get().aiModels).toEqual({ claude: null, codex: null })
+  })
+
+  it("falls back to the CLI defaults for a hand-edited, invalid model blob", () => {
+    const store = fakeStore()
+    store.set("settings", {
+      theme: "dark",
+      aiModels: { claude: "opus; rm -rf ~", codex: null },
+    })
+    expect(createSettings(store).get()).toMatchObject({
+      theme: "dark",
+      aiModels: { claude: null, codex: null },
+    })
+  })
+
+  it("reads a blob saved before the AI model setting existed", () => {
+    const store = fakeStore()
+    store.set("settings", { preferredAiTool: "codex" })
+    expect(createSettings(store).get()).toMatchObject({
+      preferredAiTool: "codex",
+      aiModels: { claude: null, codex: null },
     })
   })
 

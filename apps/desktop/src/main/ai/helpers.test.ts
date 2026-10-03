@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { helperPrompt, runHelper } from "./helpers"
+import { directionLines, helperPrompt, runHelper } from "./helpers"
 
 /** Captures the prompt the helper built and answers with a canned reply. */
 function runner(reply: string) {
@@ -62,6 +62,68 @@ describe("helperPrompt", () => {
 
     expect(prompt).toContain("Lobby")
     expect(prompt).not.toContain("Notes:")
+  })
+
+  it("adds the user's direction after the task and before the prompt it is about", () => {
+    const prompt = helperPrompt({
+      helper: "improve-prompt",
+      prompt: "a bellhop in a red coat",
+      modelName: null,
+      instructions: "  make it more cinematic, keep the outfit  ",
+    })
+
+    const task = prompt.indexOf("Rewrite this prompt")
+    const direction = prompt.indexOf("make it more cinematic, keep the outfit")
+    const material = prompt.indexOf("Prompt:\na bellhop in a red coat")
+    expect(task).toBeGreaterThanOrEqual(0)
+    expect(direction).toBeGreaterThan(task)
+    expect(material).toBeGreaterThan(direction)
+    // The built-in task stays; the direction is added, not substituted.
+    expect(prompt).toContain("Keep the user's intent")
+    expect(prompt).toContain("keep the reply format")
+  })
+
+  it("keeps the JSON reply format for list helpers when a direction is given", () => {
+    const shots = helperPrompt({
+      helper: "suggest-shots",
+      containerName: "Lobby",
+      notes: "night, rain",
+      instructions: "only handheld shots",
+    })
+    const analysis = helperPrompt({
+      helper: "analyze-video",
+      assetPath: "/p/assets/b.mp4",
+      instructions: "focus on the lighting",
+    })
+
+    expect(shots).toContain("JSON array")
+    expect(shots).toContain("only handheld shots")
+    expect(shots.indexOf("only handheld shots")).toBeLessThan(
+      shots.indexOf("Notes: night, rain")
+    )
+    expect(analysis).toContain("JSON object")
+    expect(analysis.indexOf("focus on the lighting")).toBeLessThan(
+      analysis.indexOf("File: /p/assets/b.mp4")
+    )
+  })
+
+  it("adds nothing for an empty or blank direction", () => {
+    const base = helperPrompt({ helper: "improve-prompt", prompt: "a cat" })
+    expect(
+      helperPrompt({
+        helper: "improve-prompt",
+        prompt: "a cat",
+        instructions: "   ",
+      })
+    ).toBe(base)
+    expect(
+      helperPrompt({
+        helper: "improve-prompt",
+        prompt: "a cat",
+        instructions: null,
+      })
+    ).toBe(base)
+    expect(directionLines("")).toEqual([])
   })
 })
 

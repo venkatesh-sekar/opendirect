@@ -6,6 +6,8 @@ import {
   aiResultSchema,
   aiRunRequestSchema,
   aiToolIdSchema,
+  aiToolModelsDefaults,
+  aiToolModelsSchema,
   aiToolsSchema,
 } from "./ai"
 import {
@@ -90,6 +92,11 @@ export const settingsSchema = z.object({
    */
   preferredAiTool: aiToolIdSchema.nullable(),
   /**
+   * The model each local CLI is started with (`--model`). Null for a tool
+   * means its own default — no flag is passed. A helper run can override it.
+   */
+  aiModels: aiToolModelsSchema,
+  /**
    * Which provider runs a family model first. A configured provider missing
    * from the list is tried after the listed ones, never skipped.
    */
@@ -118,6 +125,7 @@ export const settingsDefaults: Settings = {
   maxConcurrentJobs: 2,
   pollIntervalMs: 3000,
   preferredAiTool: null,
+  aiModels: aiToolModelsDefaults,
   providerOrder: ["replicate", "openrouter"],
   remoteRegistry: true,
   registryUrl: null,
