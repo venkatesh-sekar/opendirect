@@ -17,12 +17,13 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { PlayIcon, PlusSignIcon } from "@hugeicons/core-free-icons"
-import type { ContainerNodeDto } from "@opendirect/contract"
+import type { AssetDto, ContainerNodeDto } from "@opendirect/contract"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@workspace/ui/components/dialog"
@@ -46,6 +47,7 @@ import {
   useAssetCardMenu,
 } from "./asset-card-menu"
 import { EmptySection } from "./container-card"
+import { CropImageDialog } from "./crop-image-dialog"
 
 /** How many assets the grid asks for at a time, and the most it will hold. */
 const PAGE = 120
@@ -102,6 +104,7 @@ export function AssetLibrary({
   const [limit, setLimit] = useState(PAGE)
   const [filter, setFilter] = useState<AssetFilter>("all")
   const [preview, setPreview] = useState<string | null>(null)
+  const [cropping, setCropping] = useState<AssetDto | null>(null)
   const assets = useAssets(node.id, { limit })
   const importer = useImportInto(node)
   const cardMenu = useAssetCardMenu(node)
@@ -236,6 +239,17 @@ export function AssetLibrary({
                   <span className="mr-auto truncate text-xs" title={label}>
                     {label}
                   </span>
+                  {asset.kind === "image" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="ml-auto h-6 shrink-0 px-2 text-[11px] text-muted-foreground"
+                      aria-label={`Crop ${label}`}
+                      onClick={() => setCropping(asset)}
+                    >
+                      Crop
+                    </Button>
+                  ) : null}
                   {onToggleReference && asset.kind === "image" ? (
                     <Button
                       size="sm"
@@ -292,10 +306,30 @@ export function AssetLibrary({
               className="max-h-[65svh] w-full object-contain"
             />
           ) : null}
+          {image?.kind === "image" ? (
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPreview(null)
+                  setCropping(image)
+                }}
+              >
+                Crop
+              </Button>
+            </DialogFooter>
+          ) : null}
         </DialogContent>
       </Dialog>
 
       {cardMenu.dialogs}
+
+      <CropImageDialog
+        asset={cropping}
+        containerId={node.id}
+        containerName={node.name}
+        onClose={() => setCropping(null)}
+      />
     </div>
   )
 }

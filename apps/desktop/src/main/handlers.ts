@@ -47,6 +47,7 @@ import {
   removeFromContainer,
   toAssetDto,
 } from "./repo/assets"
+import { cropAsset } from "./repo/crop"
 import {
   createContainer,
   createContainerFromAsset,
@@ -266,6 +267,11 @@ export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
   handle("assets:import", ({ paths, containerId, label }) => {
     const { db, project } = requireProject()
     return importFiles({ db, project }, { paths, containerId, label })
+  })
+
+  handle("assets:crop", ({ assetId, containerId, rect }) => {
+    const { db, project } = requireProject()
+    return cropAsset({ db, project }, { assetId, containerId, rect })
   })
 
   handle("assets:get", ({ id }) => {

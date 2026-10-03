@@ -30,6 +30,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hotkeys-hook": "^5.3.3",
+    "react-image-crop": "11.1.2",
     "sonner": "^2.0.8",
     "yet-another-react-lightbox": "3.32.2",
     "zod": "4.6.5"

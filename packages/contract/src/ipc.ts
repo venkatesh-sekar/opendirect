@@ -551,6 +551,24 @@ export const ipcContract = {
     }),
     output: importResultSchema,
   },
+  /**
+   * Crops an image into a **new** asset filed under `containerId`; the source
+   * is never modified. `rect` is in fractions (0–1) of the image as displayed,
+   * i.e. after EXIF orientation. Answers with the new (or deduplicated) asset.
+   */
+  "assets:crop": {
+    input: z.object({
+      assetId: z.string().min(1),
+      containerId: z.string().nullable().optional(),
+      rect: z.object({
+        x: z.number().min(0).max(1),
+        y: z.number().min(0).max(1),
+        width: z.number().gt(0).max(1),
+        height: z.number().gt(0).max(1),
+      }),
+    }),
+    output: assetSchema,
+  },
   "assets:get": {
     input: z.object({ id: z.string() }),
     output: assetSchema,
