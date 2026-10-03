@@ -153,3 +153,24 @@ describe("save as character", () => {
     expect(invoke).not.toHaveBeenCalled()
   })
 })
+
+describe("the full-size viewer", () => {
+  it("opens on a double-click, and closes on Escape", async () => {
+    const user = userEvent.setup()
+    mount()
+    expect(screen.queryByRole("dialog")).toBeNull()
+
+    await user.dblClick(screen.getByRole("img", { name: /venkz-sheet-v3/ }))
+
+    const viewer = await screen.findByRole("dialog", {
+      name: "Full-size viewer",
+    })
+    expect(viewer).toHaveTextContent("venkz-sheet-v3.png")
+    expect(viewer).toHaveTextContent("1024 × 1024")
+
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    // ⛔ Looking at a picture asks the main process for nothing.
+    expect(invoke).not.toHaveBeenCalled()
+  })
+})

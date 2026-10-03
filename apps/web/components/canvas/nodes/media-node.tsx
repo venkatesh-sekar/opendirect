@@ -16,7 +16,7 @@
  * this is the moment between the delete and the surface being re-read — and
  * saying so is better than a blank rectangle.
  */
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { SearchAreaIcon } from "@hugeicons/core-free-icons"
 import type { CanvasNodeDto } from "@opendirect/contract"
@@ -29,6 +29,7 @@ import {
 } from "@workspace/ui/components/popover"
 
 import { AssetPreview } from "@/components/board/asset-preview"
+import { MediaViewer } from "@/components/media/media-viewer"
 
 import { AssetTile, assetLabel } from "./asset-tile"
 import { NodeFrame } from "./node-frame"
@@ -36,6 +37,8 @@ import type { CanvasFlowNode } from "./types"
 
 export function MediaNodeBody({ node }: { node: CanvasNodeDto }) {
   const asset = node.asset
+  const [viewing, setViewing] = useState(false)
+  const assets = useMemo(() => (asset ? [asset] : []), [asset])
 
   if (!asset) {
     return (
@@ -50,7 +53,25 @@ export function MediaNodeBody({ node }: { node: CanvasNodeDto }) {
     handle, with the asset linked and with that asset as the reference image.
     ⛔ It links what is already in the project; it generates nothing.
   */
-  return <AssetTile asset={asset} saveAs className="h-full w-full" />
+  /*
+    Double-click opens the picture at full size. A single click is still
+    React Flow's — it selects, and a drag still moves the node.
+  */
+  return (
+    <div
+      className="h-full w-full"
+      title="Double-click to view full size"
+      onDoubleClick={() => setViewing(true)}
+    >
+      <AssetTile asset={asset} saveAs className="h-full w-full" />
+      <MediaViewer
+        assets={assets}
+        index={0}
+        open={viewing}
+        onClose={() => setViewing(false)}
+      />
+    </div>
+  )
 }
 
 /** The header button that opens the existing preview panel over the node. */

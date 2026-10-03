@@ -24,6 +24,7 @@ import {
   DefaultCanvasPick,
   DetailsAction,
   GenerateNodeBody,
+  ViewAction,
 } from "./generate-node"
 
 /**
@@ -569,6 +570,124 @@ describe("GenerateNodeBody", () => {
       )
 
       expect(surface.selectGeneration).toHaveBeenCalledWith("gen-0")
+    })
+  })
+
+  describe("the full-size viewer", () => {
+    function serveThree() {
+      invoke.mockImplementation((channel: IpcChannel) => {
+        if (channel === "generations:list") {
+          return Promise.resolve({
+            items: [generation({ status: "succeeded" })],
+            total: 1,
+            nextOffset: null,
+          })
+        }
+        if (channel === "assets:list") {
+          return Promise.resolve({
+            items: [
+              asset(),
+              asset({ id: "asset-2", createdAt: 2_001 }),
+              asset({ id: "asset-3", createdAt: 2_002 }),
+            ],
+            total: 3,
+            nextOffset: null,
+          })
+        }
+        if (channel === "jobs:list") return Promise.resolve([])
+        return Promise.resolve({ ok: true })
+      })
+    }
+
+    const picks = () =>
+      invoke.mock.calls.filter(([channel]) => channel === "canvas:node:pick")
+
+    it("opens on a double-click, and walking the outputs leaves the pick alone", async () => {
+      serveThree()
+      renderNode(node({ pickAssetId: "asset-2" }))
+
+      fireEvent.doubleClick(await screen.findByTestId("canvas-tile-asset-2"))
+
+      const viewer = await screen.findByRole("dialog", {
+        name: "Full-size viewer",
+      })
+      // The batch, in tile order, opened on the picture that was clicked —
+      // with the prompt it was made from and its size.
+      expect(viewer).toHaveTextContent("2 of 3")
+      expect(viewer).toHaveTextContent("a bellhop opens the lift")
+      expect(viewer).toHaveTextContent("1024 × 1024")
+
+      // ⛔ Looking is not choosing: the arrow keys walk the viewer, not the
+      // node's pick, so no downstream edge moves.
+      const container = viewer.querySelector<HTMLElement>(".yarl__container")!
+      fireEvent.keyDown(container, { key: "ArrowRight" })
+      await waitFor(() => expect(viewer).toHaveTextContent("3 of 3"))
+      expect(picks()).toHaveLength(0)
+      expect(
+        invoke.mock.calls.filter(
+          ([channel]) => channel === "generations:submitBatch"
+        )
+      ).toHaveLength(0)
+    })
+
+    it("opens on a filmstrip thumbnail's double-click at that output", async () => {
+      serveThree()
+      renderNode(node({ pickAssetId: "asset-2" }))
+
+      fireEvent.doubleClick(await screen.findByTestId("canvas-thumb-asset-3"))
+
+      expect(
+        await screen.findByRole("dialog", { name: "Full-size viewer" })
+      ).toHaveTextContent("3 of 3")
+    })
+
+    it("is offered on the output's right-click menu", async () => {
+      const user = userEvent.setup()
+      serveThree()
+      renderNode(node({ pickAssetId: "asset-1" }), "container-1")
+
+      fireEvent.contextMenu(await screen.findByTestId("canvas-tile-asset-1"))
+      await user.click(
+        await screen.findByRole("menuitem", { name: /view full size/i })
+      )
+
+      expect(
+        await screen.findByRole("dialog", { name: "Full-size viewer" })
+      ).toHaveTextContent("1 of 3")
+    })
+
+    it("opens on the pick when the header asks, and says when it closes", async () => {
+      serveThree()
+      const onViewingChange = vi.fn()
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      render(
+        <QueryClientProvider client={client}>
+          <GenerateNodeBody
+            node={node({ pickAssetId: "asset-3" })}
+            viewing
+            onViewingChange={onViewingChange}
+          />
+        </QueryClientProvider>
+      )
+
+      const viewer = await screen.findByRole("dialog", {
+        name: "Full-size viewer",
+      })
+      await waitFor(() => expect(viewer).toHaveTextContent("3 of 3"))
+
+      fireEvent.click(screen.getByRole("button", { name: "Close" }))
+      await waitFor(() => expect(onViewingChange).toHaveBeenCalledWith(false))
+    })
+
+    it("has a header button that asks for it", async () => {
+      const onView = vi.fn()
+      render(<ViewAction onView={onView} />)
+      await userEvent.click(
+        screen.getByRole("button", { name: "View full size" })
+      )
+      expect(onView).toHaveBeenCalledTimes(1)
     })
   })
 
