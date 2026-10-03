@@ -10,6 +10,9 @@ import "@testing-library/jest-dom/vitest"
  * `generations:submitBatch` is handed, and about the fact that it is handed it
  * exactly once per click. msw's `onUnhandledRequest: "error"` guards the rest.
  */
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type {
   AssetDto,
@@ -32,6 +35,7 @@ import {
   within,
 } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { http, HttpResponse, type JsonBodyType } from "msw"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -39,6 +43,9 @@ import {
   type FamilyDescriptorOptions,
 } from "@/lib/canvas/test-family"
 
+import { server } from "../../../../test/msw/server"
+import { estimateForDescriptor } from "../../../desktop/src/main/providers/cost"
+import { createOpenRouterProvider } from "../../../desktop/src/main/providers/openrouter"
 import { clearPromptDrafts, PromptBar } from "./prompt-bar"
 
 const invoke = vi.hoisted(() => vi.fn())
@@ -2075,6 +2082,92 @@ describe("saved prompts and unknown pricing", () => {
     expect(screen.getByRole("button", { name: "Run" })).toBeEnabled()
     await user.click(screen.getByRole("button", { name: "One more result" }))
     expect(screen.getByRole("button", { name: "Run" })).toBeDisabled()
+    expect(submissions()).toHaveLength(0)
+  })
+})
+
+/**
+ * Pricing, end to end, for OpenRouter's Wan 3.0: the descriptor is the one the
+ * real OpenRouter adapter builds from the recorded catalog
+ * (`test/fixtures/openrouter/videos-models.json`, served by msw — read-only
+ * `GET`s, never the live API), and `cost:estimate` is answered by main's own
+ * `estimateForDescriptor`, so the duration the popover writes is the duration
+ * the estimate reads. Nothing here submits a run.
+ */
+describe("Wan 3.0 pricing, from the catalog to the badge", () => {
+  function catalog(name: string): JsonBodyType {
+    return JSON.parse(
+      readFileSync(
+        resolve(process.cwd(), "test/fixtures/openrouter", `${name}.json`),
+        "utf8"
+      )
+    ) as JsonBodyType
+  }
+
+  async function wanFromCatalog(): Promise<ModelDescriptor> {
+    server.use(
+      http.get("https://openrouter.ai/api/v1/videos/models", () =>
+        HttpResponse.json(catalog("videos-models"))
+      ),
+      http.get("https://openrouter.ai/api/v1/images/models", () =>
+        HttpResponse.json(catalog("images-models"))
+      ),
+      // No per-endpoint document is recorded for Wan 3.0.
+      http.get(
+        /^https:\/\/openrouter\.ai\/api\/v1\/models\/alibaba\/wan-3\.0[^/]*\/endpoints$/,
+        () => HttpResponse.json({ error: "Not found" }, { status: 404 })
+      )
+    )
+    const provider = createOpenRouterProvider({
+      getKey: () => "sk-or-v1-test-key",
+    })
+    return provider.getModel("alibaba/wan-3.0")
+  }
+
+  beforeEach(async () => {
+    const wan = await wanFromCatalog()
+    expect(wan.key).toBe("openrouter:alibaba/wan-3.0")
+    served = wan
+    const stubbed = invoke.getMockImplementation()!
+    invoke.mockImplementation(async (channel: IpcChannel, payload: unknown) =>
+      channel === "cost:estimate"
+        ? estimateForDescriptor(
+            wan,
+            (payload as { params: Record<string, unknown> }).params
+          )
+        : stubbed(channel, payload)
+    )
+  })
+
+  it("shows the rate before a duration is picked, then ≈$2.00 for 10 s at 1080p", async () => {
+    const user = userEvent.setup()
+    renderBar(BARE)
+
+    // No duration yet: the badge says what the model is billed at.
+    await waitFor(() =>
+      expect(screen.getByTestId("cost-badge")).toHaveTextContent("$0.20/s")
+    )
+    // ⛔ Its rate is known, so it never reads as "pricing unavailable".
+    expect(
+      screen.queryByRole("checkbox", { name: /pricing is unavailable/i })
+    ).toBeNull()
+
+    await user.click(await screen.findByTestId("settings-chip"))
+    const resolution = (await screen.findAllByTestId("icon-grid-row")).find(
+      (row) => row.dataset.kind === "resolution"
+    )!
+    await user.click(within(resolution).getByRole("radio", { name: /1080p/i }))
+    const row = await screen.findByTestId("duration-row")
+    await user.click(within(row).getByRole("combobox", { name: "Duration" }))
+    await user.click(await screen.findByRole("option", { name: "10s" }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId("cost-badge")).toHaveTextContent("~$2.00")
+    )
+    expect(screen.queryByTestId("unknown-cost-notice")).toBeNull()
+    expect(
+      screen.queryByRole("checkbox", { name: /pricing is unavailable/i })
+    ).toBeNull()
     expect(submissions()).toHaveLength(0)
   })
 })
