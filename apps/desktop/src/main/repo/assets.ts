@@ -11,6 +11,8 @@
  *   existing asset rather than storing the bytes twice.
  * - **A link is not ownership.** `container_assets` is many-to-many, so
  *   removing an asset from a container never touches the file or the row.
+ *   Only `deleteAsset` does that, and it is the one way an asset leaves the
+ *   project.
  *
  * Electron-free: every function takes the Drizzle handle plus the project's
  * path, which is what makes this testable against a temp folder.
@@ -25,12 +27,29 @@ import type {
   AssetPage,
   ImportResult,
 } from "@opendirect/contract"
-import { and, asc, count, desc, eq } from "drizzle-orm"
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  ne,
+  type SQL,
+} from "drizzle-orm"
 
 import type { ProjectDatabase } from "../db/client"
-import { assets, containerAssets, containers, type Asset } from "../db/schema"
+import {
+  assets,
+  containerAssets,
+  containers,
+  generationInputs,
+  generations,
+  type Asset,
+} from "../db/schema"
 import { assetKindFor, contentTypeFor, mediaUrl } from "../media"
-import { assetRelPath, type ProjectRef } from "../project"
+import { assetRelPath, resolveAssetPath, type ProjectRef } from "../project"
 import { hashFile } from "./hash"
 import { createPreview, NO_PREVIEW, type Thumbnailer } from "./thumbnails"
 
@@ -111,6 +130,30 @@ export function addToContainer(db: ProjectDatabase, input: LinkInput): void {
     .run()
 }
 
+/** The link, and the shot pick that rode on it. The caller owns the transaction. */
+function unlink(
+  db: ProjectDatabase,
+  input: Pick<LinkInput, "containerId" | "assetId">
+): void {
+  db.delete(containerAssets)
+    .where(
+      and(
+        eq(containerAssets.containerId, input.containerId),
+        eq(containerAssets.assetId, input.assetId)
+      )
+    )
+    .run()
+  db.update(containers)
+    .set({ pickedAssetId: null })
+    .where(
+      and(
+        eq(containers.id, input.containerId),
+        eq(containers.pickedAssetId, input.assetId)
+      )
+    )
+    .run()
+}
+
 /**
  * Unlinks only — the asset and its file stay in the project. A shot whose pick
  * this was is left with no pick, since it can only wear its own versions.
@@ -119,25 +162,164 @@ export function removeFromContainer(
   db: ProjectDatabase,
   input: Pick<LinkInput, "containerId" | "assetId">
 ): void {
+  db.transaction((tx) => unlink(tx, input))
+}
+
+/**
+ * A reference list with one asset taken out. Emptying it returns `null` —
+ * "automatic", the state a container starts in — never `[]`, which would mean
+ * "send nothing". The same rule as `toggleReference` in the renderer.
+ */
+export function withoutReference(
+  references: readonly string[] | null,
+  assetId: string
+): string[] | null {
+  if (references === null) return null
+  const next = references.filter((id) => id !== assetId)
+  return next.length > 0 ? next : null
+}
+
+/**
+ * Takes `assetId` out of the explicit references of the containers `where`
+ * matches. `referenceAssetIds` is JSON, so no foreign key can do it for us.
+ */
+function dropReferences(
+  db: ProjectDatabase,
+  assetId: string,
+  where: SQL
+): void {
+  const rows = db
+    .select({ id: containers.id, refs: containers.referenceAssetIds })
+    .from(containers)
+    .where(and(where, isNotNull(containers.referenceAssetIds)))
+    .all()
+  for (const row of rows) {
+    if (!row.refs?.includes(assetId)) continue
+    db.update(containers)
+      .set({ referenceAssetIds: withoutReference(row.refs, assetId) })
+      .where(eq(containers.id, row.id))
+      .run()
+  }
+}
+
+export interface MoveInput {
+  assetId: string
+  fromContainerId: string
+  toContainerId: string
+}
+
+/**
+ * Re-files an asset: linked into `toContainerId` and unlinked from
+ * `fromContainerId` in one transaction, so a failure can never leave it on no
+ * board at all (which is what a renderer-side add-then-remove risked).
+ *
+ * Only the *filing* changes. The asset row, its file, its generation and every
+ * canvas node that shows it are untouched, so references to it elsewhere keep
+ * working. What the source container said *about* the asset goes with the
+ * link: it stops being one of the source's references (a reference has to be
+ * in the library — `setContainerReferences`) and stops being a shot's pick.
+ * The target gets it as a plain library item, never as a reference it did not
+ * ask for.
+ */
+export function moveToContainer(db: ProjectDatabase, input: MoveInput): void {
+  if (input.fromContainerId === input.toContainerId) return
   db.transaction((tx) => {
-    tx.delete(containerAssets)
-      .where(
-        and(
-          eq(containerAssets.containerId, input.containerId),
-          eq(containerAssets.assetId, input.assetId)
-        )
-      )
-      .run()
-    tx.update(containers)
-      .set({ pickedAssetId: null })
-      .where(
-        and(
-          eq(containers.id, input.containerId),
-          eq(containers.pickedAssetId, input.assetId)
-        )
-      )
-      .run()
+    requireContainer(tx, input.fromContainerId)
+    addToContainer(tx, {
+      containerId: input.toContainerId,
+      assetId: input.assetId,
+    })
+    unlink(tx, { containerId: input.fromContainerId, assetId: input.assetId })
+    dropReferences(tx, input.assetId, eq(containers.id, input.fromContainerId))
   })
+}
+
+/** A run in one of these may still read its inputs from disk. */
+const UNFINISHED_STATUSES = ["queued", "submitted", "running"]
+
+/**
+ * Removes an asset from the project: the row, then its file and its preview.
+ *
+ * The schema decides what happens to everything that pointed at it, by the
+ * rule the rest of the app follows — a placement goes, a record stays:
+ *
+ * - its container links cascade away, and a shot it was the pick of is
+ *   un-picked (`set null`);
+ * - a canvas media node showing it cascades away (a media node with no asset
+ *   is nothing); a generate node whose pick it was stays, with no pick;
+ * - the generation that made it stays — only this output is gone — and a run
+ *   it was fed into loses that input row (`generation_inputs` cascades), while
+ *   the run's request JSON keeps the verbatim record of what was sent.
+ *
+ * Explicit reference lists are JSON, so they are cleaned here, in the same
+ * transaction as the delete: a dangling id there would shift every "Ref n"
+ * after it.
+ *
+ * The files go after the commit, best effort: the row is what the app reads,
+ * and a stray file in the project folder is harmless where a row naming a
+ * missing file is not. A file another row still names is left alone.
+ */
+export async function deleteAsset(
+  ctx: AssetContext,
+  assetId: string
+): Promise<void> {
+  const { db, project } = ctx
+  const asset = requireAsset(db, assetId)
+
+  // ⛔ A run that has not reached the provider yet reads its inputs when it is
+  // submitted. Deleting one now would not fail that run — it would quietly
+  // send a paid request without the reference the user chose.
+  const pending = db
+    .select({ id: generations.id })
+    .from(generationInputs)
+    .innerJoin(generations, eq(generations.id, generationInputs.generationId))
+    .where(
+      and(
+        eq(generationInputs.assetId, assetId),
+        inArray(generations.status, UNFINISHED_STATUSES)
+      )
+    )
+    .get()
+  if (pending)
+    throw new Error(
+      "This asset is an input to a run that has not finished. Wait for it or cancel it, then delete."
+    )
+
+  db.transaction((tx) => {
+    dropReferences(tx, assetId, eq(containers.projectId, asset.projectId))
+    tx.delete(assets).where(eq(assets.id, assetId)).run()
+  })
+
+  const namedElsewhere = (
+    column: typeof assets.relPath | typeof assets.thumbnailRelPath,
+    relPath: string
+  ) =>
+    db
+      .select({ id: assets.id })
+      .from(assets)
+      .where(and(eq(column, relPath), ne(assets.id, assetId)))
+      .get() !== undefined
+
+  const files: string[] = []
+  if (asset.relPath && !namedElsewhere(assets.relPath, asset.relPath))
+    files.push(asset.relPath)
+  if (
+    asset.thumbnailRelPath &&
+    !namedElsewhere(assets.thumbnailRelPath, asset.thumbnailRelPath)
+  )
+    files.push(asset.thumbnailRelPath)
+
+  await Promise.all(
+    files.map(async (relPath) => {
+      try {
+        // `resolveAssetPath` refuses anything outside the project folder, so
+        // a tampered row can never aim this at the user's own files.
+        await rm(resolveAssetPath(project, relPath), { force: true })
+      } catch {
+        // Best effort — see above.
+      }
+    })
+  )
 }
 
 export interface ListByContainerInput {

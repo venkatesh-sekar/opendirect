@@ -2,17 +2,29 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { eq } from "drizzle-orm"
 import sharp from "sharp"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
+import { canvasNodes, generationInputs, generations } from "../db/schema"
 import { createProject, openProject, type OpenProject } from "../project"
 import {
   addToContainer,
+  deleteAsset,
+  getAsset,
   importFiles,
   listByContainer,
+  moveToContainer,
   removeFromContainer,
+  withoutReference,
 } from "./assets"
-import { createContainer } from "./containers"
+import { createNode, getCanvas } from "./canvas"
+import {
+  createContainer,
+  getContainer,
+  setContainerPick,
+  setContainerReferences,
+} from "./containers"
 
 let root: string
 let opened: OpenProject
@@ -259,5 +271,266 @@ describe("listByContainer", () => {
     })
     expect(last.items).toHaveLength(1)
     expect(last.nextOffset).toBeNull()
+  })
+})
+
+describe("withoutReference", () => {
+  it("takes one id out and falls back to automatic when none are left", () => {
+    expect(withoutReference(["a", "b"], "a")).toEqual(["b"])
+    expect(withoutReference(["a"], "a")).toBeNull()
+    expect(withoutReference(["a"], "z")).toEqual(["a"])
+    expect(withoutReference(null, "a")).toBeNull()
+  })
+})
+
+/** A character with two images in its library, both chosen as references. */
+async function characterWithReferences() {
+  const db = opened.handle.db
+  const character = createContainer(db, {
+    projectId: opened.project.id,
+    kind: "character",
+    name: "Venkz",
+  }).id
+  const { assets } = await importFiles(
+    { db, project: opened.project },
+    {
+      paths: [
+        await writePng(join(root, "sheet.png"), 64),
+        await writePng(join(root, "face.png"), 48),
+      ],
+      containerId: character,
+    }
+  )
+  const [sheet, face] = assets.map((asset) => asset.id) as [string, string]
+  setContainerReferences(db, character, [sheet, face])
+  return { db, character, sheet, face, assets }
+}
+
+function seedRun(id: string, status: string, inputAssetId: string) {
+  const db = opened.handle.db
+  db.insert(generations)
+    .values({
+      id,
+      projectId: opened.project.id,
+      provider: "replicate",
+      modelSlug: "google/nano-banana-pro",
+      kind: "image",
+      paramsJson: "{}",
+      status,
+      createdAt: 1,
+    })
+    .run()
+  db.insert(generationInputs)
+    .values({
+      id: `${id}-input`,
+      generationId: id,
+      assetId: inputAssetId,
+      slotField: "image_input",
+    })
+    .run()
+}
+
+describe("moveToContainer", () => {
+  it("files the asset in the target and takes it out of the source", async () => {
+    const { db, character, sheet, face } = await characterWithReferences()
+
+    moveToContainer(db, {
+      assetId: sheet,
+      fromContainerId: character,
+      toContainerId: containerId,
+    })
+
+    expect(
+      listByContainer(db, { containerId: character }).items.map((a) => a.id)
+    ).toEqual([face])
+    expect(listByContainer(db, { containerId }).items.map((a) => a.id)).toEqual(
+      [sheet]
+    )
+    // No longer in the character's library, so no longer one of its
+    // references; the rest keep their order.
+    expect(getContainer(db, character)!.referenceAssetIds).toEqual([face])
+    // The target gets a library item, not a reference it did not ask for.
+    expect(getContainer(db, containerId)!.referenceAssetIds).toBeNull()
+    expect(getAsset(db, sheet)).toBeDefined()
+  })
+
+  it("keeps canvas nodes that show the asset working", async () => {
+    const { db, character, sheet } = await characterWithReferences()
+    const node = createNode(db, {
+      projectId: opened.project.id,
+      type: "media",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      assetId: sheet,
+    })
+
+    moveToContainer(db, {
+      assetId: sheet,
+      fromContainerId: character,
+      toContainerId: containerId,
+    })
+
+    const kept = getCanvas(db, opened.project.id).nodes.find(
+      (n) => n.id === node.id
+    )
+    expect(kept?.assetId).toBe(sheet)
+  })
+
+  it("un-picks a shot it leaves", async () => {
+    const db = opened.handle.db
+    const shot = createContainer(db, {
+      projectId: opened.project.id,
+      kind: "shot",
+      name: "Shot 1",
+      parentId: containerId,
+    }).id
+    const { assets } = await importFiles(
+      { db, project: opened.project },
+      { paths: [await writePng(join(root, "take.png"))], containerId: shot }
+    )
+    setContainerPick(db, shot, assets[0]!.id)
+
+    moveToContainer(db, {
+      assetId: assets[0]!.id,
+      fromContainerId: shot,
+      toContainerId: containerId,
+    })
+
+    expect(getContainer(db, shot)!.pickedAssetId).toBeNull()
+  })
+
+  it("is idempotent when the asset is already in the target", async () => {
+    const { db, character, sheet } = await characterWithReferences()
+    addToContainer(db, { containerId, assetId: sheet })
+
+    moveToContainer(db, {
+      assetId: sheet,
+      fromContainerId: character,
+      toContainerId: containerId,
+    })
+
+    expect(listByContainer(db, { containerId }).total).toBe(1)
+    expect(listByContainer(db, { containerId: character }).total).toBe(1)
+  })
+
+  it("rolls back, leaving the asset where it was, when the target is unknown", async () => {
+    const { db, character, sheet, face } = await characterWithReferences()
+
+    expect(() =>
+      moveToContainer(db, {
+        assetId: sheet,
+        fromContainerId: character,
+        toContainerId: "nope",
+      })
+    ).toThrow(/not found/i)
+
+    expect(listByContainer(db, { containerId: character }).total).toBe(2)
+    expect(getContainer(db, character)!.referenceAssetIds).toEqual([
+      sheet,
+      face,
+    ])
+  })
+})
+
+describe("deleteAsset", () => {
+  const exists = (relPath: string) =>
+    readFile(join(opened.project.path, relPath)).then(
+      () => true,
+      () => false
+    )
+
+  it("removes the row, every link, its references and its files", async () => {
+    const { db, character, sheet, face, assets } =
+      await characterWithReferences()
+    addToContainer(db, { containerId, assetId: sheet })
+    const stored = assets.find((asset) => asset.id === sheet)!
+    const kept = assets.find((asset) => asset.id === face)!
+
+    await deleteAsset({ db, project: opened.project }, sheet)
+
+    expect(getAsset(db, sheet)).toBeUndefined()
+    // Gone from every container it was filed under, not just one.
+    expect(listByContainer(db, { containerId }).total).toBe(0)
+    expect(
+      listByContainer(db, { containerId: character }).items.map((a) => a.id)
+    ).toEqual([face])
+    // No dangling id left to shift "Ref 2" into "Ref 1"'s place.
+    expect(getContainer(db, character)!.referenceAssetIds).toEqual([face])
+
+    expect(await exists(stored.relPath!)).toBe(false)
+    expect(await exists(stored.thumbnailRelPath!)).toBe(false)
+    expect(await exists(kept.relPath!)).toBe(true)
+  })
+
+  it("returns a character to automatic references when its last one goes", async () => {
+    const { db, character, sheet, face } = await characterWithReferences()
+    setContainerReferences(db, character, [sheet])
+
+    await deleteAsset({ db, project: opened.project }, sheet)
+
+    expect(getContainer(db, character)!.referenceAssetIds).toBeNull()
+    expect(getAsset(db, face)).toBeDefined()
+  })
+
+  it("takes a media node with it and un-picks a generate node", async () => {
+    const { db, sheet } = await characterWithReferences()
+    const media = createNode(db, {
+      projectId: opened.project.id,
+      type: "media",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      assetId: sheet,
+    })
+    const gen = createNode(db, {
+      projectId: opened.project.id,
+      type: "image_gen",
+      x: 200,
+      y: 0,
+      width: 100,
+      height: 100,
+      pickAssetId: sheet,
+    })
+
+    await deleteAsset({ db, project: opened.project }, sheet)
+
+    const nodes = db.select().from(canvasNodes).all()
+    expect(nodes.find((n) => n.id === media.id)).toBeUndefined()
+    expect(nodes.find((n) => n.id === gen.id)?.pickAssetId).toBeNull()
+  })
+
+  it("keeps a finished run it was fed into, minus the input row", async () => {
+    const { db, sheet } = await characterWithReferences()
+    seedRun("g1", "succeeded", sheet)
+
+    await deleteAsset({ db, project: opened.project }, sheet)
+
+    expect(
+      db.select().from(generations).where(eq(generations.id, "g1")).get()
+    ).toBeDefined()
+    expect(db.select().from(generationInputs).all()).toEqual([])
+  })
+
+  it("refuses while a run that takes it as an input has not finished", async () => {
+    const { db, sheet, assets } = await characterWithReferences()
+    seedRun("g2", "queued", sheet)
+
+    await expect(
+      deleteAsset({ db, project: opened.project }, sheet)
+    ).rejects.toThrow(/not finished/)
+
+    expect(getAsset(db, sheet)).toBeDefined()
+    expect(
+      await exists(assets.find((asset) => asset.id === sheet)!.relPath!)
+    ).toBe(true)
+  })
+
+  it("rejects an unknown asset", async () => {
+    await expect(
+      deleteAsset({ db: opened.handle.db, project: opened.project }, "nope")
+    ).rejects.toThrow(/not found/i)
   })
 })

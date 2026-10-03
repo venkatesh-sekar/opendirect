@@ -141,6 +141,62 @@ export function useRemoveAssetFromContainer(): UseMutationResult<
   })
 }
 
+export interface MoveVariables {
+  assetId: string
+  fromContainerId: string
+  toContainerId: string
+}
+
+/**
+ * Re-files an asset from one board to another, atomically in main. Both
+ * boards refetch; the tree does too, because the source may lose a reference
+ * or a shot's pick with the link.
+ */
+export function useMoveAsset(): UseMutationResult<
+  { ok: true },
+  Error,
+  MoveVariables
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: MoveVariables) => invoke("assets:move", variables),
+    onSuccess: (_result, variables) => {
+      for (const containerId of [
+        variables.fromContainerId,
+        variables.toContainerId,
+      ])
+        void client.invalidateQueries({ queryKey: ["assets", containerId] })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+      // `containers.all` covers the tree (references, picks) and the cards.
+      void client.invalidateQueries({ queryKey: queryKeys.containers.all })
+    },
+  })
+}
+
+/**
+ * Deletes an asset from the project, file and all. It can have been on any
+ * board, any canvas node and any run's outputs, so every one of those is
+ * refetched rather than guessed at.
+ */
+export function useDeleteAsset(): UseMutationResult<
+  { ok: true },
+  Error,
+  string
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => invoke("assets:delete", { id }),
+    onSuccess: (_result, id) => {
+      client.removeQueries({ queryKey: queryKeys.assets.detail(id) })
+      void client.invalidateQueries({ queryKey: queryKeys.assets.all })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+      void client.invalidateQueries({ queryKey: queryKeys.containers.all })
+      void client.invalidateQueries({ queryKey: queryKeys.canvas.all })
+      void client.invalidateQueries({ queryKey: queryKeys.generations.all })
+    },
+  })
+}
+
 /**
  * Hands a file to the operating system — Open, and Reveal in folder.
  *

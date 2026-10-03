@@ -66,6 +66,8 @@ describe("project channels", () => {
       "assets:get",
       "assets:addToContainer",
       "assets:removeFromContainer",
+      "assets:move",
+      "assets:delete",
       "generations:list",
       "generations:get",
       "generations:lineage",
@@ -83,6 +85,24 @@ describe("project channels", () => {
     expect(input.safeParse({ assetId: "a1" }).success).toBe(true)
     expect(input.safeParse({ path: "/etc/passwd" }).success).toBe(false)
     expect(input.safeParse({ assetId: "" }).success).toBe(false)
+  })
+
+  it("moves an asset between two named containers and deletes one by id", () => {
+    const move = ipcContract["assets:move"].input
+    expect(
+      move.safeParse({
+        assetId: "a1",
+        fromContainerId: "c1",
+        toContainerId: "c2",
+      }).success
+    ).toBe(true)
+    // A move with no source would be an add, which has its own channel.
+    expect(move.safeParse({ assetId: "a1", toContainerId: "c2" }).success).toBe(
+      false
+    )
+    const remove = ipcContract["assets:delete"].input
+    expect(remove.safeParse({ id: "a1" }).success).toBe(true)
+    expect(remove.safeParse({ relPath: "assets/a1.png" }).success).toBe(false)
   })
 
   it("rejects a container kind the schema does not know", () => {

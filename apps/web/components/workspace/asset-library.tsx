@@ -9,6 +9,9 @@
  * number. That is what the old library dialog did behind a Save button; on a
  * page, a click is the save, because there is no dialog to close and lose the
  * change with. A folder has no references and shows none of that.
+ *
+ * Every card also carries a menu — the ⋯ beside its name, or a right-click —
+ * to move it to another container or delete it (`asset-card-menu.tsx`).
  */
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -37,6 +40,11 @@ import { formatDuration } from "@/lib/workspace/home"
 
 import { AssetTile, assetLabel } from "@/components/canvas/nodes/asset-tile"
 
+import {
+  AssetCardContextMenu,
+  AssetCardMenuButton,
+  useAssetCardMenu,
+} from "./asset-card-menu"
 import { EmptySection } from "./container-card"
 
 /** How many assets the grid asks for at a time, and the most it will hold. */
@@ -96,6 +104,7 @@ export function AssetLibrary({
   const [preview, setPreview] = useState<string | null>(null)
   const assets = useAssets(node.id, { limit })
   const importer = useImportInto(node)
+  const cardMenu = useAssetCardMenu(node)
   const references = onToggleReference ? node.referenceAssetIds : null
   const numbers = useMemo(() => referenceNumbers(references), [references])
 
@@ -191,10 +200,12 @@ export function AssetLibrary({
           {shown.map((asset) => {
             const number = numbers.get(asset.id)
             const label = assetLabel(asset)
+            const actions = cardMenu.actionsFor(asset)
             return (
-              <li
+              <AssetCardContextMenu
                 key={asset.id}
-                data-asset-id={asset.id}
+                actions={actions}
+                render={<li data-asset-id={asset.id} />}
                 className="group flex flex-col gap-2"
               >
                 <button
@@ -221,8 +232,8 @@ export function AssetLibrary({
                     </span>
                   ) : null}
                 </button>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-xs" title={label}>
+                <div className="flex items-center gap-1">
+                  <span className="mr-auto truncate text-xs" title={label}>
                     {label}
                   </span>
                   {onToggleReference && asset.kind === "image" ? (
@@ -241,8 +252,9 @@ export function AssetLibrary({
                       {number !== undefined ? "Remove ref" : "Use as ref"}
                     </Button>
                   ) : null}
+                  <AssetCardMenuButton actions={actions} label={label} />
                 </div>
-              </li>
+              </AssetCardContextMenu>
             )
           })}
         </ul>
@@ -282,6 +294,8 @@ export function AssetLibrary({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {cardMenu.dialogs}
     </div>
   )
 }

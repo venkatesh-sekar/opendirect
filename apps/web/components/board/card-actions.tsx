@@ -28,6 +28,7 @@ import {
 } from "@hugeicons/core-free-icons"
 import type { AssetDto, ContainerNodeDto } from "@opendirect/contract"
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -238,37 +239,40 @@ export function AddToContainerDialog({
       title="Add to a container"
       description="Links this asset to another board. It stays where it is too."
     >
-      <CommandInput placeholder="Search containers…" />
-      <CommandList>
-        <CommandEmpty>
-          {tree.isPending ? "Loading containers…" : "No container matches."}
-        </CommandEmpty>
-        <CommandGroup heading={added ? `Added to ${added}` : "Containers"}>
-          {containers.map((container) => (
-            <CommandItem
-              key={container.id}
-              value={`${container.name} ${container.kind}`}
-              onSelect={() => {
-                add.mutate(
-                  { containerId: container.id, assetId: asset.id },
-                  {
-                    onSuccess: () => {
-                      setAdded(container.name)
-                      onOpenChange(false)
-                    },
-                  }
-                )
-              }}
-            >
-              <HugeiconsIcon icon={Folder02Icon} className="size-4" />
-              <span className="truncate">{container.name}</span>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {container.kind}
-              </span>
-            </CommandItem>
-          ))}
-        </CommandGroup>
-      </CommandList>
+      {/* `CommandDialog` is only the dialog; cmdk's context is `Command`. */}
+      <Command>
+        <CommandInput placeholder="Search containers…" />
+        <CommandList>
+          <CommandEmpty>
+            {tree.isPending ? "Loading containers…" : "No container matches."}
+          </CommandEmpty>
+          <CommandGroup heading={added ? `Added to ${added}` : "Containers"}>
+            {containers.map((container) => (
+              <CommandItem
+                key={container.id}
+                value={`${container.name} ${container.kind}`}
+                onSelect={() => {
+                  add.mutate(
+                    { containerId: container.id, assetId: asset.id },
+                    {
+                      onSuccess: () => {
+                        setAdded(container.name)
+                        onOpenChange(false)
+                      },
+                    }
+                  )
+                }}
+              >
+                <HugeiconsIcon icon={Folder02Icon} className="size-4" />
+                <span className="truncate">{container.name}</span>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {container.kind}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        </CommandList>
+      </Command>
       {add.error ? (
         <p role="alert" className="px-3 pb-3 text-xs text-destructive">
           {add.error.message}

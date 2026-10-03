@@ -39,9 +39,11 @@ import {
 } from "./project-service"
 import {
   addToContainer,
+  deleteAsset,
   getAsset,
   importFiles,
   listByContainer as listAssets,
+  moveToContainer,
   removeFromContainer,
   toAssetDto,
 } from "./repo/assets"
@@ -279,6 +281,21 @@ export function registerProjectHandlers(handle: IpcRegistrar["handle"]): void {
 
   handle("assets:removeFromContainer", ({ containerId, assetId }) => {
     removeFromContainer(requireProject().db, { containerId, assetId })
+    return { ok: true as const }
+  })
+
+  handle("assets:move", ({ assetId, fromContainerId, toContainerId }) => {
+    moveToContainer(requireProject().db, {
+      assetId,
+      fromContainerId,
+      toContainerId,
+    })
+    return { ok: true as const }
+  })
+
+  handle("assets:delete", async ({ id }) => {
+    const { db, project } = requireProject()
+    await deleteAsset({ db, project }, id)
     return { ok: true as const }
   })
 
