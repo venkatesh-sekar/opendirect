@@ -155,6 +155,50 @@ describe("canvas interaction persistence", () => {
     ).toEqual(["a", "b", "c"])
   })
 
+  it("seeds a spawned node's prompt and selects it, submitting nothing", async () => {
+    await mount()
+    fixture.invoke.mockImplementation((channel: string, input: unknown) => {
+      if (channel === "canvas:node:create")
+        return Promise.resolve({ ...row("c", 600), type: "image_gen" })
+      if (channel === "canvas:edge:create")
+        return Promise.resolve({
+          id: "ac",
+          projectId: "p",
+          createdAt: 1,
+          ...(input as object),
+        })
+      return new Promise(() => {})
+    })
+    act(() =>
+      fixture.surface!.spawn(row("a", 0), "right", "image_gen", {
+        prompt: "a lone figure at dusk",
+      })
+    )
+
+    await waitFor(() =>
+      expect(fixture.invoke).toHaveBeenCalledWith("canvas:edge:create", {
+        sourceNodeId: "a",
+        targetNodeId: "c",
+        slotField: null,
+      })
+    )
+    // Selected, so its prompt bar opens on the seeded prompt.
+    await waitFor(() =>
+      expect(
+        fixture.state!().nodes.find((node) => node.id === "c")?.selected
+      ).toBe(true)
+    )
+    expect(await screen.findByLabelText("Prompt")).toHaveValue(
+      "a lone figure at dusk"
+    )
+    // ⛔ A seeded composition, never a run.
+    expect(
+      fixture.invoke.mock.calls.filter(([channel]) =>
+        String(channel).startsWith("generations:submit")
+      )
+    ).toHaveLength(0)
+  })
+
   it("keeps all drag frames in React Flow, then saves the exact final group position with undo/redo", async () => {
     const { client } = await mount()
     const before = client.getQueryData<CanvasDto>(queryKeys.canvas.graph)

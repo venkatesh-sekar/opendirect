@@ -950,6 +950,116 @@ describe("PromptBar", () => {
     )
     expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
   })
+
+  it("rethinks a wired image by asset id and applies it only on Use this prompt", async () => {
+    const user = userEvent.setup()
+    renderBar()
+
+    await user.type(await screen.findByLabelText("Prompt"), "a lift opens")
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    // The one image there is, already chosen.
+    expect(await screen.findByRole("radio", { name: "a0" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+    await user.click(screen.getByRole("button", { name: "Rethink image" }))
+
+    await waitFor(() =>
+      expect(invoke.mock.calls.find(([c]) => c === "ai:run")).toBeDefined()
+    )
+    expect(invoke.mock.calls.find(([c]) => c === "ai:run")![1]).toMatchObject({
+      tool: "claude",
+      request: { helper: "rethink-image", assetId: "a0" },
+    })
+    // A wired reference goes with the prompt that uses it, said as such.
+    const sent = (
+      invoke.mock.calls.find(([c]) => c === "ai:run")![1] as {
+        request: { prompt?: string; promptRole?: string }
+      }
+    ).request
+    expect(sent.prompt).toContain("a lift opens")
+    expect(sent.promptRole).toBe("uses-it")
+    expect(await screen.findByTestId("ai-result-text")).toBeVisible()
+    expect(await screen.findByLabelText("Prompt")).toHaveValue("a lift opens")
+
+    await user.click(screen.getByRole("button", { name: "Use this prompt" }))
+    expect(await screen.findByLabelText("Prompt")).toHaveValue(
+      "a bellhop opens the lift, slowly"
+    )
+  })
+
+  it("rethinks the node's own picture with the prompt that made it", async () => {
+    const user = userEvent.setup()
+    const picked = {
+      ...TARGET,
+      pickAssetId: "own",
+      asset: asset("own"),
+      // Only the prompt matters here; the rest of the run is not read.
+      generation: {
+        prompt: "a bellhop at dusk",
+      } as unknown as CanvasNodeDto["generation"],
+    }
+    renderBar({ ...WIRED, nodes: [picked, ...WIRED.nodes.slice(1)] }, picked)
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: "Rethink image" })
+    )
+
+    await waitFor(() =>
+      expect(invoke.mock.calls.find(([c]) => c === "ai:run")).toBeDefined()
+    )
+    expect(invoke.mock.calls.find(([c]) => c === "ai:run")![1]).toMatchObject({
+      request: {
+        helper: "rethink-image",
+        assetId: "own",
+        prompt: "a bellhop at dusk",
+        promptRole: "made-it",
+      },
+    })
+  })
+
+  it("explains the node's own picture first, or the reference the user picks", async () => {
+    const user = userEvent.setup()
+    const picked = { ...TARGET, pickAssetId: "own", asset: asset("own") }
+    renderBar({ ...WIRED, nodes: [picked, ...WIRED.nodes.slice(1)] }, picked)
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    expect(await screen.findByRole("radio", { name: "own" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+    await user.click(screen.getByRole("radio", { name: "a0" }))
+    await user.type(
+      screen.getByRole("textbox", { name: "Direction for the helper" }),
+      "what lens is this?"
+    )
+    await user.click(screen.getByRole("button", { name: "Explain image" }))
+
+    await waitFor(() =>
+      expect(invoke.mock.calls.find(([c]) => c === "ai:run")).toBeDefined()
+    )
+    expect(invoke.mock.calls.find(([c]) => c === "ai:run")![1]).toMatchObject({
+      instructions: "what lens is this?",
+      request: { helper: "explain-image", assetId: "a0" },
+    })
+    // An explanation is added to the prompt rather than replacing it.
+    expect(
+      await screen.findByRole("button", { name: "Add to prompt" })
+    ).toBeVisible()
+  })
+
+  it("offers no image helpers when there is no image to look at", async () => {
+    const user = userEvent.setup()
+    renderBar(BARE)
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    expect(
+      await screen.findByRole("button", { name: /improve prompt/i })
+    ).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Explain image" })).toBeNull()
+    expect(screen.queryByRole("radiogroup", { name: "Which image" })).toBeNull()
+  })
   /**
    * The bar is anchored to a node through React Flow's toolbar, so its own
    * width is its position: a chip that grows when a model name arrives slides

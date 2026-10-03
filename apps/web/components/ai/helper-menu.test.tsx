@@ -4,8 +4,10 @@ import "@testing-library/jest-dom/vitest"
 import type { ReactElement } from "react"
 import {
   settingsDefaults,
+  type AiToolId,
   type AiToolModels,
   type AiTools,
+  type AssetDto,
 } from "@opendirect/contract"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
@@ -30,13 +32,21 @@ vi.mock("@/lib/ipc", () => ({
 /** The saved `aiModels` setting the menu reads; reset before each test. */
 let savedModels: AiToolModels = { claude: null, codex: null }
 
+/** The saved `preferredAiTool` setting — the default CLI. */
+let savedTool: AiToolId | null = null
+
 beforeEach(() => {
   savedModels = { claude: null, codex: null }
+  savedTool = null
   invoke.mockReset()
-  invoke.mockImplementation(async (channel: string) => {
-    if (channel === "settings:get") {
-      return { ...settingsDefaults, aiModels: savedModels }
+  invoke.mockImplementation(async (channel: string, patch?: object) => {
+    const current = {
+      ...settingsDefaults,
+      aiModels: savedModels,
+      preferredAiTool: savedTool,
     }
+    if (channel === "settings:get") return current
+    if (channel === "settings:set") return { ...current, ...patch }
     throw new Error(`Unexpected channel ${channel}`)
   })
 })
@@ -285,4 +295,344 @@ describe("HelperMenu", () => {
       expect.objectContaining({ model: "claude-opus-5-5[1m]" })
     )
   })
+
+  describe("the default CLI and model", () => {
+    const both = () =>
+      tools({
+        codex: {
+          id: "codex",
+          available: true,
+          path: "/bin/codex",
+          version: "1",
+        },
+      })
+
+    it("opens on the saved default, even after detection resolved another", async () => {
+      savedTool = "codex"
+      savedModels = { claude: null, codex: "gpt-5.5" }
+      const onRun = vi.fn()
+      // Detection was cached while claude was still the preference.
+      render(
+        <HelperMenu
+          tools={both()}
+          helpers={["rethink-image"]}
+          images={[image("a1", "Lobby")]}
+          onRun={onRun}
+        />
+      )
+
+      await openMenu()
+      await userEvent.click(
+        screen.getByRole("button", { name: "Rethink image" })
+      )
+
+      expect(onRun).toHaveBeenCalledWith(
+        "rethink-image",
+        "codex",
+        expect.objectContaining({ model: "gpt-5.5" }),
+        expect.objectContaining({ id: "a1" })
+      )
+    })
+
+    it("falls back to what is installed when the saved CLI is gone", async () => {
+      savedTool = "codex"
+      const onRun = vi.fn()
+      render(
+        <HelperMenu
+          tools={tools()}
+          helpers={["improve-prompt"]}
+          onRun={onRun}
+        />
+      )
+
+      await openMenu()
+      await userEvent.click(
+        screen.getByRole("button", { name: "Improve prompt" })
+      )
+
+      expect(onRun).toHaveBeenCalledWith(
+        "improve-prompt",
+        "claude",
+        expect.anything()
+      )
+    })
+
+    it("keeps a menu choice for one run, until Set as default saves it", async () => {
+      const onRun = vi.fn()
+      const user = userEvent.setup()
+      render(
+        <HelperMenu tools={both()} helpers={["improve-prompt"]} onRun={onRun} />
+      )
+
+      await openMenu()
+      // Nothing differs from the default yet, so there is nothing to save.
+      expect(
+        screen.queryByRole("button", { name: "Set as default" })
+      ).toBeNull()
+
+      await user.click(screen.getByRole("radio", { name: "codex" }))
+      await user.click(
+        screen.getByRole("combobox", { name: "Model for codex" })
+      )
+      await user.click(await screen.findByRole("option", { name: /^GPT-5\.5/ }))
+      // A per-run override writes nothing.
+      expect(invoke).not.toHaveBeenCalledWith("settings:set", expect.anything())
+
+      await user.click(screen.getByRole("button", { name: "Set as default" }))
+
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith("settings:set", {
+          preferredAiTool: "codex",
+          aiModels: { claude: null, codex: "gpt-5.5" },
+        })
+      )
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: "Set as default" })
+        ).toBeNull()
+      )
+    })
+
+    it("uses a pick for that run only; the next run is back on the default", async () => {
+      const onRun = vi.fn()
+      const user = userEvent.setup()
+      render(
+        <HelperMenu tools={both()} helpers={["improve-prompt"]} onRun={onRun} />
+      )
+
+      await openMenu()
+      await user.click(screen.getByRole("radio", { name: "codex" }))
+      await user.click(
+        screen.getByRole("combobox", { name: "Model for codex" })
+      )
+      await user.click(await screen.findByRole("option", { name: /^GPT-5\.5/ }))
+      await user.click(screen.getByRole("button", { name: "Improve prompt" }))
+      expect(onRun).toHaveBeenLastCalledWith(
+        "improve-prompt",
+        "codex",
+        expect.objectContaining({ model: "gpt-5.5" })
+      )
+
+      // Same menu, still mounted: the second run is the default's.
+      await user.click(screen.getByRole("button", { name: /ai helpers/i }))
+      expect(screen.getByRole("radio", { name: "claude" })).toHaveAttribute(
+        "aria-checked",
+        "true"
+      )
+      await user.click(screen.getByRole("button", { name: "Improve prompt" }))
+      expect(onRun).toHaveBeenLastCalledWith(
+        "improve-prompt",
+        "claude",
+        expect.objectContaining({ model: null })
+      )
+      expect(invoke).not.toHaveBeenCalledWith("settings:set", expect.anything())
+    })
+
+    it("keeps the picks when the save fails", async () => {
+      const onRun = vi.fn()
+      const user = userEvent.setup()
+      const fallback = invoke.getMockImplementation()!
+      invoke.mockImplementation(async (channel: string, patch?: object) => {
+        if (channel === "settings:set") throw new Error("disk full")
+        return fallback(channel, patch)
+      })
+      render(
+        <HelperMenu tools={both()} helpers={["improve-prompt"]} onRun={onRun} />
+      )
+
+      await openMenu()
+      await user.click(screen.getByRole("radio", { name: "codex" }))
+      await user.click(screen.getByRole("button", { name: "Set as default" }))
+
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith(
+          "settings:set",
+          expect.objectContaining({ preferredAiTool: "codex" })
+        )
+      )
+      // Nothing was saved, so nothing became the default: the pick stays.
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Set as default" })
+        ).toBeEnabled()
+      )
+      expect(screen.getByRole("radio", { name: "codex" })).toHaveAttribute(
+        "aria-checked",
+        "true"
+      )
+      await user.click(screen.getByRole("button", { name: "Improve prompt" }))
+      expect(onRun).toHaveBeenCalledWith(
+        "improve-prompt",
+        "codex",
+        expect.anything()
+      )
+    })
+
+    it("keeps a pick changed while the save was in flight", async () => {
+      const user = userEvent.setup()
+      const fallback = invoke.getMockImplementation()!
+      let finish: () => void = () => {}
+      invoke.mockImplementation((channel: string, patch?: object) =>
+        channel === "settings:set"
+          ? new Promise((resolve) => {
+              finish = () => void fallback(channel, patch).then(resolve)
+            })
+          : fallback(channel, patch)
+      )
+      const onRun = vi.fn()
+      render(
+        <HelperMenu tools={both()} helpers={["improve-prompt"]} onRun={onRun} />
+      )
+
+      await openMenu()
+      await user.click(screen.getByRole("radio", { name: "codex" }))
+      await user.click(screen.getByRole("button", { name: "Set as default" }))
+      // Codex (with its CLI default) is being saved; now pick a model too.
+      await user.click(
+        screen.getByRole("combobox", { name: "Model for codex" })
+      )
+      await user.click(await screen.findByRole("option", { name: /^GPT-5\.5/ }))
+      finish()
+
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith("settings:set", {
+          preferredAiTool: "codex",
+          aiModels: { claude: null, codex: null },
+        })
+      )
+      // The newer model pick was not what was saved, so it survives.
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Set as default" })
+        ).toBeEnabled()
+      )
+      await user.click(screen.getByRole("button", { name: "Improve prompt" }))
+      expect(onRun).toHaveBeenCalledWith(
+        "improve-prompt",
+        "codex",
+        expect.objectContaining({ model: "gpt-5.5" })
+      )
+    })
+
+    it("can replace a saved CLI that has since been uninstalled", async () => {
+      savedTool = "codex"
+      render(
+        <HelperMenu
+          tools={tools()}
+          helpers={["improve-prompt"]}
+          onRun={vi.fn()}
+        />
+      )
+
+      await openMenu()
+      await userEvent.click(
+        screen.getByRole("button", { name: "Set as default" })
+      )
+
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith(
+          "settings:set",
+          expect.objectContaining({ preferredAiTool: "claude" })
+        )
+      )
+    })
+  })
+
+  it("hides the image helpers until there is an image to point them at", async () => {
+    render(
+      <HelperMenu
+        tools={tools()}
+        helpers={["improve-prompt", "explain-image", "rethink-image"]}
+        onRun={vi.fn()}
+      />
+    )
+
+    await openMenu()
+    expect(screen.getByRole("button", { name: "Improve prompt" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Explain image" })).toBeNull()
+    expect(screen.queryByRole("radiogroup", { name: "Which image" })).toBeNull()
+  })
+
+  it("renders nothing for an image-only surface with no image", () => {
+    const { container } = render(
+      <HelperMenu tools={tools()} helpers={["explain-image"]} onRun={vi.fn()} />
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it("hands an image helper the image the user chose, with their question", async () => {
+    const onRun = vi.fn()
+    const first = image("a1", "Lobby")
+    const second = image("a2", "Corridor")
+    render(
+      <HelperMenu
+        tools={tools()}
+        helpers={["improve-prompt", "explain-image", "rethink-image"]}
+        images={[first, second]}
+        onRun={onRun}
+      />
+    )
+
+    await openMenu()
+    expect(screen.getByRole("radio", { name: "Lobby" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Corridor" }))
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Direction for the helper" }),
+      "why does it feel cold?"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Explain image" }))
+
+    expect(onRun).toHaveBeenCalledWith(
+      "explain-image",
+      "claude",
+      { model: null, instructions: "why does it feel cold?" },
+      second
+    )
+  })
+
+  it("passes no image to a text helper, even with images on offer", async () => {
+    const onRun = vi.fn()
+    render(
+      <HelperMenu
+        tools={tools()}
+        helpers={["improve-prompt", "rethink-image"]}
+        images={[image("a1", "Lobby")]}
+        onRun={onRun}
+      />
+    )
+
+    await openMenu()
+    await userEvent.click(
+      screen.getByRole("button", { name: "Improve prompt" })
+    )
+
+    expect(onRun.mock.calls[0]).toHaveLength(3)
+  })
 })
+
+function image(id: string, label: string): AssetDto {
+  return {
+    id,
+    projectId: "p1",
+    kind: "image",
+    relPath: `assets/${id}.png`,
+    text: null,
+    mimeType: "image/png",
+    width: 64,
+    height: 64,
+    durationMs: null,
+    bytes: 128,
+    sha256: id,
+    thumbnailRelPath: null,
+    label,
+    originalName: `${id}.png`,
+    pinned: false,
+    generationId: null,
+    createdAt: 1,
+    url: `asset://p1/assets/${id}.png`,
+    thumbnailUrl: null,
+  }
+}

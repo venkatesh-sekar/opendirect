@@ -28,6 +28,7 @@
  * provider credit, and it is only ever reached from an explicit menu click.
  */
 import { spawn as nodeSpawn } from "node:child_process"
+import { dirname, isAbsolute, relative, sep } from "node:path"
 
 import { aiModelSchema, type AiToolId } from "@opendirect/contract"
 
@@ -120,6 +121,11 @@ export interface RunOptions {
   signal?: AbortSignal
   /** What the helper needs to do its job; nothing else is permitted. */
   allowedTools?: readonly string[]
+  /**
+   * Images the helper looks at — absolute paths main has already checked
+   * against the project root (`realAssetPath`). See `claudeArgs`/`codexArgs`.
+   */
+  images?: readonly string[]
   /**
    * The CLI's `--model`. Null/omitted passes no flag, so the CLI uses its own
    * default. Validated again here (`aiModelSchema`) before it reaches argv.
@@ -268,6 +274,48 @@ export interface ToolPolicy {
   allowedTools: readonly string[]
   /** A model name (checked by `resolveModel`), or null for the CLI default. */
   model?: string | null
+  /** Validated absolute image paths the helper is pointed at. */
+  images?: readonly string[]
+  /** The child's working directory, which a relative image path is from. */
+  cwd?: string
+}
+
+/**
+ * `image` as `./…` from `cwd`, or null when that is not a comma-free path
+ * inside `cwd`. The `./` prefix also keeps it from ever reading as a flag.
+ */
+function commaFreeRelative(
+  image: string,
+  cwd: string | undefined
+): string | null {
+  if (!cwd || !isAbsolute(cwd)) return null
+  const rel = relative(cwd, image)
+  if (
+    !rel ||
+    isAbsolute(rel) ||
+    rel === ".." ||
+    rel.startsWith(`..${sep}`) ||
+    rel.includes(",")
+  ) {
+    return null
+  }
+  return `.${sep}${rel}`
+}
+
+/**
+ * An image path as it may reach argv: absolute (so it can never read as a
+ * flag) and free of control characters. Main only ever passes paths that went
+ * through `realAssetPath`; this is the second check where argv is built.
+ */
+function checkedImages(images: readonly string[] | undefined): string[] {
+  const list = images ?? []
+  for (const image of list) {
+    // eslint-disable-next-line no-control-regex
+    if (!isAbsolute(image) || /[\u0000-\u001f]/.test(image)) {
+      throw new Error("An image path handed to the CLI must be absolute.")
+    }
+  }
+  return [...list]
 }
 
 /**
@@ -315,9 +363,18 @@ export function resolveRunModel(
  * `--model <model>` takes an alias (`fable`, `opus`, `sonnet`, `haiku`) or a
  * full model name (Claude Code 2.1.288 `--help`); it is only passed when the
  * user chose one, so the default is whatever their CLI is configured for.
+ *
+ * An image is opened by claude's own `Read` tool (which reads images, not only
+ * text) from the path in the prompt. `--add-dir <directories...>` grants file
+ * tools access to the folder it sits in — normally already inside the working
+ * directory, but `realAssetPath` returns the *real* path, which leaves the
+ * project folder whenever that folder is reached through a symlink. It is
+ * variadic, so it is always followed by another `--` flag here.
  */
 export function claudeArgs(policy: ToolPolicy): string[] {
   const args = ["-p", "--output-format", "json", "--permission-mode", "plan"]
+  const dirs = [...new Set(checkedImages(policy.images).map(dirname))]
+  if (dirs.length > 0) args.push("--add-dir", ...dirs)
   const model = resolveModel(policy.model)
   if (model) args.push("--model", model)
   if (policy.allowedTools.length > 0) {
@@ -339,16 +396,37 @@ export function claudeArgs(policy: ToolPolicy): string[] {
  * and answers, and may never write. `--model <MODEL>` (short `-m`) is only
  * passed when the user chose one. All verified against `codex exec --help`
  * (codex-cli 0.155).
+ *
+ * An image goes in as `--image <FILE>` ("Optional image(s) to attach to the
+ * initial prompt"), so the model sees the picture itself rather than a path
+ * it would have to go and read. The flag is variadic (`<FILE>...`), so each
+ * one sits straight after `exec` and is followed by another `--` flag: last,
+ * it would swallow the `-` stdin marker as a second image.
+ *
+ * codex-rs declares the flag with a `,` value delimiter (not shown by
+ * `--help`), so a path holding a comma would arrive as two broken paths. The
+ * comma is nearly always in the project folder's own name, so such an image
+ * is passed relative to the working directory instead (`./assets/…`), which
+ * the child resolves against the `cwd` it was started in. Only when even that
+ * holds a comma is it left out, and codex opens it from the prompt's path.
  */
-export function codexArgs(policy: Pick<ToolPolicy, "model"> = {}): string[] {
-  const args = [
-    "exec",
+export function codexArgs(
+  policy: Pick<ToolPolicy, "model" | "images" | "cwd"> = {}
+): string[] {
+  const args = ["exec"]
+  for (const image of checkedImages(policy.images)) {
+    const arg = image.includes(",")
+      ? commaFreeRelative(image, policy.cwd)
+      : image
+    if (arg) args.push("--image", arg)
+  }
+  args.push(
     "--color",
     "never",
     "--skip-git-repo-check",
     "--sandbox",
-    "read-only",
-  ]
+    "read-only"
+  )
   const model = resolveModel(policy.model)
   if (model) args.push("--model", model)
   // The stdin marker stays last: it is the positional prompt argument.
@@ -430,6 +508,8 @@ function runCli(tool: AiToolId, options: RunOptions): Promise<AiRunOutput> {
       args = spec.args({
         allowedTools: options.allowedTools ?? [],
         model: options.model ?? null,
+        images: options.images ?? [],
+        cwd: options.cwd,
       })
     } catch (error) {
       // An invalid model never reaches a child process.

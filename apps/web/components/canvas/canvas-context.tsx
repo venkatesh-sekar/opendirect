@@ -54,11 +54,16 @@ export interface CanvasSurface {
   /**
    * Creates `type` one gap to the `direction` side of `origin` and connects
    * the two, source-to-target in the direction the "+" pointed.
+   *
+   * With `seed`, the new node's prompt starts as `seed.prompt` and the node
+   * is selected, so its bar opens on it — how an image helper's answer
+   * becomes a run. ⛔ It seeds a composition; nothing is submitted.
    */
   spawn: (
     origin: CanvasNodeDto,
     direction: "left" | "right",
-    type: CanvasNodeType
+    type: CanvasNodeType,
+    seed?: { prompt: string }
   ) => void
   /** Which tile of a batch downstream edges use. On the undo stack. */
   pick: (node: CanvasNodeDto, assetId: string) => void

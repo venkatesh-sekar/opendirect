@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  AI_IMAGE_HELPERS,
   AI_INSTRUCTIONS_MAX_LENGTH,
   AI_MODEL_PRESETS,
   aiModelSchema,
   aiRunRequestSchema,
+  isImageHelper,
   isValidAiModel,
 } from "./ai"
 
@@ -94,5 +96,29 @@ describe("aiRunRequestSchema", () => {
         instructions: "x".repeat(AI_INSTRUCTIONS_MAX_LENGTH + 1),
       }).success
     ).toBe(false)
+  })
+})
+
+describe("image helpers", () => {
+  it("parse an image request by asset id, never by path", () => {
+    for (const helper of AI_IMAGE_HELPERS) {
+      const parsed = aiRunRequestSchema.parse({
+        runId: "r1",
+        request: { helper, assetId: "a1" },
+      })
+      expect(parsed.request).toEqual({ helper, assetId: "a1" })
+      expect(isImageHelper(helper)).toBe(true)
+    }
+    expect(
+      aiRunRequestSchema.safeParse({
+        runId: "r1",
+        request: { helper: "explain-image", path: "/etc/passwd" },
+      }).success
+    ).toBe(false)
+  })
+
+  it("does not count the text helpers as image helpers", () => {
+    expect(isImageHelper("improve-prompt")).toBe(false)
+    expect(isImageHelper("describe-reference")).toBe(false)
   })
 })

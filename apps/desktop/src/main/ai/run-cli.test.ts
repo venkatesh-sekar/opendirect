@@ -132,6 +132,63 @@ describe("argument building", () => {
     expect(args.at(-1)).toBe("-")
   })
 
+  it("attaches an image to codex as --image, ahead of the stdin marker", () => {
+    const image = "/projects/Hotel/assets/a.png"
+    const args = codexArgs({ images: [image], model: "gpt-5.5" })
+
+    expect(args[0]).toBe("exec")
+    // Variadic: straight after `exec` and followed by another flag, so it
+    // can never take the `-` marker as a second image.
+    expect(args.slice(1, 4)).toEqual(["--image", image, "--color"])
+    expect(args.at(-1)).toBe("-")
+    expect(args[args.indexOf("--sandbox") + 1]).toBe("read-only")
+    expect(codexArgs()).not.toContain("--image")
+  })
+
+  it("passes a comma-holding image path to codex relative to its cwd", () => {
+    const args = codexArgs({
+      images: ["/projects/Hotel, v2/assets/2026/x.png"],
+      cwd: "/projects/Hotel, v2",
+    })
+    // codex splits --image on commas; the relative path has none.
+    expect(args.slice(1, 3)).toEqual(["--image", "./assets/2026/x.png"])
+  })
+
+  it("leaves an image out of --image only when no comma-free path exists", () => {
+    // No cwd to be relative to, a comma in the file's own name, or a file
+    // outside the working directory: the prompt's path is all codex gets.
+    expect(codexArgs({ images: ["/projects/a,b/x.png"] })).not.toContain(
+      "--image"
+    )
+    expect(
+      codexArgs({ images: ["/projects/p/assets/a,b.png"], cwd: "/projects/p" })
+    ).not.toContain("--image")
+    expect(
+      codexArgs({ images: ["/elsewhere/a,b/x.png"], cwd: "/projects/p" })
+    ).not.toContain("--image")
+  })
+
+  it("lets claude read the image's folder and nothing more", () => {
+    const args = claudeArgs({
+      allowedTools: ["Read"],
+      images: ["/real/Hotel/assets/a.png", "/real/Hotel/assets/b.png"],
+    })
+
+    expect(args[args.indexOf("--add-dir") + 1]).toBe("/real/Hotel/assets")
+    // One folder once, and the variadic flag ends at the next `--` flag.
+    expect(args[args.indexOf("--add-dir") + 2]?.startsWith("--")).toBe(true)
+    expect(args[args.indexOf("--allowedTools") + 1]).toBe("Read")
+    expect(args[args.indexOf("--permission-mode") + 1]).toBe("plan")
+    expect(claudeArgs({ allowedTools: ["Read"] })).not.toContain("--add-dir")
+  })
+
+  it("refuses a relative image path that could read as a flag", () => {
+    expect(() => codexArgs({ images: ["--dangerously-bypass"] })).toThrow()
+    expect(() =>
+      claudeArgs({ allowedTools: ["Read"], images: ["a.png"] })
+    ).toThrow()
+  })
+
   it("puts no prompt text in argv for either tool", () => {
     const nasty = '"; rm -rf ~ #`whoami`$(id)'
     expect(claudeArgs({ allowedTools: [] })).not.toContain(nasty)
@@ -487,6 +544,25 @@ describe("runCodex", () => {
       "-",
     ])
     expect(options.shell).toBe(false)
+    child.emit("close", 0, null)
+    await running
+  })
+
+  it("hands codex the run's image and still pipes the prompt in", async () => {
+    const { spawn, child } = stubSpawn()
+    const running = runCodex({
+      prompt: "explain this",
+      spawn,
+      images: ["/real/Hotel/assets/a.png"],
+    })
+
+    const [, args] = spawn.mock.calls[0] as [string, string[]]
+    expect(args.slice(0, 3)).toEqual([
+      "exec",
+      "--image",
+      "/real/Hotel/assets/a.png",
+    ])
+    expect(child.stdin.write).toHaveBeenCalledWith("explain this")
     child.emit("close", 0, null)
     await running
   })

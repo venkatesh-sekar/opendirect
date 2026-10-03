@@ -19,7 +19,12 @@
 import { useMemo, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { SearchAreaIcon } from "@hugeicons/core-free-icons"
-import type { CanvasNodeDto } from "@opendirect/contract"
+import {
+  AI_IMAGE_HELPERS,
+  isImageHelper,
+  type AssetDto,
+  type CanvasNodeDto,
+} from "@opendirect/contract"
 import type { NodeProps } from "@xyflow/react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -28,9 +33,13 @@ import {
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
 
+import { useAiHelper, useAiTools } from "@/hooks/use-ai"
+import { HelperMenu } from "@/components/ai/helper-menu"
+import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
 import { AssetPreview } from "@/components/board/asset-preview"
 import { MediaViewer } from "@/components/media/media-viewer"
 
+import { useCanvasSurface } from "../canvas-context"
 import { AssetTile, assetLabel } from "./asset-tile"
 import { NodeFrame } from "./node-frame"
 import type { CanvasFlowNode } from "./types"
@@ -74,6 +83,63 @@ export function MediaNodeBody({ node }: { node: CanvasNodeDto }) {
   )
 }
 
+/**
+ * ✨ on a selected picture: Explain or Rethink it with the local `claude` or
+ * `codex`, the same menu and the same answer dialog as Improve prompt.
+ *
+ * The run and its dialog stay mounted for as long as the node is; only the ✨
+ * trigger waits for the node to be selected — select the image, then ask. So
+ * clicking away mid-run does not lose the answer of a CLI that is still
+ * working. Absent altogether without a CLI, as `<HelperMenu/>` always is.
+ *
+ * Every answer can be copied. A rethink is a prompt, so it can also become
+ * the prompt of a new image node wired to this one; an explanation cannot.
+ * ⛔ That seeds a composition; Run is still the user's to press.
+ */
+export function MediaNodeAssist({
+  node,
+  asset,
+  selected,
+}: {
+  node: CanvasNodeDto
+  asset: AssetDto
+  selected: boolean
+}) {
+  const surface = useCanvasSurface()
+  const tools = useAiTools()
+  const ai = useAiHelper()
+  const images = useMemo(() => [asset], [asset])
+
+  return (
+    <>
+      {selected ? (
+        <HelperMenu
+          tools={tools.data}
+          helpers={AI_IMAGE_HELPERS}
+          images={images}
+          disabled={ai.state === "running"}
+          className="nodrag nopan size-6"
+          onRun={(helper, tool, options, image) => {
+            if (isImageHelper(helper) && image) {
+              ai.run({ helper, assetId: image.id }, tool, options)
+            }
+          }}
+        />
+      ) : null}
+      <HelperResultDialog
+        controller={ai}
+        onApply={
+          surface && ai.helper === "rethink-image"
+            ? (text) =>
+                surface.spawn(node, "right", "image_gen", { prompt: text })
+            : undefined
+        }
+        applyLabel="New image node with this prompt"
+      />
+    </>
+  )
+}
+
 /** The header button that opens the existing preview panel over the node. */
 function MediaNodeDetails({ node }: { node: CanvasNodeDto }) {
   const [open, setOpen] = useState(false)
@@ -108,7 +174,18 @@ export function MediaNode({ data, selected }: NodeProps<CanvasFlowNode>) {
       node={node}
       selected={selected === true}
       title={node.asset ? assetLabel(node.asset) : "Media"}
-      actions={<MediaNodeDetails node={node} />}
+      actions={
+        <>
+          {node.asset?.kind === "image" ? (
+            <MediaNodeAssist
+              node={node}
+              asset={node.asset}
+              selected={selected === true}
+            />
+          ) : null}
+          <MediaNodeDetails node={node} />
+        </>
+      }
     >
       <MediaNodeBody node={node} />
     </NodeFrame>

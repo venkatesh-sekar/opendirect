@@ -1004,7 +1004,8 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
     (
       origin: CanvasNodeDto,
       direction: "left" | "right",
-      type: CanvasNodeType
+      type: CanvasNodeType,
+      seed?: { prompt: string }
     ) =>
       void (async () => {
         const size = defaultNodeSize(type)
@@ -1015,10 +1016,17 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           occupied: latest.current.nodes.map(boxOf),
         })
         const node = await addNode(type, point)
+        if (seed) {
+          seedPromptDraft(node.id, { prompt: seed.prompt, modelKey: null })
+        }
         await connect(
           direction === "right" ? origin.id : node.id,
           direction === "right" ? node.id : origin.id
         )
+        if (seed) {
+          setSelectedNodes([node.id])
+          setSelectedEdges([])
+        }
       })(),
     [addNode, connect]
   )

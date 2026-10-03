@@ -106,7 +106,7 @@ export function AiToolsForm() {
 
         {detected && detected.claude.available && detected.codex.available ? (
           <div className="flex flex-col gap-2">
-            <Label>Preferred CLI</Label>
+            <Label>Default CLI</Label>
             <div className="flex items-center gap-2">
               {TOOLS.map(({ id }) => (
                 <Button
@@ -125,7 +125,8 @@ export function AiToolsForm() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              Which one a helper uses unless you pick the other for that run.
+              Which one every ✨ menu opens on. Picking the other there is for
+              that run only, unless you press Set as default.
             </p>
           </div>
         ) : null}

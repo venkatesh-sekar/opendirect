@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import type { AssetDto, CanvasNodeDto } from "@opendirect/contract"
+import {
+  settingsDefaults,
+  type AssetDto,
+  type CanvasNodeDto,
+} from "@opendirect/contract"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -16,7 +20,10 @@ vi.mock("@/lib/ipc", () => ({
   pathsForFiles: () => [],
 }))
 
-const { MediaNodeBody } = await import("./media-node")
+const { MediaNodeAssist, MediaNodeBody } = await import("./media-node")
+const { CanvasSurfaceProvider, createNoteDrafts } =
+  await import("../canvas-context")
+type CanvasSurface = import("../canvas-context").CanvasSurface
 const { defaultContainerName } =
   await import("@/components/board/save-as-container")
 
@@ -172,5 +179,149 @@ describe("the full-size viewer", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     // ⛔ Looking at a picture asks the main process for nothing.
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe("asking a local CLI about the selected image", () => {
+  const surface: CanvasSurface = {
+    containerId: null,
+    noteDrafts: createNoteDrafts(),
+    spawn: vi.fn(),
+    pick: vi.fn(),
+    branch: vi.fn(),
+    selectGeneration: vi.fn(),
+  }
+
+  function mountAssist(installed: boolean) {
+    invoke.mockImplementation(async (channel: string) => {
+      switch (channel) {
+        case "ai:tools":
+          return {
+            claude: {
+              id: "claude",
+              available: installed,
+              path: installed ? "/bin/claude" : null,
+              version: null,
+            },
+            codex: { id: "codex", available: false, path: null, version: null },
+            preferred: installed ? "claude" : null,
+            detectedAt: 1,
+          }
+        case "settings:get":
+          return { ...settingsDefaults }
+        case "ai:run":
+          return {
+            runId: "r",
+            helper: "rethink-image",
+            tool: "claude",
+            text: "A lone figure at dusk, shot on a 35mm lens.",
+            summary: null,
+            shots: [],
+            durationMs: 1,
+          }
+        default:
+          throw new Error(`Unexpected channel ${channel}`)
+      }
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const view = (selected: boolean) => (
+      <QueryClientProvider client={client}>
+        <CanvasSurfaceProvider value={surface}>
+          <MediaNodeAssist node={node} asset={asset} selected={selected} />
+        </CanvasSurfaceProvider>
+      </QueryClientProvider>
+    )
+    const rendered = render(view(true))
+    return { select: (selected: boolean) => rendered.rerender(view(selected)) }
+  }
+
+  /** Holds `ai:run` open until the test answers it, like a slow CLI. */
+  function holdRun(): (text: string) => void {
+    let answer: (text: string) => void = () => {}
+    const fallback = invoke.getMockImplementation()!
+    invoke.mockImplementation((channel: string, payload?: unknown) =>
+      channel === "ai:run"
+        ? new Promise((resolve) => {
+            answer = (text) =>
+              resolve({
+                runId: "r",
+                helper: "explain-image",
+                tool: "claude",
+                text,
+                summary: null,
+                shots: [],
+                durationMs: 1,
+              })
+          })
+        : fallback(channel, payload)
+    )
+    return (text) => answer(text)
+  }
+
+  it("keeps a run's answer when the node is deselected mid-run", async () => {
+    const user = userEvent.setup()
+    const { select } = mountAssist(true)
+    const answer = holdRun()
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: "Explain image" })
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("ai:run", expect.anything())
+    )
+
+    // Clicking away hides the ✨ trigger, and only the trigger.
+    select(false)
+    expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
+    answer("A red door, lit from the left.")
+
+    expect(await screen.findByTestId("ai-result-text")).toHaveTextContent(
+      "A red door, lit from the left."
+    )
+    // An explanation is not a prompt: Copy, and no new node from it.
+    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "New image node with this prompt" })
+    ).toBeNull()
+  })
+
+  it("rethinks the image by asset id and seeds a new node only on request", async () => {
+    const user = userEvent.setup()
+    mountAssist(true)
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: "Rethink image" })
+    )
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "ai:run",
+        expect.objectContaining({
+          request: { helper: "rethink-image", assetId: "asset-1" },
+        })
+      )
+    )
+    expect(await screen.findByTestId("ai-result-text")).toHaveTextContent(
+      "A lone figure at dusk"
+    )
+    // ⛔ Nothing is made until the user asks for it.
+    expect(surface.spawn).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole("button", { name: "New image node with this prompt" })
+    )
+    expect(surface.spawn).toHaveBeenCalledWith(node, "right", "image_gen", {
+      prompt: "A lone figure at dusk, shot on a 35mm lens.",
+    })
+  })
+
+  it("shows nothing without a local CLI", async () => {
+    mountAssist(false)
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai:tools"))
+    expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
   })
 })

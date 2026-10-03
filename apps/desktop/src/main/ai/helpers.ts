@@ -1,5 +1,5 @@
 /**
- * The four AI helpers: what each one asks for, and how its answer is read.
+ * The AI helpers: what each one asks for, and how its answer is read.
  *
  * They are deliberately few and deliberately explicit. OpenDirect does not
  * have an assistant that watches you work — it has four menu items you press,
@@ -16,7 +16,7 @@
  *
  * ⛔ No provider call, no generation. Text in, text out.
  */
-import type { AiHelperId } from "@opendirect/contract"
+import type { AiHelperId, AiImageHelperId } from "@opendirect/contract"
 
 /**
  * A helper request with its asset ids already resolved to real paths.
@@ -30,6 +30,13 @@ export type ResolvedHelperRequest = (
   | { helper: "describe-reference"; assetPath: string }
   | { helper: "analyze-video"; assetPath: string }
   | { helper: "suggest-shots"; containerName: string; notes?: string | null }
+  | {
+      helper: AiImageHelperId
+      imagePath: string
+      prompt?: string | null
+      /** Whether `prompt` generated the image, or uses it as a reference. */
+      promptRole?: "made-it" | "uses-it"
+    }
 ) & { instructions?: string | null }
 
 export interface HelperOutcome {
@@ -120,7 +127,54 @@ export function helperPrompt(request: ResolvedHelperRequest): string {
       }
       return lines.join("\n")
     }
+
+    // The direction is the point of these two: "explain the lighting", "make
+    // it night". The built-in task is only the default when none is given.
+    case "explain-image": {
+      return [
+        "Look at this image and explain it: what it shows, how it is framed",
+        "and lit, its colour, style and mood, and anything a filmmaker would",
+        "notice. Plain prose, a short paragraph or two.",
+        NO_PREAMBLE,
+        ...direction,
+        "",
+        ...imageLines(request.imagePath),
+      ].join("\n")
+    }
+
+    case "rethink-image": {
+      return [
+        "Look at this image and rethink it: keep its idea, and propose a",
+        "stronger take on it, written as one prompt for a generative image",
+        "model — subject, framing, camera, lens, lighting, colour and mood.",
+        "One paragraph, no lists.",
+        NO_PREAMBLE,
+        ...direction,
+        "",
+        ...imageLines(request.imagePath),
+        ...(request.prompt?.trim()
+          ? [
+              "",
+              request.promptRole === "uses-it"
+                ? "The prompt this image is being used in:"
+                : "The prompt behind it:",
+              request.prompt.trim(),
+            ]
+          : []),
+      ].join("\n")
+    }
   }
+}
+
+/**
+ * Where the image is. Codex is handed it as an attachment (`--image`) and
+ * claude opens it with its Read tool, so the path is there for both.
+ */
+function imageLines(imagePath: string): string[] {
+  return [
+    "The image is attached, or open it with your file-reading tool:",
+    `Image: ${imagePath}`,
+  ]
 }
 
 /** Drops a wrapping ``` fence and trims each line's trailing whitespace. */
@@ -196,6 +250,8 @@ export async function runHelper(
   switch (request.helper) {
     case "improve-prompt":
     case "describe-reference":
+    case "explain-image":
+    case "rethink-image":
       return { text, summary: null, shots: [] }
 
     case "analyze-video": {
@@ -241,4 +297,6 @@ export const HELPER_IDS: readonly AiHelperId[] = [
   "describe-reference",
   "analyze-video",
   "suggest-shots",
+  "explain-image",
+  "rethink-image",
 ]

@@ -17,15 +17,17 @@
  * nothing.
  */
 import { execFile as execFileCallback } from "node:child_process"
+import { realpath } from "node:fs/promises"
 import { promisify } from "node:util"
 
-import type {
-  AiHelperId,
-  AiProgress,
-  AiResult,
-  AiRunRequest,
-  AiToolId,
-  AiTools,
+import {
+  isImageHelper,
+  type AiHelperId,
+  type AiProgress,
+  type AiResult,
+  type AiRunRequest,
+  type AiToolId,
+  type AiTools,
 } from "@opendirect/contract"
 import { BrowserWindow } from "electron"
 import log from "electron-log/main"
@@ -157,11 +159,41 @@ async function resolveRequest(
   const asset = getAsset(current.handle.db, request.assetId)
   if (!asset) throw new Error(`Asset ${request.assetId} was not found`)
   if (!asset.relPath) throw new Error("That asset has no file to read.")
+  if (isImageHelper(request.helper) && asset.kind !== "image") {
+    throw new Error("That asset is not an image.")
+  }
 
   const assetPath = await realAssetPath(current.project, asset.relPath)
+  if (
+    request.helper === "explain-image" ||
+    request.helper === "rethink-image"
+  ) {
+    return {
+      helper: request.helper,
+      imagePath: assetPath,
+      prompt: request.prompt ?? null,
+      promptRole: request.promptRole ?? "made-it",
+    }
+  }
   return request.helper === "describe-reference"
     ? { helper: "describe-reference", assetPath }
     : { helper: "analyze-video", assetPath }
+}
+
+/**
+ * The open project's folder, resolved through symlinks like the image paths
+ * `realAssetPath` returns, so a path made relative to it (codex's comma-free
+ * `--image`) points where the child process actually starts.
+ */
+async function projectCwd(): Promise<string | undefined> {
+  const path = getCurrentProject()?.project.path
+  if (!path) return undefined
+  return realpath(path).catch(() => path)
+}
+
+/** The images a resolved request points the CLI at, already validated. */
+function imagesOf(request: ResolvedHelperRequest): string[] {
+  return "imagePath" in request ? [request.imagePath] : []
 }
 
 /**
@@ -176,6 +208,9 @@ const HELPER_TOOLS: Record<AiHelperId, readonly string[]> = {
   "suggest-shots": [],
   "describe-reference": ["Read"],
   "analyze-video": ["Read"],
+  // Claude's Read opens images too; codex is handed the file as `--image`.
+  "explain-image": ["Read"],
+  "rethink-image": ["Read"],
 }
 
 function messageOf(error: unknown): string {
@@ -205,6 +240,7 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
     instructions: input.instructions ?? null,
   }
   const model = resolveRunModel(input.model, modelSetting(chosen))
+  const cwd = await projectCwd()
 
   const controller = new AbortController()
   running.set(input.runId, controller)
@@ -236,8 +272,9 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
         prompt,
         model,
         command: status.path ?? chosen,
-        cwd: getCurrentProject()?.project.path,
+        cwd,
         allowedTools: HELPER_TOOLS[helper],
+        images: imagesOf(resolved),
         signal: controller.signal,
         onChunk: (chunk) => emit("output", { chunk }),
       })

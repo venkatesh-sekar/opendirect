@@ -42,6 +42,54 @@ describe("helperPrompt", () => {
     expect(analyze).toContain("shots")
   })
 
+  it("points the image helpers at the image, with the user's question first", () => {
+    const explain = helperPrompt({
+      helper: "explain-image",
+      imagePath: "/projects/Hotel/assets/2026/09/a.png",
+      instructions: "Why does the lighting feel cold?",
+    })
+    const rethink = helperPrompt({
+      helper: "rethink-image",
+      imagePath: "/projects/Hotel/assets/2026/09/a.png",
+    })
+
+    expect(explain.toLowerCase()).toContain("explain")
+    expect(explain).toContain("Image: /projects/Hotel/assets/2026/09/a.png")
+    expect(explain.indexOf("Why does the lighting feel cold?")).toBeLessThan(
+      explain.indexOf("Image: ")
+    )
+    // A rethink is a prompt the user can run, so it asks for one paragraph.
+    expect(rethink).toContain("one prompt for a generative image")
+    expect(rethink).toContain("Image: /projects/Hotel/assets/2026/09/a.png")
+    expect(rethink).not.toContain("The prompt behind it")
+  })
+
+  it("gives a rethink the prompt behind the image, when there is one", () => {
+    const rethink = helperPrompt({
+      helper: "rethink-image",
+      imagePath: "/p/a.png",
+      prompt: "  a bellhop in a red corridor ",
+    })
+
+    expect(rethink).toContain(
+      "The prompt behind it:\na bellhop in a red corridor"
+    )
+  })
+
+  it("says a reference's prompt uses the image rather than made it", () => {
+    const rethink = helperPrompt({
+      helper: "rethink-image",
+      imagePath: "/p/a.png",
+      prompt: "venkz walks into the lobby",
+      promptRole: "uses-it",
+    })
+
+    expect(rethink).toContain(
+      "The prompt this image is being used in:\nvenkz walks into the lobby"
+    )
+    expect(rethink).not.toContain("The prompt behind it")
+  })
+
   it("carries the container and its notes into the shot list", () => {
     const prompt = helperPrompt({
       helper: "suggest-shots",
@@ -149,6 +197,20 @@ describe("runHelper", () => {
 
     expect(outcome.text).toBe("A tall red door,\nlit from the left.")
     expect(outcome.summary).toBeNull()
+  })
+
+  it("returns an image answer as plain text, as for an improved prompt", async () => {
+    const { run } = runner("```\nA lone figure in a red corridor.\n```")
+    const outcome = await runHelper(
+      { helper: "rethink-image", imagePath: "/p/a.png" },
+      run
+    )
+
+    expect(outcome).toEqual({
+      text: "A lone figure in a red corridor.",
+      summary: null,
+      shots: [],
+    })
   })
 
   it("parses the fenced JSON an analysis comes back in", async () => {
