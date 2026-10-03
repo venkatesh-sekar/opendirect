@@ -27,11 +27,10 @@ import { Button } from "@workspace/ui/components/button"
 
 import { useGeneratePlan, type GenerateDraft } from "@/hooks/use-generate-plan"
 import { useModel } from "@/hooks/use-models"
-import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
 import { modelDefaults } from "@/lib/create/draft"
+import { settingsLayout } from "@/lib/create/settings-layout"
 import type { MentionOutcome } from "@/lib/mentions/resolve"
 import { formatCostQuote } from "@/lib/price"
-import { splitSchema } from "@/lib/schema-form/split-schema"
 import { useSettings } from "@/lib/settings"
 
 import { MentionTextarea } from "@/components/canvas/mention-textarea"
@@ -152,26 +151,20 @@ export function GenerateForm({
   // differ, so it settles at once.
   const nextMentionSlots = useMemo(
     () =>
-      [
-        ...new Set(plan.mentions.references.map((one) => one.slotField)),
-      ].sort(),
+      [...new Set(plan.mentions.references.map((one) => one.slotField))].sort(),
     [plan.mentions.references]
   )
   if (nextMentionSlots.join("\n") !== mentionSlots.join("\n")) {
     setMentionSlots(nextMentionSlots)
   }
 
-  const grid = useMemo(
-    () => (descriptor ? buildIconGrid(descriptor) : null),
+  const layout = useMemo(
+    () => (descriptor ? settingsLayout(descriptor) : null),
     [descriptor]
   )
-  const advancedSchema = useMemo(
-    () =>
-      descriptor && grid
-        ? withoutIconGridFields(splitSchema(descriptor).advanced, grid)
-        : null,
-    [descriptor, grid]
-  )
+  const grid = layout?.grid ?? null
+  const duration = layout?.duration ?? null
+  const advancedSchema = layout?.advanced ?? null
   const advancedCount = advancedSchema
     ? Object.keys(advancedSchema.properties).length
     : 0
@@ -246,9 +239,10 @@ export function GenerateForm({
 
       {grid || advancedSchema ? (
         <div className="flex flex-wrap items-center gap-2">
-          {grid && grid.rows.length > 0 ? (
+          {grid && (grid.rows.length > 0 || duration) ? (
             <SettingsPopover
               grid={grid}
+              duration={duration}
               values={draft.common}
               onChange={(field, value) =>
                 setDraft((current) => ({

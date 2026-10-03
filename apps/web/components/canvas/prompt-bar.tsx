@@ -112,10 +112,9 @@ import {
   modelOptionsForNode,
 } from "@/lib/canvas/slots"
 import type { IconGrid } from "@/lib/canvas/icon-grid"
-import { buildIconGrid, withoutIconGridFields } from "@/lib/canvas/icon-grid"
 import { frameSize, parseAspectRatio } from "@/lib/canvas/layout"
 import { modelDefaults } from "@/lib/create/draft"
-import { splitSchema } from "@/lib/schema-form/split-schema"
+import { settingsLayout } from "@/lib/create/settings-layout"
 
 import { HelperMenu } from "@/components/ai/helper-menu"
 import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
@@ -428,14 +427,15 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const aiTools = useAiTools()
   const ai = useAiHelper()
 
-  const split = useMemo(
-    () => (descriptor ? splitSchema(descriptor) : null),
+  /**
+   * Where each input is edited: the settings popover (grid and duration),
+   * the reference strip, or Advanced — every property in exactly one.
+   */
+  const layout = useMemo(
+    () => (descriptor ? settingsLayout(descriptor) : null),
     [descriptor]
   )
-  const grid = useMemo(
-    () => (descriptor ? buildIconGrid(descriptor) : null),
-    [descriptor]
-  )
+  const grid = layout?.grid ?? null
 
   /**
    * A model change reseeds the parameters from *that* model's own defaults and
@@ -745,12 +745,13 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   const aspectField =
     grid?.rows.find((row) => row.kind === "aspectRatio")?.field ?? null
 
-  const setCommon = (field: string, value: string) => {
+  const setCommon = (field: string, value: unknown) => {
     updateDraft((current) => ({
       ...current,
       common: { ...current.common, [field]: value },
     }))
-    if (field !== aspectField || parseAspectRatio(value) === null) return
+    if (field !== aspectField || typeof value !== "string") return
+    if (parseAspectRatio(value) === null) return
     const height = frameSize(value, node.width).height
     if (height !== node.height) {
       updateNode.mutate({ id: node.id, patch: { height } })
@@ -832,8 +833,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     </>
   )
 
-  const advancedSchema =
-    split && grid ? withoutIconGridFields(split.advanced, grid) : null
+  const advancedSchema = layout?.advanced ?? null
   const advancedCount = advancedSchema
     ? Object.keys(advancedSchema.properties).length
     : 0
@@ -842,10 +842,9 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
     advancedCount > 0
       ? `Advanced parameters, ${advancedCount}`
       : "Advanced parameters"
-  // A schema with no fields left is off, not an empty dialog.
-  const advancedOffReason = descriptor
-    ? "This model has no advanced parameters."
-    : "Choose a model to see its advanced parameters."
+  // Off only without a model. A model whose every input is already on the
+  // bar still opens the sheet: it says so, and shows the request preview.
+  const advancedOffReason = "Choose a model to see its advanced parameters."
 
   /**
    * ⛔ Records the recipe on the node. It saves a composition, not a run.
@@ -975,6 +974,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         {grid || narrow ? (
           <SettingsPopover
             grid={grid ?? EMPTY_GRID}
+            duration={layout?.duration ?? null}
             values={draft.common}
             onChange={setCommon}
             compact={narrow}
@@ -993,7 +993,7 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             worded button does not fit the one row beside the stepper and
             the cost. The width is stated, so a count arriving with the
             model cannot move its neighbours. */}
-        {advancedCount > 0 ? (
+        {advancedSchema ? (
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1015,13 +1015,17 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
                 icon={SlidersHorizontalIcon}
                 className="size-3.5"
               />
-              {narrow ? null : (
+              {narrow || advancedCount === 0 ? null : (
                 <span className="font-mono text-xs tabular-nums">
                   {advancedCount}
                 </span>
               )}
             </TooltipTrigger>
-            <TooltipContent>{advancedLabel}</TooltipContent>
+            <TooltipContent>
+              {advancedCount > 0
+                ? advancedLabel
+                : "Advanced parameters: every input is already on the bar. Opens the request preview."}
+            </TooltipContent>
           </Tooltip>
         ) : (
           // A disabled button takes neither the pointer nor focus, so the

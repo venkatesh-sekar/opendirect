@@ -185,9 +185,10 @@ function readNumber(
  * it only yields seconds when the model also exposes an `fps` input.
  */
 function readDurationSeconds(params: GenerationParams): number | null {
-  const duration = readNumber(params, "duration", "duration_seconds")
+  // `seconds` is Sora 2's name for it; a `"5s"` string reads as 5.
+  const duration = readNumber(params, "duration", "duration_seconds", "seconds")
   if (duration !== null) return duration
-  const frames = readNumber(params, "num_frames", "frames")
+  const frames = readNumber(params, "num_frames", "frames", "video_length")
   const fps = readNumber(params, "fps", "frames_per_second")
   if (frames !== null && fps !== null && fps > 0) return frames / fps
   return null
