@@ -117,5 +117,21 @@ describe("ProviderOverride", () => {
     })
     expect(trigger).toHaveAttribute("title", "Provider: Auto · Replicate")
     expect(trigger).toHaveTextContent(/^$/)
+    expect(trigger.parentElement).toHaveClass("shrink-0")
+  })
+
+  /**
+   * On the prompt bar it sits in one row that must end inside the bar, so,
+   * wide, it gives with the model's chip — down to a floor — rather than
+   * pushing Run past the edge. The name it truncates is still its title.
+   */
+  it("shrinks to a floor when wide, keeping its name as the title", () => {
+    renderControl()
+    const trigger = screen.getByRole("combobox", { name: /provider/i })
+    const slot = trigger.parentElement!
+    expect(slot).toHaveClass("w-32", "min-w-16", "shrink")
+    expect(slot).not.toHaveClass("shrink-0")
+    expect(trigger).toHaveClass("w-full", "min-w-0")
+    expect(trigger).toHaveAttribute("title", "Provider: Auto · Replicate")
   })
 })
