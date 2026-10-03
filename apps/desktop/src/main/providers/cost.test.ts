@@ -257,6 +257,34 @@ describe("estimateCost", () => {
     expect(r.amount).toBeCloseTo(0.08 * 5, 6)
   })
 
+  it('reads Sora\'s `seconds` and a `"10s"` string as the duration', () => {
+    const skus = { duration_seconds: "0.1" }
+    const seconds = estimateCost({
+      provider: "openrouter",
+      kind: "video",
+      pricingSkus: skus,
+      params: { seconds: 8 },
+    })
+    expect(seconds.amount).toBeCloseTo(0.8, 6)
+    const spelled = estimateCost({
+      provider: "openrouter",
+      kind: "video",
+      pricingSkus: skus,
+      params: { duration: "10s" },
+    })
+    expect(spelled.amount).toBeCloseTo(1, 6)
+  })
+
+  it("derives a duration from video_length and fps", () => {
+    const r = estimateCost({
+      provider: "openrouter",
+      kind: "video",
+      pricingSkus: { duration_seconds: "0.1" },
+      params: { video_length: 96, fps: 24 },
+    })
+    expect(r.amount).toBeCloseTo(0.4, 6)
+  })
+
   it("assumes the dearer audio SKU when the request does not say", () => {
     const r = estimateCost({
       provider: "openrouter",
