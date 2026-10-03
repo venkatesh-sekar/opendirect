@@ -7,7 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { queryKeys } from "./query-keys"
 import {
   useAddAssetToContainer,
+  useDeleteAsset,
   useImportAssets,
+  useMoveAsset,
   useRemoveAssetFromContainer,
 } from "./use-assets"
 
@@ -61,5 +63,37 @@ describe("asset mutations and the container cards", () => {
         queryKey: queryKeys.containers.relatedAll,
       })
     }
+  })
+})
+
+describe("moving and deleting an asset", () => {
+  it("refreshes both boards and the tree after a move", async () => {
+    const { result, invalidate } = setup(useMoveAsset)
+    await act(() =>
+      result.current.mutateAsync({
+        assetId: "a1",
+        fromContainerId: "c1",
+        toContainerId: "c2",
+      })
+    )
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["assets", "c1"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["assets", "c2"] })
+    // The source can lose a reference or a shot's pick with the link.
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: queryKeys.containers.all,
+    })
+  })
+
+  it("refreshes every surface the asset could have been on after a delete", async () => {
+    const { result, invalidate } = setup(useDeleteAsset)
+    await act(() => result.current.mutateAsync("a1"))
+    for (const queryKey of [
+      queryKeys.assets.all,
+      queryKeys.containers.all,
+      queryKeys.mentions.all,
+      queryKeys.canvas.all,
+      queryKeys.generations.all,
+    ])
+      expect(invalidate).toHaveBeenCalledWith({ queryKey })
   })
 })
