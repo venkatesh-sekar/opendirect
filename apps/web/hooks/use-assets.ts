@@ -93,6 +93,37 @@ export function useImportAssets(): UseMutationResult<
   })
 }
 
+export interface CropVariables {
+  assetId: string
+  containerId?: string | null
+  /** Fractions (0–1) of the image as displayed. */
+  rect: { x: number; y: number; width: number; height: number }
+}
+
+/**
+ * Crops an image into a new asset in `containerId`. The source is untouched,
+ * so only the board the crop lands on needs refetching.
+ */
+export function useCropAsset(): UseMutationResult<
+  AssetDto,
+  Error,
+  CropVariables
+> {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (variables: CropVariables) => invoke("assets:crop", variables),
+    onSuccess: (_result, variables) => {
+      void client.invalidateQueries({
+        queryKey: variables.containerId
+          ? ["assets", variables.containerId]
+          : queryKeys.assets.all,
+      })
+      void client.invalidateQueries({ queryKey: queryKeys.mentions.all })
+      invalidateContainerFacts(client)
+    },
+  })
+}
+
 export interface LinkVariables {
   containerId: string
   assetId: string
