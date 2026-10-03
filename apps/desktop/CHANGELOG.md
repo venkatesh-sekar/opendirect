@@ -1,5 +1,20 @@
 # @opendirect/desktop
 
+## 0.4.0
+
+### Minor Changes
+
+- e9cd040: Assets: crop an image into a new image from its card menu (⋯ or right-click) or from the full-size viewer. Crop free-form or to a fixed shape (1:1, 4:5, 3:4, 16:9, 9:16), zoom in to place it precisely, and see the output size before saving. The original image is never changed.
+- ebcef47: Assets: delete an asset, or move it to another container, from its card's menu (⋯ or right-click) on a container's Assets tab
+- e9cd040: Canvas images stay sharp when you zoom in: the canvas swaps in a larger copy of each visible image as you zoom, and you can now zoom in up to 8× to see the original's detail. Photos taken in portrait now show upright in thumbnails.
+- e9cd040: AI helpers (✨): add an optional direction to steer what the helper writes, and choose which model Claude Code or Codex uses for that run. Settings → AI helpers saves a default model for each installed CLI.
+- e9cd040: Review pictures and clips at full size. On the canvas, double-click a generated output or a media node (or use the magnifier in the node header) to open a viewer with zoom, pan and Open / Reveal in folder; the arrow keys step through every output of the run, each captioned with its model, prompt and size, without changing which take is picked. On a container's Assets tab, clicking a picture or clip opens the same viewer and steps through the grid as filtered.
+
+### Patch Changes
+
+- e9cd040: Retrying a failed or cancelled run whose input image has been deleted is now refused with an explanation, instead of sending the run without that input; the delete confirmation warns about this. Deleting an asset also removes the larger preview copies cached for it.
+- e9cd040: Canvas fixes: after deleting a node, selecting a generate node brings the prompt bar back again; deleting a connected node is now a single undo step; and undo skips, with a short notice, a step whose asset has since been deleted instead of getting stuck on it. The "Add to…" dialog on a card no longer fails as soon as it opens.
+
 ## 0.3.0
 
 ### Minor Changes

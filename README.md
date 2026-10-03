@@ -209,6 +209,18 @@ the suggested role for each field, and save. Models nobody has mapped still
 work, with their slots marked unverified. See
 [`CONTRIBUTING.md`](CONTRIBUTING.md) to send a mapping upstream.
 
+### Reviewing and editing assets
+
+Double-click a generated output or a media node on the canvas, or click a
+picture on a container's Assets tab, to open it at full size with zoom, pan and
+Open / Reveal in folder; the arrow keys step through a run's outputs without
+changing the picked take. Canvas images load larger copies as you zoom in, so
+they stay sharp up to 8×. An asset card's menu (⋯ or right-click) moves the
+asset to another container, crops an image into a new one (free-form or a fixed
+shape; the original is never changed), or deletes it. The ✨ AI helpers take an
+optional direction and a choice of model for Claude Code or Codex, with a
+default per CLI in **Settings → AI helpers**.
+
 ### Portable workflow templates
 
 Open “Workflow templates” on the canvas to use a starter, save a template on this
