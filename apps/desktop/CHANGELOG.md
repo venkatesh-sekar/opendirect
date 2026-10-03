@@ -1,5 +1,16 @@
 # @opendirect/desktop
 
+## 0.5.0
+
+### Minor Changes
+
+- 2bcadec: AI helpers (✨): Explain image and Rethink image read a picture with your local Claude Code or Codex CLI. Pick a generate node's own output or one of its wired references in the prompt bar, or select an image node on the canvas. Explain describes the picture, and you can copy it or add it to your prompt. Rethink writes a new prompt from the picture and the prompt behind it, and you can use it in the bar or start a new image node with it. A run keeps going, and its answer stays, if you click away from the node. The ✨ menu's CLI and model picks apply to one run, and Set as default saves them as the defaults used in Settings → AI helpers (now labelled Default CLI).
+- 64896ed: More Replicate models in the model picker, mapped and priced. Video: Veo 3.1, Veo 3.1 Fast, Kling 2.5 Turbo Pro, Hailuo 2.3, Wan 3.0, P-Video and LTX-2 Fast. Image: FLUX.2 Pro, Seedream 4.5, GPT Image 1.5, GPT Image 2, GPT Image 2.5 Flare, GPT Image 2.5 Sunburst, Imagen 4 Fast, Ideogram 3.0 Turbo, Qwen-Image and P-Image. Seedance and Nano Banana stay first under Recommended, which now also lists a best, a balanced and a fast, cheap option for video and for image. Models with a separate price for audio, such as Veo, are quoted at the cheaper rate when audio is off. Models that set their image count in their own field, such as GPT Image 2's `number_of_images`, are now quoted for every image they make. GPT Image 2.5 is quoted at its dearest quality setting, so a run at the default quality costs half the estimate. GPT Image 1 and GPT Image 1 Mini are left out because Replicate requires your own OpenAI key for them.
+
+### Patch Changes
+
+- 2bcadec: The prompt bar's cost, Save and Run buttons no longer spill past its right edge on narrower windows. The provider and settings chips now shrink and truncate their labels (hover shows the full text). The bar also switches to its compact layout as soon as the window is too narrow for its full width.
+
 ## 0.4.1
 
 ### Patch Changes
