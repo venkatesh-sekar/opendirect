@@ -172,6 +172,7 @@ async function resolveRequest(
       helper: request.helper,
       imagePath: assetPath,
       prompt: request.prompt ?? null,
+      promptRole: request.promptRole ?? "made-it",
     }
   }
   return request.helper === "describe-reference"

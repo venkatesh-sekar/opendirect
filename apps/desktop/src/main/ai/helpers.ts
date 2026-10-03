@@ -30,7 +30,13 @@ export type ResolvedHelperRequest = (
   | { helper: "describe-reference"; assetPath: string }
   | { helper: "analyze-video"; assetPath: string }
   | { helper: "suggest-shots"; containerName: string; notes?: string | null }
-  | { helper: AiImageHelperId; imagePath: string; prompt?: string | null }
+  | {
+      helper: AiImageHelperId
+      imagePath: string
+      prompt?: string | null
+      /** Whether `prompt` generated the image, or uses it as a reference. */
+      promptRole?: "made-it" | "uses-it"
+    }
 ) & { instructions?: string | null }
 
 export interface HelperOutcome {
@@ -147,7 +153,13 @@ export function helperPrompt(request: ResolvedHelperRequest): string {
         "",
         ...imageLines(request.imagePath),
         ...(request.prompt?.trim()
-          ? ["", "The prompt behind it:", request.prompt.trim()]
+          ? [
+              "",
+              request.promptRole === "uses-it"
+                ? "The prompt this image is being used in:"
+                : "The prompt behind it:",
+              request.prompt.trim(),
+            ]
           : []),
       ].join("\n")
     }

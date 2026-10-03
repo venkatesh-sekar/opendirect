@@ -134,24 +134,46 @@ export function HelperMenu({
 
   const model: string | null | undefined =
     tool in models ? models[tool] : settings.data?.aiModels[tool]
-  /** This run's choice differs from the saved default, so it can become it. */
+  /**
+   * This run's choice differs from the default, so it can become it. "The
+   * default" is the saved setting as well as the CLI the menu fell back to:
+   * a saved CLI that has since been uninstalled must still be replaceable.
+   */
   const canSetDefault =
     settings.data !== undefined &&
     model !== undefined &&
-    (tool !== defaultTool || model !== settings.data.aiModels[tool])
+    (tool !== defaultTool ||
+      (saved !== null && tool !== saved) ||
+      model !== settings.data.aiModels[tool])
+
+  /** Back to the default for the next run: a pick here is for one run. */
+  function clearPicks(): void {
+    setChosen(null)
+    setModels({})
+  }
 
   function setAsDefault(): void {
     if (!settings.data || !tool || model === undefined) return
+    const storedTool = tool
+    const storedModel = model
     update.mutate(
       {
-        preferredAiTool: tool,
-        aiModels: { ...settings.data.aiModels, [tool]: model },
+        preferredAiTool: storedTool,
+        aiModels: { ...settings.data.aiModels, [storedTool]: storedModel },
       },
       {
-        // The menu follows the default again; there is no override left.
+        // The stored picks are the default now, so they stop being overrides.
+        // Only those: a pick changed while the save was in flight is newer
+        // than what was saved and stays. A failed save clears nothing.
         onSuccess: () => {
-          setChosen(null)
-          setModels({})
+          setChosen((current) => (current === storedTool ? null : current))
+          setModels((current) => {
+            if (!(storedTool in current)) return current
+            if (current[storedTool] !== storedModel) return current
+            const next = { ...current }
+            delete next[storedTool]
+            return next
+          })
         },
       }
     )
@@ -316,6 +338,9 @@ export function HelperMenu({
                   } else {
                     onRun(helper, tool, options)
                   }
+                  // This run has its CLI and model; the next one starts from
+                  // the default again, however this one ends.
+                  clearPicks()
                 }}
               >
                 <HugeiconsIcon icon={SparklesIcon} className="size-4" />

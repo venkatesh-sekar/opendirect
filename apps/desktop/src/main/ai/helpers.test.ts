@@ -76,6 +76,20 @@ describe("helperPrompt", () => {
     )
   })
 
+  it("says a reference's prompt uses the image rather than made it", () => {
+    const rethink = helperPrompt({
+      helper: "rethink-image",
+      imagePath: "/p/a.png",
+      prompt: "venkz walks into the lobby",
+      promptRole: "uses-it",
+    })
+
+    expect(rethink).toContain(
+      "The prompt this image is being used in:\nvenkz walks into the lobby"
+    )
+    expect(rethink).not.toContain("The prompt behind it")
+  })
+
   it("carries the container and its notes into the shot list", () => {
     const prompt = helperPrompt({
       helper: "suggest-shots",

@@ -1109,19 +1109,29 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
             setNotice(null)
             if (isImageHelper(helper)) {
               if (!image) return
-              // A rethink starts from what was asked for: the prompt as it
-              // stands, or the one this node last ran with.
-              const behind =
-                helper === "rethink-image"
-                  ? rendered.prompt.trim() ||
-                    node.generation?.prompt?.trim() ||
-                    null
-                  : null
+              // A rethink starts from what was asked for. This node's own
+              // picture was made by the prompt it last ran with; a wired
+              // reference did not make anything here — the bar's prompt is
+              // one that uses it.
+              const own = image.id === node.asset?.id
+              const context =
+                helper !== "rethink-image"
+                  ? null
+                  : own
+                    ? node.generation?.prompt?.trim() || null
+                    : rendered.prompt.trim() || null
               ai.run(
                 {
                   helper,
                   assetId: image.id,
-                  ...(behind ? { prompt: behind } : {}),
+                  ...(context
+                    ? {
+                        prompt: context,
+                        promptRole: own
+                          ? ("made-it" as const)
+                          : ("uses-it" as const),
+                      }
+                    : {}),
                 },
                 tool,
                 options

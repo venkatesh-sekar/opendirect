@@ -967,14 +967,14 @@ describe("PromptBar", () => {
       tool: "claude",
       request: { helper: "rethink-image", assetId: "a0" },
     })
-    // The prompt as it stands goes along as context for the rethink.
-    expect(
-      (
-        invoke.mock.calls.find(([c]) => c === "ai:run")![1] as {
-          request: { prompt?: string }
-        }
-      ).request.prompt
-    ).toContain("a lift opens")
+    // A wired reference goes with the prompt that uses it, said as such.
+    const sent = (
+      invoke.mock.calls.find(([c]) => c === "ai:run")![1] as {
+        request: { prompt?: string; promptRole?: string }
+      }
+    ).request
+    expect(sent.prompt).toContain("a lift opens")
+    expect(sent.promptRole).toBe("uses-it")
     expect(await screen.findByTestId("ai-result-text")).toBeVisible()
     expect(await screen.findByLabelText("Prompt")).toHaveValue("a lift opens")
 
@@ -982,6 +982,37 @@ describe("PromptBar", () => {
     expect(await screen.findByLabelText("Prompt")).toHaveValue(
       "a bellhop opens the lift, slowly"
     )
+  })
+
+  it("rethinks the node's own picture with the prompt that made it", async () => {
+    const user = userEvent.setup()
+    const picked = {
+      ...TARGET,
+      pickAssetId: "own",
+      asset: asset("own"),
+      // Only the prompt matters here; the rest of the run is not read.
+      generation: {
+        prompt: "a bellhop at dusk",
+      } as unknown as CanvasNodeDto["generation"],
+    }
+    renderBar({ ...WIRED, nodes: [picked, ...WIRED.nodes.slice(1)] }, picked)
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: "Rethink image" })
+    )
+
+    await waitFor(() =>
+      expect(invoke.mock.calls.find(([c]) => c === "ai:run")).toBeDefined()
+    )
+    expect(invoke.mock.calls.find(([c]) => c === "ai:run")![1]).toMatchObject({
+      request: {
+        helper: "rethink-image",
+        assetId: "own",
+        prompt: "a bellhop at dusk",
+        promptRole: "made-it",
+      },
+    })
   })
 
   it("explains the node's own picture first, or the reference the user picks", async () => {

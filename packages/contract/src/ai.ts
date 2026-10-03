@@ -198,10 +198,16 @@ export const aiRunRequestSchema = z.object({
       helper: z.enum(AI_IMAGE_HELPERS),
       assetId: z.string().min(1),
       /**
-       * The prompt behind the image — the node's current one, or the one it
-       * was generated from — so a rethink starts from what was asked for.
+       * A prompt that goes with the image, so a rethink starts from what was
+       * asked for: the one it was generated from, or the one it is wired into
+       * as a reference.
        */
       prompt: z.string().nullable().optional(),
+      /**
+       * Which of the two `prompt` is: `made-it` (the default) for the prompt
+       * that generated the image, `uses-it` for a prompt it is a reference in.
+       */
+      promptRole: z.enum(["made-it", "uses-it"]).optional(),
     }),
   ]),
 })
