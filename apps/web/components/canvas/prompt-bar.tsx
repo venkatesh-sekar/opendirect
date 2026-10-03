@@ -59,8 +59,12 @@ import {
   ViewIcon,
 } from "@hugeicons/core-free-icons"
 import {
+  AI_IMAGE_HELPERS,
+  isImageHelper,
   parseFamilyKey,
   promptRecipeSchema,
+  type AiHelperId,
+  type AssetDto,
   type PromptBlock,
   type PromptRecipe,
   type CanvasDto,
@@ -139,6 +143,13 @@ import { SettingsPopover } from "./settings-popover"
  * shape to render when it is only carrying the narrow-width overflow.
  */
 const EMPTY_GRID: IconGrid = { rows: [], fields: [] }
+
+/** This bar's ✨ menu: the prompt helpers, then the two that read an image. */
+const PROMPT_BAR_HELPERS: readonly AiHelperId[] = [
+  "improve-prompt",
+  "suggest-shots",
+  ...AI_IMAGE_HELPERS,
+]
 
 export { MAX_BATCH }
 
@@ -635,6 +646,27 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
   )
 
   /**
+   * What Explain / Rethink image can look at: this node's own pick first —
+   * the picture the user selected — then every image wired into it.
+   */
+  const helperImages = useMemo(() => {
+    const seen = new Set<string>()
+    const found: AssetDto[] = []
+    const add = (asset: AssetDto | null) => {
+      if (!asset || asset.kind !== "image" || seen.has(asset.id)) return
+      seen.add(asset.id)
+      found.push(asset)
+    }
+    add(node.asset)
+    for (const group of stripGroups) {
+      for (const item of group.items) {
+        if (item.kind === "edge") add(item.asset)
+      }
+    }
+    return found
+  }, [node.asset, stripGroups])
+
+  /**
    * The stepper stops at `MAX_BATCH` and nowhere else.
    *
    * Deliberately *not* capped at the model's own `maximum`: a model that caps
@@ -1069,11 +1101,16 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
         */}
         <HelperMenu
           tools={aiTools.data}
-          helpers={["improve-prompt", "suggest-shots"]}
+          helpers={PROMPT_BAR_HELPERS}
+          images={helperImages}
           disabled={ai.state === "running"}
           className="size-8 shrink-0"
-          onRun={(helper, tool, options) => {
+          onRun={(helper, tool, options, image) => {
             setNotice(null)
+            if (isImageHelper(helper)) {
+              if (image) ai.run({ helper, assetId: image.id }, tool, options)
+              return
+            }
             if (helper === "improve-prompt") {
               if (!draft.prompt.trim()) {
                 setNotice(
@@ -1224,17 +1261,22 @@ export function PromptBar({ node, canvas, defaultModelKey }: PromptBarProps) {
 
       {/*
         The AI answer, and the only place it can become the prompt: Apply
-        replaces the prompt for an improved one, Insert appends a single
-        suggested shot. Nothing is written into the bar without one of those.
+        replaces the prompt with an improved or rethought one, or adds an
+        image's explanation to it; Insert appends a single suggested shot.
+        Nothing is written into the bar without one of those.
       */}
       <HelperResultDialog
         controller={ai}
         onApply={
-          ai.helper === "improve-prompt"
+          ai.helper === "improve-prompt" || ai.helper === "rethink-image"
             ? (text) => editBlocks((current) => replaceText(current, text))
-            : undefined
+            : ai.helper === "explain-image"
+              ? appendToPrompt
+              : undefined
         }
-        applyLabel="Use this prompt"
+        applyLabel={
+          ai.helper === "explain-image" ? "Add to prompt" : "Use this prompt"
+        }
         onInsertShot={appendToPrompt}
       />
 

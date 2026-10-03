@@ -19,7 +19,12 @@
 import { useMemo, useState } from "react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { SearchAreaIcon } from "@hugeicons/core-free-icons"
-import type { CanvasNodeDto } from "@opendirect/contract"
+import {
+  AI_IMAGE_HELPERS,
+  isImageHelper,
+  type AssetDto,
+  type CanvasNodeDto,
+} from "@opendirect/contract"
 import type { NodeProps } from "@xyflow/react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -28,9 +33,13 @@ import {
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
 
+import { useAiHelper, useAiTools } from "@/hooks/use-ai"
+import { HelperMenu } from "@/components/ai/helper-menu"
+import { HelperResultDialog } from "@/components/ai/helper-result-dialog"
 import { AssetPreview } from "@/components/board/asset-preview"
 import { MediaViewer } from "@/components/media/media-viewer"
 
+import { useCanvasSurface } from "../canvas-context"
 import { AssetTile, assetLabel } from "./asset-tile"
 import { NodeFrame } from "./node-frame"
 import type { CanvasFlowNode } from "./types"
@@ -74,6 +83,55 @@ export function MediaNodeBody({ node }: { node: CanvasNodeDto }) {
   )
 }
 
+/**
+ * ✨ on a selected picture: Explain or Rethink it with the local `claude` or
+ * `codex`, the same menu and the same answer dialog as Improve prompt.
+ *
+ * Only mounted while the node is selected — select the image, then ask — and
+ * absent altogether without a CLI, as `<HelperMenu/>` always is. The answer
+ * can be copied, or become the prompt of a new image node wired to this one.
+ * ⛔ That seeds a composition; Run is still the user's to press.
+ */
+export function MediaNodeAssist({
+  node,
+  asset,
+}: {
+  node: CanvasNodeDto
+  asset: AssetDto
+}) {
+  const surface = useCanvasSurface()
+  const tools = useAiTools()
+  const ai = useAiHelper()
+  const images = useMemo(() => [asset], [asset])
+
+  return (
+    <>
+      <HelperMenu
+        tools={tools.data}
+        helpers={AI_IMAGE_HELPERS}
+        images={images}
+        disabled={ai.state === "running"}
+        className="nodrag nopan size-6"
+        onRun={(helper, tool, options, image) => {
+          if (isImageHelper(helper) && image) {
+            ai.run({ helper, assetId: image.id }, tool, options)
+          }
+        }}
+      />
+      <HelperResultDialog
+        controller={ai}
+        onApply={
+          surface
+            ? (text) =>
+                surface.spawn(node, "right", "image_gen", { prompt: text })
+            : undefined
+        }
+        applyLabel="New image node with this prompt"
+      />
+    </>
+  )
+}
+
 /** The header button that opens the existing preview panel over the node. */
 function MediaNodeDetails({ node }: { node: CanvasNodeDto }) {
   const [open, setOpen] = useState(false)
@@ -108,7 +166,14 @@ export function MediaNode({ data, selected }: NodeProps<CanvasFlowNode>) {
       node={node}
       selected={selected === true}
       title={node.asset ? assetLabel(node.asset) : "Media"}
-      actions={<MediaNodeDetails node={node} />}
+      actions={
+        <>
+          {selected && node.asset?.kind === "image" ? (
+            <MediaNodeAssist node={node} asset={node.asset} />
+          ) : null}
+          <MediaNodeDetails node={node} />
+        </>
+      }
     >
       <MediaNodeBody node={node} />
     </NodeFrame>

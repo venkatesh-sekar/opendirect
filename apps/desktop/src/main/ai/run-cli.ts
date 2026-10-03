@@ -28,6 +28,7 @@
  * provider credit, and it is only ever reached from an explicit menu click.
  */
 import { spawn as nodeSpawn } from "node:child_process"
+import { dirname, isAbsolute } from "node:path"
 
 import { aiModelSchema, type AiToolId } from "@opendirect/contract"
 
@@ -120,6 +121,11 @@ export interface RunOptions {
   signal?: AbortSignal
   /** What the helper needs to do its job; nothing else is permitted. */
   allowedTools?: readonly string[]
+  /**
+   * Images the helper looks at — absolute paths main has already checked
+   * against the project root (`realAssetPath`). See `claudeArgs`/`codexArgs`.
+   */
+  images?: readonly string[]
   /**
    * The CLI's `--model`. Null/omitted passes no flag, so the CLI uses its own
    * default. Validated again here (`aiModelSchema`) before it reaches argv.
@@ -268,6 +274,24 @@ export interface ToolPolicy {
   allowedTools: readonly string[]
   /** A model name (checked by `resolveModel`), or null for the CLI default. */
   model?: string | null
+  /** Validated absolute image paths the helper is pointed at. */
+  images?: readonly string[]
+}
+
+/**
+ * An image path as it may reach argv: absolute (so it can never read as a
+ * flag) and free of control characters. Main only ever passes paths that went
+ * through `realAssetPath`; this is the second check where argv is built.
+ */
+function checkedImages(images: readonly string[] | undefined): string[] {
+  const list = images ?? []
+  for (const image of list) {
+    // eslint-disable-next-line no-control-regex
+    if (!isAbsolute(image) || /[\u0000-\u001f]/.test(image)) {
+      throw new Error("An image path handed to the CLI must be absolute.")
+    }
+  }
+  return [...list]
 }
 
 /**
@@ -315,9 +339,18 @@ export function resolveRunModel(
  * `--model <model>` takes an alias (`fable`, `opus`, `sonnet`, `haiku`) or a
  * full model name (Claude Code 2.1.288 `--help`); it is only passed when the
  * user chose one, so the default is whatever their CLI is configured for.
+ *
+ * An image is opened by claude's own `Read` tool (which reads images, not only
+ * text) from the path in the prompt. `--add-dir <directories...>` grants file
+ * tools access to the folder it sits in — normally already inside the working
+ * directory, but `realAssetPath` returns the *real* path, which leaves the
+ * project folder whenever that folder is reached through a symlink. It is
+ * variadic, so it is always followed by another `--` flag here.
  */
 export function claudeArgs(policy: ToolPolicy): string[] {
   const args = ["-p", "--output-format", "json", "--permission-mode", "plan"]
+  const dirs = [...new Set(checkedImages(policy.images).map(dirname))]
+  if (dirs.length > 0) args.push("--add-dir", ...dirs)
   const model = resolveModel(policy.model)
   if (model) args.push("--model", model)
   if (policy.allowedTools.length > 0) {
@@ -339,16 +372,30 @@ export function claudeArgs(policy: ToolPolicy): string[] {
  * and answers, and may never write. `--model <MODEL>` (short `-m`) is only
  * passed when the user chose one. All verified against `codex exec --help`
  * (codex-cli 0.155).
+ *
+ * An image goes in as `--image <FILE>` ("Optional image(s) to attach to the
+ * initial prompt"), so the model sees the picture itself rather than a path
+ * it would have to go and read. The flag is variadic (`<FILE>...`), so each
+ * one sits straight after `exec` and is followed by another `--` flag: last,
+ * it would swallow the `-` stdin marker as a second image. A path holding a
+ * comma is not attached: codex-rs declares the flag with a `,` value
+ * delimiter (not shown by `--help`), so it would arrive as two broken paths.
+ * The path is still in the prompt, for codex to open itself.
  */
-export function codexArgs(policy: Pick<ToolPolicy, "model"> = {}): string[] {
-  const args = [
-    "exec",
+export function codexArgs(
+  policy: Pick<ToolPolicy, "model" | "images"> = {}
+): string[] {
+  const args = ["exec"]
+  for (const image of checkedImages(policy.images)) {
+    if (!image.includes(",")) args.push("--image", image)
+  }
+  args.push(
     "--color",
     "never",
     "--skip-git-repo-check",
     "--sandbox",
-    "read-only",
-  ]
+    "read-only"
+  )
   const model = resolveModel(policy.model)
   if (model) args.push("--model", model)
   // The stdin marker stays last: it is the positional prompt argument.
@@ -430,6 +477,7 @@ function runCli(tool: AiToolId, options: RunOptions): Promise<AiRunOutput> {
       args = spec.args({
         allowedTools: options.allowedTools ?? [],
         model: options.model ?? null,
+        images: options.images ?? [],
       })
     } catch (error) {
       // An invalid model never reaches a child process.

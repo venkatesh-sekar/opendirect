@@ -18,6 +18,10 @@
  * the CLI is started with — the saved `aiModels` setting unless changed here
  * for this session.
  *
+ * A surface that hands it `images` also gets the image helpers (Explain /
+ * Rethink image) and a row of thumbnails to pick which picture they look at;
+ * the direction box is then where a free-form question about it goes.
+ *
  * ⛔ Nothing here applies an answer. Each item starts a run whose result goes
  * to `<HelperResultDialog/>` for the user to accept.
  */
@@ -27,7 +31,9 @@ import { SparklesIcon } from "@hugeicons/core-free-icons"
 import {
   AI_HELPER_LABELS,
   AI_INSTRUCTIONS_MAX_LENGTH,
+  isImageHelper,
   type AiHelperId,
+  type AssetDto,
   type AiToolId,
   type AiTools,
 } from "@opendirect/contract"
@@ -51,10 +57,22 @@ export interface HelperMenuProps {
   /** Which helpers this surface offers, in the order it offers them. */
   helpers: readonly AiHelperId[]
   /**
+   * The images the image helpers (Explain / Rethink image) can look at — the
+   * selected node's picture, its wired references. The image helpers are not
+   * offered without one.
+   */
+  images?: readonly AssetDto[]
+  /**
    * `options.model` is undefined until settings have loaded — main then
    * reads the saved model itself — and null for "the CLI's own default".
+   * `image` is the one the user chose, passed for an image helper only.
    */
-  onRun: (helper: AiHelperId, tool: AiToolId, options: AiRunOptions) => void
+  onRun: (
+    helper: AiHelperId,
+    tool: AiToolId,
+    options: AiRunOptions,
+    image?: AssetDto
+  ) => void
   disabled?: boolean
   className?: string
   label?: string
@@ -66,9 +84,12 @@ export function installedTools(tools: AiTools | undefined): AiToolId[] {
   return (["claude", "codex"] as const).filter((id) => tools[id].available)
 }
 
+const NO_IMAGES: readonly AssetDto[] = []
+
 export function HelperMenu({
   tools,
   helpers,
+  images = NO_IMAGES,
   onRun,
   disabled,
   className,
@@ -77,6 +98,7 @@ export function HelperMenu({
   const [open, setOpen] = useState(false)
   const [chosen, setChosen] = useState<AiToolId | null>(null)
   const [instructions, setInstructions] = useState("")
+  const [imageId, setImageId] = useState<string | null>(null)
   /** A model picked here, per tool; absent means "the saved setting". */
   const [models, setModels] = useState<
     Partial<Record<AiToolId, string | null>>
@@ -87,8 +109,15 @@ export function HelperMenu({
   const tool =
     (chosen && tools?.[chosen].available ? chosen : tools?.preferred) ?? null
 
+  /** The image helpers need an image; the others are always on offer. */
+  const offered = helpers.filter(
+    (helper) => !isImageHelper(helper) || images.length > 0
+  )
+  const offersImages = offered.some(isImageHelper)
+  const image = images.find((one) => one.id === imageId) ?? images[0]
+
   // The whole point: no CLI, no menu, no trace of one.
-  if (!tool || helpers.length === 0) return null
+  if (!tool || offered.length === 0) return null
 
   const model: string | null | undefined =
     tool in models ? models[tool] : settings.data?.aiModels[tool]
@@ -152,10 +181,55 @@ export function HelperMenu({
           </p>
         )}
 
+        {offersImages && image ? (
+          <div
+            role="radiogroup"
+            aria-label="Which image"
+            className="flex flex-wrap items-center gap-1 px-2 py-1.5 text-xs text-muted-foreground"
+          >
+            <span className="mr-1">Image</span>
+            {images.map((one) => {
+              const name = one.label ?? one.originalName ?? "Image"
+              const src = one.thumbnailUrl ?? one.url
+              return (
+                <button
+                  key={one.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={one.id === image.id}
+                  aria-label={name}
+                  title={name}
+                  onClick={() => setImageId(one.id)}
+                  className={cn(
+                    "size-8 overflow-hidden rounded border bg-muted",
+                    one.id === image.id
+                      ? "border-foreground/60 ring-1 ring-foreground/30"
+                      : "border-transparent opacity-70 hover:opacity-100"
+                  )}
+                >
+                  {src ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={src}
+                      alt=""
+                      className="size-full object-cover"
+                      draggable={false}
+                    />
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
+
         <div className="flex flex-col gap-2 border-b px-2 pt-1 pb-2">
           <Textarea
             aria-label="Direction for the helper"
-            placeholder="Optional direction, e.g. more cinematic, keep the outfit"
+            placeholder={
+              offersImages
+                ? "Optional direction or question, e.g. why does it feel cold?"
+                : "Optional direction, e.g. more cinematic, keep the outfit"
+            }
             value={instructions}
             maxLength={AI_INSTRUCTIONS_MAX_LENGTH}
             rows={2}
@@ -179,7 +253,7 @@ export function HelperMenu({
         </div>
 
         <ul className="flex flex-col pt-1">
-          {helpers.map((helper) => (
+          {offered.map((helper) => (
             <li key={helper}>
               <Button
                 variant="ghost"
@@ -187,10 +261,15 @@ export function HelperMenu({
                 className="w-full justify-start"
                 onClick={() => {
                   setOpen(false)
-                  onRun(helper, tool, {
+                  const options = {
                     model,
                     instructions: instructions.trim() || null,
-                  })
+                  }
+                  if (isImageHelper(helper) && image) {
+                    onRun(helper, tool, options, image)
+                  } else {
+                    onRun(helper, tool, options)
+                  }
                 }}
               >
                 <HugeiconsIcon icon={SparklesIcon} className="size-4" />

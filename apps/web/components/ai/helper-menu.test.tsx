@@ -6,6 +6,7 @@ import {
   settingsDefaults,
   type AiToolModels,
   type AiTools,
+  type AssetDto,
 } from "@opendirect/contract"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import {
@@ -285,4 +286,102 @@ describe("HelperMenu", () => {
       expect.objectContaining({ model: "claude-opus-5-5[1m]" })
     )
   })
+
+  it("hides the image helpers until there is an image to point them at", async () => {
+    render(
+      <HelperMenu
+        tools={tools()}
+        helpers={["improve-prompt", "explain-image", "rethink-image"]}
+        onRun={vi.fn()}
+      />
+    )
+
+    await openMenu()
+    expect(screen.getByRole("button", { name: "Improve prompt" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Explain image" })).toBeNull()
+    expect(screen.queryByRole("radiogroup", { name: "Which image" })).toBeNull()
+  })
+
+  it("renders nothing for an image-only surface with no image", () => {
+    const { container } = render(
+      <HelperMenu tools={tools()} helpers={["explain-image"]} onRun={vi.fn()} />
+    )
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  it("hands an image helper the image the user chose, with their question", async () => {
+    const onRun = vi.fn()
+    const first = image("a1", "Lobby")
+    const second = image("a2", "Corridor")
+    render(
+      <HelperMenu
+        tools={tools()}
+        helpers={["improve-prompt", "explain-image", "rethink-image"]}
+        images={[first, second]}
+        onRun={onRun}
+      />
+    )
+
+    await openMenu()
+    expect(screen.getByRole("radio", { name: "Lobby" })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+    await userEvent.click(screen.getByRole("radio", { name: "Corridor" }))
+    await userEvent.type(
+      screen.getByRole("textbox", { name: "Direction for the helper" }),
+      "why does it feel cold?"
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Explain image" }))
+
+    expect(onRun).toHaveBeenCalledWith(
+      "explain-image",
+      "claude",
+      { model: null, instructions: "why does it feel cold?" },
+      second
+    )
+  })
+
+  it("passes no image to a text helper, even with images on offer", async () => {
+    const onRun = vi.fn()
+    render(
+      <HelperMenu
+        tools={tools()}
+        helpers={["improve-prompt", "rethink-image"]}
+        images={[image("a1", "Lobby")]}
+        onRun={onRun}
+      />
+    )
+
+    await openMenu()
+    await userEvent.click(
+      screen.getByRole("button", { name: "Improve prompt" })
+    )
+
+    expect(onRun.mock.calls[0]).toHaveLength(3)
+  })
 })
+
+function image(id: string, label: string): AssetDto {
+  return {
+    id,
+    projectId: "p1",
+    kind: "image",
+    relPath: `assets/${id}.png`,
+    text: null,
+    mimeType: "image/png",
+    width: 64,
+    height: 64,
+    durationMs: null,
+    bytes: 128,
+    sha256: id,
+    thumbnailRelPath: null,
+    label,
+    originalName: `${id}.png`,
+    pinned: false,
+    generationId: null,
+    createdAt: 1,
+    url: `asset://p1/assets/${id}.png`,
+    thumbnailUrl: null,
+  }
+}

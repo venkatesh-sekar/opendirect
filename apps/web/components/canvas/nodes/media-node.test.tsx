@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest"
 
-import type { AssetDto, CanvasNodeDto } from "@opendirect/contract"
+import {
+  settingsDefaults,
+  type AssetDto,
+  type CanvasNodeDto,
+} from "@opendirect/contract"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -16,7 +20,10 @@ vi.mock("@/lib/ipc", () => ({
   pathsForFiles: () => [],
 }))
 
-const { MediaNodeBody } = await import("./media-node")
+const { MediaNodeAssist, MediaNodeBody } = await import("./media-node")
+const { CanvasSurfaceProvider, createNoteDrafts } =
+  await import("../canvas-context")
+type CanvasSurface = import("../canvas-context").CanvasSurface
 const { defaultContainerName } =
   await import("@/components/board/save-as-container")
 
@@ -172,5 +179,96 @@ describe("the full-size viewer", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
     // ⛔ Looking at a picture asks the main process for nothing.
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe("asking a local CLI about the selected image", () => {
+  const surface: CanvasSurface = {
+    containerId: null,
+    noteDrafts: createNoteDrafts(),
+    spawn: vi.fn(),
+    pick: vi.fn(),
+    branch: vi.fn(),
+    selectGeneration: vi.fn(),
+  }
+
+  function mountAssist(installed: boolean) {
+    invoke.mockImplementation(async (channel: string) => {
+      switch (channel) {
+        case "ai:tools":
+          return {
+            claude: {
+              id: "claude",
+              available: installed,
+              path: installed ? "/bin/claude" : null,
+              version: null,
+            },
+            codex: { id: "codex", available: false, path: null, version: null },
+            preferred: installed ? "claude" : null,
+            detectedAt: 1,
+          }
+        case "settings:get":
+          return { ...settingsDefaults }
+        case "ai:run":
+          return {
+            runId: "r",
+            helper: "rethink-image",
+            tool: "claude",
+            text: "A lone figure at dusk, shot on a 35mm lens.",
+            summary: null,
+            shots: [],
+            durationMs: 1,
+          }
+        default:
+          throw new Error(`Unexpected channel ${channel}`)
+      }
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    return render(
+      <QueryClientProvider client={client}>
+        <CanvasSurfaceProvider value={surface}>
+          <MediaNodeAssist node={node} asset={asset} />
+        </CanvasSurfaceProvider>
+      </QueryClientProvider>
+    )
+  }
+
+  it("rethinks the image by asset id and seeds a new node only on request", async () => {
+    const user = userEvent.setup()
+    mountAssist(true)
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: "Rethink image" })
+    )
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        "ai:run",
+        expect.objectContaining({
+          request: { helper: "rethink-image", assetId: "asset-1" },
+        })
+      )
+    )
+    expect(await screen.findByTestId("ai-result-text")).toHaveTextContent(
+      "A lone figure at dusk"
+    )
+    // ⛔ Nothing is made until the user asks for it.
+    expect(surface.spawn).not.toHaveBeenCalled()
+
+    await user.click(
+      screen.getByRole("button", { name: "New image node with this prompt" })
+    )
+    expect(surface.spawn).toHaveBeenCalledWith(node, "right", "image_gen", {
+      prompt: "A lone figure at dusk, shot on a 35mm lens.",
+    })
+  })
+
+  it("shows nothing without a local CLI", async () => {
+    mountAssist(false)
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("ai:tools"))
+    expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
   })
 })

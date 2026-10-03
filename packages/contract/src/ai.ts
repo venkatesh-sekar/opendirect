@@ -116,6 +116,8 @@ export const aiHelperIdSchema = z.enum([
   "describe-reference",
   "analyze-video",
   "suggest-shots",
+  "explain-image",
+  "rethink-image",
 ])
 export type AiHelperId = z.output<typeof aiHelperIdSchema>
 
@@ -125,6 +127,20 @@ export const AI_HELPER_LABELS: Record<AiHelperId, string> = {
   "describe-reference": "Describe reference",
   "analyze-video": "Analyze video",
   "suggest-shots": "Suggest shots",
+  "explain-image": "Explain image",
+  "rethink-image": "Rethink image",
+}
+
+/**
+ * The helpers that look at one image the user selected on the canvas. The ✨
+ * menu offers them only once there is an image to point at, and the CLI is
+ * handed that image itself (see `run-cli.ts`), not only its path.
+ */
+export const AI_IMAGE_HELPERS = ["explain-image", "rethink-image"] as const
+export type AiImageHelperId = (typeof AI_IMAGE_HELPERS)[number]
+
+export function isImageHelper(helper: AiHelperId): helper is AiImageHelperId {
+  return (AI_IMAGE_HELPERS as readonly string[]).includes(helper)
 }
 
 /**
@@ -176,6 +192,11 @@ export const aiRunRequestSchema = z.object({
       helper: z.literal("suggest-shots"),
       containerName: z.string().min(1),
       notes: z.string().nullable().optional(),
+    }),
+    // One image the user selected; main checks the asset really is one.
+    z.object({
+      helper: z.enum(AI_IMAGE_HELPERS),
+      assetId: z.string().min(1),
     }),
   ]),
 })
