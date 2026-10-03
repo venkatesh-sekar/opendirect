@@ -12,6 +12,7 @@ import {
   isCanvasOperation,
   pushEntry,
   redoEntry,
+  StaleHistoryEntryError,
   undoEntry,
   useCanvasHistory,
   type CanvasHistoryEntry,
@@ -216,6 +217,67 @@ describe("useCanvasHistory", () => {
     expect(result.current.busy).toBe(false)
   })
 
+  it("drops an undo whose target is gone, without throwing, and keeps the rest", async () => {
+    const log: string[] = []
+    const { result } = renderHook(() => useCanvasHistory())
+    act(() => result.current.push(entry("node:move", log, "a")))
+    act(() =>
+      result.current.push({
+        operation: "node:delete",
+        label: "Delete node",
+        undo: () =>
+          Promise.reject(new StaleHistoryEntryError("Its file was deleted.")),
+        redo: () => {},
+      })
+    )
+
+    let outcome: Awaited<ReturnType<typeof result.current.undo>> | null = null
+    await act(async () => {
+      outcome = await result.current.undo()
+    })
+    expect(outcome).toMatchObject({
+      status: "dropped",
+      reason: "Its file was deleted.",
+    })
+    expect(result.current.undoLabel).toBe("a")
+    expect(result.current.canRedo).toBe(false)
+    expect(result.current.busy).toBe(false)
+
+    await act(async () => {
+      await result.current.undo()
+    })
+    expect(log).toEqual(["undo:a"])
+  })
+
+  it("drops a redo whose target is gone, and keeps the redo beneath it", async () => {
+    const log: string[] = []
+    const { result } = renderHook(() => useCanvasHistory())
+    act(() =>
+      result.current.push({
+        operation: "node:create",
+        label: "Add node",
+        undo: () => {},
+        redo: () => {
+          throw new StaleHistoryEntryError("Its file was deleted.")
+        },
+      })
+    )
+    act(() => result.current.push(entry("node:move", log, "b")))
+    await act(async () => {
+      await result.current.undo()
+      await result.current.undo()
+    })
+    expect(result.current.redoLabel).toBe("Add node")
+
+    let outcome: Awaited<ReturnType<typeof result.current.redo>> | null = null
+    await act(async () => {
+      outcome = await result.current.redo()
+    })
+    expect(outcome).toMatchObject({ status: "dropped" })
+    expect(result.current.canUndo).toBe(false)
+    expect(result.current.redoLabel).toBe("b")
+  })
+
   it("ignores a second press while a replay is still in flight", async () => {
     const log: string[] = []
     let release: (() => void) | null = null
@@ -233,7 +295,7 @@ describe("useCanvasHistory", () => {
       })
     )
 
-    let first: Promise<void> | null = null
+    let first: Promise<unknown> | null = null
     await act(async () => {
       first = result.current.undo()
       // The second press lands while the first is still waiting.
