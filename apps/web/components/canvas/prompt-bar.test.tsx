@@ -186,6 +186,100 @@ const textOnly: ModelDescriptor = {
   referenceSlots: [],
 } as unknown as ModelDescriptor
 
+/**
+ * `openrouter:alibaba/wan-3.0` exactly as the catalog cached it: the schema
+ * `buildVideoInputSchema` synthesises from `supported_durations` 2–30 (an
+ * integer enum with no default), and no passthrough parameters at all.
+ */
+const wan3: ModelDescriptor = {
+  ...descriptor,
+  key: "openrouter:alibaba/wan-3.0",
+  provider: "openrouter",
+  slug: "alibaba/wan-3.0",
+  name: "Alibaba: Wan 3.0",
+  versionId: null,
+  inputSchema: {
+    type: "object",
+    required: ["prompt"],
+    additionalProperties: false,
+    properties: {
+      prompt: { type: "string", title: "Prompt" },
+      duration: {
+        type: "integer",
+        title: "Duration",
+        enum: Array.from({ length: 29 }, (_, i) => i + 2),
+      },
+      resolution: {
+        type: "string",
+        title: "Resolution",
+        enum: ["480p", "720p", "1080p"],
+      },
+      aspect_ratio: {
+        type: "string",
+        title: "Aspect Ratio",
+        enum: ["16:9", "4:3", "1:1", "3:4", "9:16"],
+      },
+      generate_audio: { type: "boolean", title: "Generate Audio" },
+      seed: { type: "integer", title: "Seed" },
+      first_frame: {
+        type: "string",
+        format: "uri",
+        contentMediaType: "image/*",
+        title: "First Frame",
+      },
+      input_references: {
+        type: "array",
+        items: { type: "string", format: "uri" },
+        title: "Input References",
+      },
+    },
+  },
+  referenceSlots: [
+    {
+      field: "first_frame",
+      label: "First Frame",
+      kind: "image",
+      multiple: false,
+      max: null,
+      role: "first_frame",
+      verified: false,
+      required: false,
+      shape: null,
+    },
+    {
+      field: "input_references",
+      label: "Input References",
+      kind: "any",
+      multiple: true,
+      max: null,
+      role: "reference",
+      verified: false,
+      required: false,
+      shape: null,
+    },
+  ],
+  commonControls: {
+    prompt: "prompt",
+    aspectRatio: "aspect_ratio",
+    duration: "duration",
+    resolution: "resolution",
+    seed: "seed",
+    audio: "generate_audio",
+  },
+  pricing: {
+    basis: "per_second",
+    currency: "USD",
+    skus: {
+      duration_seconds_480p: "0.05",
+      duration_seconds_720p: "0.1",
+      duration_seconds_1080p: "0.2",
+    },
+    estimate: null,
+    source: "provider_api",
+    note: null,
+  },
+} as unknown as ModelDescriptor
+
 /** One `@`-able character, with one reference image and a description. */
 const VENKZ: MentionSubjectDto = {
   containerId: "c-venkz",
@@ -893,9 +987,9 @@ describe("PromptBar", () => {
       if (narrow) {
         // The settings chip too: its summary is its name and its title.
         expect(chip).toHaveTextContent(/^$/)
-        expect(chip).toHaveAccessibleName("Settings: 720p")
+        expect(chip).toHaveAccessibleName("Settings: 5s · 720p")
       } else {
-        expect(chip).toHaveTextContent("720p")
+        expect(chip).toHaveTextContent("5s · 720p")
       }
       expect(controls).toContainElement(
         screen.getByRole("button", { name: "Save prompt" })
@@ -914,7 +1008,7 @@ describe("PromptBar", () => {
     })
   })
 
-  it("names Advanced with its count, and says why it is off", async () => {
+  it("names Advanced with its count, and opens it even when it is empty", async () => {
     const user = userEvent.setup()
     const first = renderBar()
 
@@ -930,20 +1024,74 @@ describe("PromptBar", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Run" })).toBeEnabled()
     )
-    const off = screen.getByRole("button", { name: "Advanced parameters" })
-    expect(off).toBeDisabled()
-    expect(off).toHaveAccessibleDescription(
-      "This model has no advanced parameters."
-    )
-    // A disabled button takes no pointer or focus, so its wrapper does.
-    const wrapper = screen.getByTestId("advanced-off-wrapper")
-    expect(wrapper).toHaveAttribute("tabindex", "0")
-    await user.hover(wrapper)
-    // Once for the screen reader, once in the tooltip now showing.
+    // Every input is on the bar: the sheet still opens, says so, and shows
+    // the request — never a greyed-out icon with nothing behind it.
+    const empty = screen.getByRole("button", { name: "Advanced parameters" })
+    expect(empty).toBeEnabled()
+    expect(screen.queryByTestId("advanced-off-wrapper")).toBeNull()
+    await user.click(empty)
+    expect(
+      await screen.findByText(/has no parameters beyond the ones in the bar/)
+    ).toBeInTheDocument()
+    expect(screen.getByTestId("request-preview")).toHaveTextContent("a lift")
+  })
+
+  /**
+   * The user's report: OpenRouter's Wan 3.0 publishes a 2–30 s duration, a
+   * seed and an audio switch — and the bar showed none of them, with
+   * Advanced greyed out, because all three were "promoted" to controls no
+   * widget rendered. The duration is now in the settings popover and the
+   * rest are in Advanced.
+   */
+  it("offers a video model's duration, and puts its seed and audio in Advanced", async () => {
+    const user = userEvent.setup()
+    served = wan3
+    renderBar(BARE)
+
+    const advanced = await screen.findByRole("button", {
+      name: "Advanced parameters, 2",
+    })
+    expect(advanced).toBeEnabled()
+
+    // No default is published, so nothing is chosen for the user.
+    const chip = await screen.findByTestId("settings-chip")
+    expect(chip).not.toHaveTextContent(/\ds/)
+    await user.click(chip)
+    const row = await screen.findByTestId("duration-row")
+    expect(row).toHaveTextContent("Not set")
+    await user.click(within(row).getByRole("combobox", { name: "Duration" }))
+    const options = await screen.findAllByRole("option")
+    expect(options).toHaveLength(29)
+    await user.click(screen.getByRole("option", { name: "10s" }))
+
+    // The integer the schema declares, in the draft the quote is asked with.
     await waitFor(() =>
       expect(
-        screen.getAllByText("This model has no advanced parameters.")
-      ).toHaveLength(2)
+        invoke.mock.calls.some(
+          ([channel, payload]) =>
+            channel === "cost:estimate" &&
+            (payload as { params: Record<string, unknown> }).params.duration ===
+              10
+        )
+      ).toBe(true)
+    )
+    expect(screen.getByTestId("settings-chip")).toHaveTextContent("10s")
+  })
+
+  it("starts a Replicate model's duration at its schema default", async () => {
+    renderBar(BARE)
+
+    const chip = await screen.findByTestId("settings-chip")
+    await waitFor(() => expect(chip).toHaveTextContent("5s · 720p"))
+    await waitFor(() =>
+      expect(
+        invoke.mock.calls.some(
+          ([channel, payload]) =>
+            channel === "cost:estimate" &&
+            (payload as { params: Record<string, unknown> }).params.duration ===
+              5
+        )
+      ).toBe(true)
     )
   })
 

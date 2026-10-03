@@ -21,6 +21,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { buildIconGrid } from "@/lib/canvas/icon-grid"
+import { durationSpec } from "@/lib/schema-form/duration"
 
 import { SettingsPopover } from "./settings-popover"
 
@@ -153,7 +154,7 @@ function gptImage(): ModelDescriptor {
 async function open(
   descriptor: ModelDescriptor,
   values: Record<string, unknown> = {},
-  onChange: (field: string, value: string) => void = () => {}
+  onChange: (field: string, value: unknown) => void = () => {}
 ) {
   const user = userEvent.setup()
   render(
@@ -263,6 +264,123 @@ describe("SettingsPopover", () => {
     expect(screen.getByTestId("settings-chip")).toHaveTextContent("480p · 9:16")
   })
 
+  describe("duration", () => {
+    /** Seedance 2.5's real schema: `duration` is an integer, −1 to 30. */
+    it("lists Seedance's range as a select, at its default, Auto first", async () => {
+      const onChange = vi.fn()
+      const descriptor = seedance()
+      const user = userEvent.setup()
+      render(
+        <SettingsPopover
+          grid={buildIconGrid(descriptor)}
+          duration={durationSpec(descriptor)}
+          values={{}}
+          onChange={onChange}
+        />
+      )
+      expect(screen.getByTestId("settings-chip")).toHaveTextContent("5s · 720p")
+      await user.click(screen.getByTestId("settings-chip"))
+      const select = await screen.findByRole("combobox", { name: "Duration" })
+      expect(select).toHaveTextContent("5s")
+      await user.click(select)
+      const options = await screen.findAllByRole("option")
+      expect(options[0]).toHaveTextContent("Auto")
+      expect(options.at(-1)).toHaveTextContent("30s")
+      await user.click(screen.getByRole("option", { name: "12s" }))
+      // An integer, as the schema declares — not the select's string.
+      expect(onChange).toHaveBeenCalledExactlyOnceWith("duration", 12)
+    })
+
+    it("offers a short enum as cells (Kling: 5 or 10)", async () => {
+      const onChange = vi.fn()
+      const descriptor = descriptorOf({
+        kind: "video",
+        inputSchema: {
+          type: "object",
+          properties: {
+            duration: { type: "integer", enum: [5, 10], default: 5 },
+          },
+        },
+      })
+      const user = userEvent.setup()
+      render(
+        <SettingsPopover
+          grid={buildIconGrid(descriptor)}
+          duration={durationSpec(descriptor)}
+          values={{}}
+          onChange={onChange}
+        />
+      )
+      await user.click(screen.getByTestId("settings-chip"))
+      const row = await screen.findByTestId("duration-row")
+      expect(within(row).getByRole("radio", { name: "5s" })).toHaveAttribute(
+        "aria-checked",
+        "true"
+      )
+      await user.click(within(row).getByRole("radio", { name: "10s" }))
+      expect(onChange).toHaveBeenCalledExactlyOnceWith("duration", 10)
+    })
+
+    it("takes a wide range as a number, clamped on commit", async () => {
+      const onChange = vi.fn()
+      const descriptor = descriptorOf({
+        kind: "video",
+        inputSchema: {
+          type: "object",
+          properties: {
+            duration: { type: "integer", minimum: 1, maximum: 300 },
+          },
+        },
+      })
+      const user = userEvent.setup()
+      render(
+        <SettingsPopover
+          grid={buildIconGrid(descriptor)}
+          duration={durationSpec(descriptor)}
+          values={{}}
+          onChange={onChange}
+        />
+      )
+      await user.click(screen.getByTestId("settings-chip"))
+      const input = await screen.findByRole("spinbutton", { name: "Duration" })
+      expect(screen.getByTestId("duration-row")).toHaveTextContent("Not set")
+      await user.type(input, "500{Enter}")
+      expect(onChange).toHaveBeenLastCalledWith("duration", 300)
+    })
+
+    it("shows a frame count's length in seconds (Wan 2.2)", async () => {
+      const descriptor = descriptorOf({
+        kind: "video",
+        inputSchema: {
+          type: "object",
+          properties: {
+            num_frames: {
+              type: "integer",
+              minimum: 81,
+              maximum: 121,
+              default: 81,
+            },
+            frames_per_second: { type: "integer", default: 16 },
+          },
+        },
+      })
+      const user = userEvent.setup()
+      render(
+        <SettingsPopover
+          grid={buildIconGrid(descriptor)}
+          duration={durationSpec(descriptor)}
+          values={{ frames_per_second: 27 }}
+          onChange={() => {}}
+        />
+      )
+      expect(screen.getByTestId("settings-chip")).toHaveTextContent("81 frames")
+      await user.click(screen.getByTestId("settings-chip"))
+      expect(await screen.findByTestId("duration-row")).toHaveTextContent(
+        "≈ 3s of video"
+      )
+    })
+  })
+
   it("renders nothing at all for a model with none of the three fields", () => {
     const { container } = render(
       <SettingsPopover
@@ -294,6 +412,6 @@ describe("SettingsPopover", () => {
     expect(popup!.className).toContain("w-80")
     expect(popup!.className).not.toContain("w-auto")
 
-    expect(screen.getByTestId("settings-chip").className).toContain("w-32")
+    expect(screen.getByTestId("settings-chip").className).toContain("w-40")
   })
 })

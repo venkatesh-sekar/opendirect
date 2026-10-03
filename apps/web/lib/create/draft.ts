@@ -10,13 +10,14 @@ import type {
   ModelDescriptor,
 } from "@opendirect/contract"
 
-import { buildIconGrid } from "../canvas/icon-grid"
-import { schemaDefaults, splitSchema } from "../schema-form/split-schema"
+import { schemaDefaults } from "../schema-form/split-schema"
+import { settingsLayout } from "./settings-layout"
 
 /**
- * A model's own defaults, split the way a draft holds them: the promoted
- * controls and the icon grid's fields in `common`, everything else in
- * `advanced`.
+ * A model's own defaults, split the way a draft holds them: what the bar
+ * edits itself (the icon grid's fields, the duration) in `common`, and what
+ * the Advanced form edits in `advanced` — so each value sits under the widget
+ * that can change it.
  *
  * Reference slots are never seeded — a slot holds the user's pictures, and a
  * schema default there would be a picture nobody chose.
@@ -25,11 +26,10 @@ export function modelDefaults(descriptor: ModelDescriptor): {
   common: Record<string, unknown>
   advanced: Record<string, unknown>
 } {
-  const split = splitSchema(descriptor)
+  const layout = settingsLayout(descriptor)
   const defaults = schemaDefaults(descriptor)
-  const commonFields = new Set(split.common.map((field) => field.field))
-  for (const field of buildIconGrid(descriptor).fields) commonFields.add(field)
-  const slotFields = new Set(split.slots.map((slot) => slot.field))
+  const commonFields = layout.inline
+  const slotFields = new Set(layout.split.slots.map((slot) => slot.field))
 
   const common: Record<string, unknown> = {}
   const advanced: Record<string, unknown> = {}
