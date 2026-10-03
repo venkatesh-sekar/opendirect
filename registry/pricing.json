@@ -1,5 +1,5 @@
 {
-  "$comment": "Hand-curated rates for models whose provider API publishes no machine-readable price. Keyed by model key (`<provider>:<owner>/<name>`). Tier keys: `<resolution>`, `<resolution>:video_in` (Replicate's dearer video-input variant) or `*` (any resolution), all lower-case. Copy each rate from the `current_tiers` block on the model's public page (`source`), set `checked` to the day you did, and re-check before every release. A rate the provider's own API publishes (OpenRouter `pricing_skus`) always wins over an entry here.",
+  "$comment": "Hand-curated rates for models whose provider API publishes no machine-readable price. Keyed by model key (`<provider>:<owner>/<name>`). Tier keys: `<resolution>` or `*` (any resolution), optionally followed by `:video_in` (Replicate's dearer video-input variant), `:audio` or `:silent` (a with- or without-audio rate), all lower-case. Copy each rate from the `current_tiers` block on the model's public page (`source`), set `checked` to the day you did, and re-check before every release. A rate the provider's own API publishes (OpenRouter `pricing_skus`) always wins over an entry here.",
   "format": 1,
   "models": {
     "replicate:bytedance/seedance-2.5": {
@@ -50,6 +50,104 @@
       "source": "https://replicate.com/black-forest-labs/flux-schnell",
       "note": "Per output image ($3 per thousand).",
       "tiers": { "*": 0.003 }
+    },
+    "replicate:google/veo-3.1": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/google/veo-3.1",
+      "note": "Per second of output video; the dearer tier applies when the run generates audio.",
+      "tiers": { "*:audio": 0.4, "*:silent": 0.2 }
+    },
+    "replicate:google/veo-3.1-fast": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/google/veo-3.1-fast",
+      "note": "Per second of output video; the dearer tier applies when the run generates audio.",
+      "tiers": { "*:audio": 0.15, "*:silent": 0.1 }
+    },
+    "replicate:kwaivgi/kling-v2.5-turbo-pro": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/kwaivgi/kling-v2.5-turbo-pro",
+      "note": "Per second of output video.",
+      "tiers": { "*": 0.07 }
+    },
+    "replicate:minimax/hailuo-2.3": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/minimax/hailuo-2.3",
+      "note": "Replicate bills per output video ($0.28 for 6 s and $0.56 for 10 s at 768p, $0.49 for 6 s at 1080p); quoted per second at the dearer rate for each resolution, so a 6 s 768p run is over-quoted.",
+      "tiers": { "768p": 0.056, "1080p": 0.0817 }
+    },
+    "replicate:alibaba/wan-3": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/alibaba/wan-3",
+      "note": "Per second of output video.",
+      "tiers": { "480p": 0.025, "720p": 0.05, "1080p": 0.1 }
+    },
+    "replicate:prunaai/p-video": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/prunaai/p-video",
+      "note": "Per second of output video; draft mode bills a quarter of this, which is not modelled.",
+      "tiers": { "720p": 0.02, "1080p": 0.04 }
+    },
+    "replicate:lightricks/ltx-2-fast": {
+      "basis": "per_second",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/lightricks/ltx-2-fast",
+      "note": "Per second of output video.",
+      "tiers": { "1080p": 0.04, "2k": 0.08, "4k": 0.16 }
+    },
+    "replicate:bytedance/seedream-4.5": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/bytedance/seedream-4.5",
+      "note": "Per output image.",
+      "tiers": { "*": 0.04 }
+    },
+    "replicate:black-forest-labs/flux-2-pro": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/black-forest-labs/flux-2-pro",
+      "note": "Per output image: $0.015 per run plus $0.015 per output megapixel, by target resolution. Input images add $0.015 per megapixel, which is not included.",
+      "tiers": { "0.5 mp": 0.0225, "1 mp": 0.03, "2 mp": 0.045, "4 mp": 0.075 }
+    },
+    "replicate:google/imagen-4-fast": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/google/imagen-4-fast",
+      "note": "Per output image.",
+      "tiers": { "*": 0.02 }
+    },
+    "replicate:ideogram-ai/ideogram-v3-turbo": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/ideogram-ai/ideogram-v3-turbo",
+      "note": "Per output image.",
+      "tiers": { "*": 0.03 }
+    },
+    "replicate:qwen/qwen-image": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/qwen/qwen-image",
+      "note": "Per output image.",
+      "tiers": { "*": 0.025 }
+    },
+    "replicate:openai/gpt-image-2": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/openai/gpt-image-2",
+      "note": "Per output image at the default (auto) or high quality; low ($0.012) and medium ($0.047) quality bill less, which is not modelled.",
+      "tiers": { "*": 0.128 }
+    },
+    "replicate:prunaai/p-image": {
+      "basis": "per_output",
+      "checked": "2026-10-03",
+      "source": "https://replicate.com/prunaai/p-image",
+      "note": "Per output image ($5 per thousand).",
+      "tiers": { "*": 0.005 }
     }
   }
 }

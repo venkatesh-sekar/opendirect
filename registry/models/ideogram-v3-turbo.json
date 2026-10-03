@@ -1,0 +1,40 @@
+{
+  "id": "ideogram-v3-turbo",
+  "name": "Ideogram 3.0 Turbo",
+  "kind": "image",
+  "description": "The fastest and cheapest Ideogram 3.0, strong at typography, graphic design and consistent styles.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "ideogram-ai/ideogram-v3-turbo",
+      "inputs": {
+        "source": {
+          "field": "image",
+          "kind": "image",
+          "label": "Image to inpaint (needs a mask)"
+        },
+        "mask": {
+          "field": "mask",
+          "kind": "image",
+          "label": "Mask (black is repainted, white is kept)"
+        },
+        "style": {
+          "field": "style_reference_images",
+          "kind": "image",
+          "label": "Style references"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "seed": {
+          "field": "seed"
+        }
+      }
+    }
+  ]
+}

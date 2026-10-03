@@ -1,0 +1,33 @@
+{
+  "id": "ltx-2-fast",
+  "name": "LTX-2 Fast",
+  "kind": "video",
+  "description": "Lightricks' fast LTX-2 for rapid ideation: up to 20-second clips with generated audio, from text or a first frame.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "lightricks/ltx-2-fast",
+      "inputs": {
+        "first_frame": {
+          "field": "image",
+          "kind": "image",
+          "label": "First frame"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "generate_audio": {
+          "field": "generate_audio"
+        }
+      }
+    }
+  ]
+}

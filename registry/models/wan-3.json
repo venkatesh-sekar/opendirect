@@ -1,0 +1,39 @@
+{
+  "id": "wan-3",
+  "name": "Wan 3.0",
+  "kind": "video",
+  "description": "Alibaba's Wan 3.0: cinematic video from a prompt or a first frame, at 480p, 720p or 1080p and up to 30 seconds.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "alibaba/wan-3",
+      "inputs": {
+        "first_frame": {
+          "field": "image",
+          "kind": "image",
+          "label": "First frame (sets the aspect ratio)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "negative_prompt": {
+          "field": "negative_prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        }
+      }
+    }
+  ]
+}

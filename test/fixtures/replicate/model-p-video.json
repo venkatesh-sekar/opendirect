@@ -1,0 +1,328 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/a2897531-939c-4da7-8062-fd90d8ed1f41/P-video.mp4",
+  "created_at": "2026-01-22T00:10:43.636902Z",
+  "default_example": {
+    "completed_at": "2026-03-20T14:00:30.753446Z",
+    "created_at": "2026-03-20T14:00:25.070000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "jmc9cpgwxsrmw0cx1e6bew4fsc",
+    "input": {
+      "fps": 24,
+      "draft": false,
+      "image": "https://replicate.delivery/pbxt/OejQrIXERvqS9kpygH9PfQZDOIdzkD6GKytAXxedNSyyRtej/9.png",
+      "no_op": false,
+      "prompt": "The prune says \"And this, kids, is how you generate a video in less than 10 seconds\".",
+      "duration": 5,
+      "resolution": "720p",
+      "save_audio": true,
+      "aspect_ratio": "16:9",
+      "prompt_upsampling": false,
+      "disable_safety_filter": true
+    },
+    "is_free_trial_prediction": false,
+    "logs": "14:00:25.172 Using seed: 697104166",
+    "metrics": {
+      "predict_time": 5.668492289,
+      "total_time": 5.683446585
+    },
+    "model": "prunaai/p-video",
+    "output": "https://replicate.delivery/xezq/pyaeIfrebUZZpowThXDgjyaS98rlFKiuOtlbfpb3i4P7PBLZB/output.mp4",
+    "source": "web",
+    "started_at": "2026-03-20T14:00:25.084954Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/jbxs-sqb4t6pgwl5cgj3hwrflnmb4rp32fvzzpp6r2n5pmk3dnpqdn7oa",
+      "get": "https://api.replicate.com/v1/predictions/jmc9cpgwxsrmw0cx1e6bew4fsc",
+      "cancel": "https://api.replicate.com/v1/predictions/jmc9cpgwxsrmw0cx1e6bew4fsc/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "Fast video generation with built-in draft mode for rapid creative iteration. Text-to-video, image-to-video, and audio-to-video in a single endpoint.",
+  "github_url": null,
+  "latest_version": {
+    "id": "50e52eaadc2a1648c1c4f854695c2ac7d56c23068802e8cafb8b69f1100b9ece",
+    "created_at": "2026-09-14T09:29:32.119022Z",
+    "cog_version": "0.18.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "fps": {
+            "enum": [24, 48],
+            "type": "integer",
+            "title": "fps",
+            "description": "An enumeration."
+          },
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "fps": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/fps"
+                  }
+                ],
+                "default": 24,
+                "x-order": 7,
+                "description": "Frames per second of the video."
+              },
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "x-order": 12,
+                "nullable": true,
+                "description": "Random seed. Set for reproducible generation."
+              },
+              "audio": {
+                "type": "string",
+                "title": "Audio",
+                "format": "uri",
+                "x-order": 3,
+                "nullable": true,
+                "description": "Input audio to condition video generation. Supports flac, mp3, wav."
+              },
+              "draft": {
+                "type": "boolean",
+                "title": "Draft",
+                "default": false,
+                "x-order": 8,
+                "description": "Draft mode. Generates a lower-quality preview of the video."
+              },
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "x-order": 1,
+                "nullable": true,
+                "description": "Input image to generate video from (image-to-video). Supports jpg, jpeg, png, webp."
+              },
+              "no_op": {
+                "type": "boolean",
+                "title": "No Op",
+                "default": false,
+                "x-order": 13,
+                "description": "Health check mode - returns status without inference."
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt for video generation."
+              },
+              "duration": {
+                "type": "integer",
+                "title": "Duration",
+                "default": 5,
+                "maximum": 20,
+                "minimum": 1,
+                "x-order": 4,
+                "description": "Duration of the video in seconds (1-20). Ignored when audio is provided."
+              },
+              "resolution": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/resolution"
+                  }
+                ],
+                "default": "720p",
+                "x-order": 6,
+                "description": "Resolution of the video."
+              },
+              "save_audio": {
+                "type": "boolean",
+                "title": "Save Audio",
+                "default": true,
+                "x-order": 11,
+                "description": "Save the video with audio."
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "16:9",
+                "x-order": 5,
+                "description": "Aspect ratio of the video. Ignored when an input image is provided."
+              },
+              "last_frame_image": {
+                "type": "string",
+                "title": "Last Frame Image",
+                "format": "uri",
+                "x-order": 2,
+                "nullable": true,
+                "description": "Reference image for the last frame of the video. Supports jpg, jpeg, png, webp."
+              },
+              "prompt_upsampling": {
+                "type": "boolean",
+                "title": "Prompt Upsampling",
+                "default": true,
+                "x-order": 9,
+                "description": "Use prompt upsampling to enhance the prompt."
+              },
+              "disable_safety_filter": {
+                "type": "boolean",
+                "title": "Disable Safety Filter",
+                "default": true,
+                "x-order": 10,
+                "description": "Disable safety filter for prompts (and input image). When disabled, prompts are not checked for unsafe content before generation."
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "resolution": {
+            "enum": ["720p", "1080p"],
+            "type": "string",
+            "title": "resolution",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": ["16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "1:1"],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "p-video",
+  "owner": "prunaai",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 4120272,
+  "url": "https://replicate.com/prunaai/p-video",
+  "visibility": "public",
+  "weights_url": null
+}

@@ -6,8 +6,14 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 
-import { parseModelKey } from "@opendirect/contract"
+import {
+  modelFamilySchema,
+  modelKey,
+  parseModelKey,
+} from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
+
+import { BUNDLED_FAMILIES } from "../model-registry/bundled"
 
 import {
   RECOMMENDED,
@@ -53,6 +59,32 @@ describe("RECOMMENDED", () => {
     }
   })
 
+  it("keeps the Seedance and Nano Banana defaults first", () => {
+    expect(RECOMMENDED.video[0].key).toBe("replicate:bytedance/seedance-2.5")
+    expect(RECOMMENDED.image[0].key).toBe("replicate:google/nano-banana-2")
+  })
+
+  it("recommends only Replicate models a bundled family maps", () => {
+    const mapped = new Set(
+      BUNDLED_FAMILIES.flatMap(({ raw }) =>
+        modelFamilySchema
+          .parse(raw)
+          .endpoints.map((endpoint) =>
+            modelKey(endpoint.provider, endpoint.model)
+          )
+      )
+    )
+    const replicate = recommendedKeys().filter((key) =>
+      key.startsWith("replicate:")
+    )
+    expect(replicate.filter((key) => !mapped.has(key))).toEqual([])
+  })
+
+  it("offers several video and image models, not just the defaults", () => {
+    expect(RECOMMENDED.video.length).toBeGreaterThanOrEqual(5)
+    expect(RECOMMENDED.image.length).toBeGreaterThanOrEqual(5)
+  })
+
   it("marks a recommendation the catalog no longer lists as unavailable", () => {
     const described = describeRecommended([
       "replicate:bytedance/seedance-2.5",
@@ -69,7 +101,9 @@ describe("RECOMMENDED", () => {
       described.video.find((m) => m.key === "openrouter:bytedance/seedance-2.5")
         ?.available
     ).toBe(false)
-    expect(described.image.map((m) => m.available)).toEqual([true, false])
+    expect(described.image.map((m) => m.available)).toEqual(
+      RECOMMENDED.image.map((m) => m.key === "replicate:google/nano-banana-2")
+    )
     expect(described.video).toHaveLength(RECOMMENDED.video.length)
   })
 

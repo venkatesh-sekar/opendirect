@@ -1,0 +1,275 @@
+{
+  "cover_image_url": "https://replicate.delivery/xezq/oeKJ5kG2szVZZij9ejo1zt1dXHslnPnPr0VrzwksOslizkGXA/tmps3b3c9bp.mp4",
+  "created_at": "2026-08-24T17:07:55.712174Z",
+  "default_example": {
+    "completed_at": "2026-08-24T19:26:26.547878Z",
+    "created_at": "2026-08-24T19:21:04.723000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "xgx1epgvtdrmy0d06mwafqr6j0",
+    "input": {
+      "prompt": "a turtle swimming through a library, 35mm film ",
+      "duration": 5,
+      "resolution": "1080p",
+      "aspect_ratio": "adaptive",
+      "negative_prompt": "",
+      "enable_prompt_expansion": true
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using seed: 1091440100\nCreating Wan 3.0 T2V task...\nCreated task f53a6786-5d94-4581-bf13-7d67c2bfcc99, polling for result...\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: RUNNING\nTask status: SUCCEEDED\nWan 3.0 T2V completed in 317.8sec\nDownloading 25919558 bytes\nDownloaded 24.72MB in 3.06sec",
+    "metrics": {
+      "resolution_target": "1080p",
+      "video_output_count": 1,
+      "video_output_duration_seconds": 5,
+      "predict_time": 321.769042281,
+      "total_time": 321.82487871
+    },
+    "model": "alibaba/wan-3",
+    "output": "https://replicate.delivery/xezq/oeKJ5kG2szVZZij9ejo1zt1dXHslnPnPr0VrzwksOslizkGXA/tmps3b3c9bp.mp4",
+    "source": "web",
+    "started_at": "2026-08-24T19:21:04.778836Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/jbxs-x6olm34vnyrqyonv3iojgoxvqrv6v22rmrg7ltgehrtadldyz6pq",
+      "get": "https://api.replicate.com/v1/predictions/xgx1epgvtdrmy0d06mwafqr6j0",
+      "cancel": "https://api.replicate.com/v1/predictions/xgx1epgvtdrmy0d06mwafqr6j0/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "(50% off until Aug 30!) - Wan 3.0 generates video from a text prompt or a starting image, with cinematic motion and support for 480p, 720p, and 1080p output up to 30 seconds.",
+  "github_url": null,
+  "latest_version": {
+    "id": "78e877ac6841ba1fe938f4886243cdac82b2e40e4c29c2cfc977d671aeb0d15b",
+    "created_at": "2026-09-15T14:16:39.272727Z",
+    "cog_version": "0.22.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.22.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "default": null,
+                "x-order": 7,
+                "nullable": true,
+                "description": "Random seed for reproducible generation. Range: 0-2147483647"
+              },
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "default": null,
+                "x-order": 1,
+                "nullable": true,
+                "description": "Optional first-frame image to animate into a video (jpg/png/bmp/webp, ≤10MB). When provided, the video is generated from this image guided by the prompt."
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt for video generation"
+              },
+              "duration": {
+                "type": "integer",
+                "title": "Duration",
+                "default": 5,
+                "maximum": 30,
+                "minimum": 2,
+                "x-order": 5,
+                "description": "Duration of the generated video in seconds"
+              },
+              "resolution": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/resolution"
+                  }
+                ],
+                "default": "1080p",
+                "x-order": 3,
+                "description": "Output video resolution"
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "adaptive",
+                "x-order": 4,
+                "description": "Aspect ratio of the generated video. 'adaptive' lets the model choose the best ratio for the prompt. Ignored when an image is provided (the input image's aspect ratio is used)."
+              },
+              "negative_prompt": {
+                "type": "string",
+                "title": "Negative Prompt",
+                "default": "",
+                "x-order": 2,
+                "description": "Negative prompt — describes content that should not appear in the video"
+              },
+              "enable_prompt_expansion": {
+                "type": "boolean",
+                "title": "Enable Prompt Expansion",
+                "default": true,
+                "x-order": 6,
+                "description": "Automatically expand and optimize the prompt for better results. Improves quality for short prompts but increases latency."
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "resolution": {
+            "enum": ["480p", "720p", "1080p"],
+            "type": "string",
+            "title": "resolution",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4"],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": "https://www.alibabacloud.com/help/en/model-studio/",
+  "name": "wan-3",
+  "owner": "alibaba",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 20103,
+  "url": "https://replicate.com/alibaba/wan-3",
+  "visibility": "public",
+  "weights_url": null
+}

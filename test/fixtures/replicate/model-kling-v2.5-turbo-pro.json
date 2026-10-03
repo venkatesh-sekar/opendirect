@@ -1,0 +1,270 @@
+{
+  "cover_image_url": "https://replicate.delivery/xezq/17c3JG1SzH6NCduMiKp1Cxyqvpad0GXRf507Pqq5GOqNsZsKA/tmpg4w3kyjz.mp4",
+  "created_at": "2025-09-25T17:23:52.101994Z",
+  "default_example": {
+    "completed_at": "2025-09-25T18:04:11.904664Z",
+    "created_at": "2025-09-25T18:01:35.869000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "75wknmxbfnrme0csg84vagt5qr",
+    "input": {
+      "prompt": "a woman is dancing",
+      "duration": 5,
+      "aspect_ratio": "16:9",
+      "guidance_scale": 0.5
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using seed: 1907287380\nGenerating...\nGenerated content in 154.6sec\nDownloading 6542959 bytes\nDownloaded 6.24MB in 0.98sec",
+    "metrics": {
+      "predict_time": 156.016782477,
+      "total_time": 156.035664
+    },
+    "model": "kwaivgi/kling-v2.5-turbo-pro",
+    "output": "https://replicate.delivery/xezq/17c3JG1SzH6NCduMiKp1Cxyqvpad0GXRf507Pqq5GOqNsZsKA/tmpg4w3kyjz.mp4",
+    "source": "web",
+    "started_at": "2025-09-25T18:01:35.887882Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-47m6xbxw2yjji2wqdg3x2pte4znw7sxyju32gaqoiiaa6x3kb3ca",
+      "get": "https://api.replicate.com/v1/predictions/75wknmxbfnrme0csg84vagt5qr",
+      "cancel": "https://api.replicate.com/v1/predictions/75wknmxbfnrme0csg84vagt5qr/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "Kling 2.5 Turbo Pro: Unlock pro-level text-to-video and image-to-video creation with smooth motion, cinematic depth, and remarkable prompt adherence.",
+  "github_url": null,
+  "latest_version": {
+    "id": "a3ccc39250a72749ced345996ec06d96d1d032b1a1369f45f3b9f654324036b5",
+    "created_at": "2026-04-10T21:01:49.370401Z",
+    "cog_version": "0.17.2",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "x-order": 6,
+                "nullable": true,
+                "deprecated": true,
+                "description": "Deprecated: Use start_image instead."
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt for video generation"
+              },
+              "duration": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/duration"
+                  }
+                ],
+                "default": 5,
+                "x-order": 5,
+                "description": "Duration of the video in seconds"
+              },
+              "end_image": {
+                "type": "string",
+                "title": "End Image",
+                "format": "uri",
+                "x-order": 3,
+                "nullable": true,
+                "description": "Last frame of the video"
+              },
+              "start_image": {
+                "type": "string",
+                "title": "Start Image",
+                "format": "uri",
+                "x-order": 2,
+                "nullable": true,
+                "description": "First frame of the video"
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "16:9",
+                "x-order": 4,
+                "description": "Aspect ratio of the video. Ignored if start_image is provided."
+              },
+              "guidance_scale": {
+                "type": "number",
+                "title": "Guidance Scale",
+                "x-order": 7,
+                "nullable": true,
+                "deprecated": true,
+                "description": "Kept for backwards compatibility. This parameter is not used."
+              },
+              "negative_prompt": {
+                "type": "string",
+                "title": "Negative Prompt",
+                "default": "",
+                "x-order": 1,
+                "description": "Things you do not want to see in the video"
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "duration": {
+            "enum": [5, 10],
+            "type": "integer",
+            "title": "duration",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": ["16:9", "9:16", "1:1"],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "kling-v2.5-turbo-pro",
+  "owner": "kwaivgi",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 3056259,
+  "url": "https://replicate.com/kwaivgi/kling-v2.5-turbo-pro",
+  "visibility": "public",
+  "weights_url": null
+}

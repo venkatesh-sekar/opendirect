@@ -1,0 +1,297 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/b868378a-b85e-40d4-9887-55d0e3abc406/replicate-prediction-y7xpsj1sc5r.jpeg",
+  "created_at": "2025-10-02T19:33:47.167127Z",
+  "default_example": {
+    "completed_at": "2026-06-22T14:42:18.319207Z",
+    "created_at": "2026-06-22T14:42:17.057000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "y7xpsj1sc5rmw0cyxz4bnwkdc4",
+    "input": {
+      "seed": 0,
+      "prompt": "Two women in flowing pastel lavender and pale blue dresses, holding hands while walking on a beach at sunset, romantic impressionist oil painting with thick palette-knife impasto, soft pastel colors, gold leaf accents, and dreamy texture, beside gentle waves reflecting a peach sun, distant cliffs, blush-pink clouds, cream sky strokes, and a peaceful nostalgic coastal atmosphere. In the very center, beautifully and largely written: \"P-Image\". The letters are painted in metallic gold paint, with visible brush strokes, uneven hand-painted edges, thick impasto texture, palette-knife ridges, small bristle marks, and subtle gold-leaf shine. The text should look like it was physically painted onto the canvas, not like a digital font.",
+      "lora_scale": 0.5,
+      "aspect_ratio": "2:3",
+      "prompt_upsampling": true
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using seed: 0\n  0%|          | 0/8 [00:00<?, ?it/s]\n 38%|███▊      | 3/8 [00:00<00:00, 20.19it/s]\n 75%|███████▌  | 6/8 [00:00<00:00, 17.09it/s]\n100%|██████████| 8/8 [00:00<00:00, 16.45it/s]\n100%|██████████| 8/8 [00:00<00:00, 16.92it/s]\nGeneration took 0.65 seconds",
+    "metrics": {
+      "image_output_count": 1,
+      "predict_time": 1.244182589,
+      "total_time": 1.262207021
+    },
+    "model": "prunaai/p-image",
+    "output": "https://replicate.delivery/xezq/n5W6J6QI7y6ZHxfTi3s1iuI0odCAzsJEhA6gBwOeJGqKvvxWA/output_0.jpeg",
+    "source": "web",
+    "started_at": "2026-06-22T14:42:17.075024Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/jbxs-dwojed5agjneahdptpvd4cbciz46ddkc3qobvyx7o2r5rgyzoj6a",
+      "get": "https://api.replicate.com/v1/predictions/y7xpsj1sc5rmw0cyxz4bnwkdc4",
+      "cancel": "https://api.replicate.com/v1/predictions/y7xpsj1sc5rmw0cyxz4bnwkdc4/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "A sub 1 second text-to-image model built for production use cases.",
+  "github_url": "https://github.com/PrunaAI/pruna",
+  "latest_version": {
+    "id": "52f8aa8a059258b3aa0f76958f8a0c3aa9c436a11baa1d1c22ffd51f250bf76e",
+    "created_at": "2026-10-02T00:37:45.597566Z",
+    "cog_version": "0.20.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "default": null,
+                "x-order": 5,
+                "nullable": true,
+                "description": "Random seed. Set for reproducible generation."
+              },
+              "no_op": {
+                "type": "boolean",
+                "title": "No Op",
+                "default": false,
+                "x-order": 10,
+                "description": "Health check"
+              },
+              "width": {
+                "type": "integer",
+                "title": "Width",
+                "default": null,
+                "maximum": 1440,
+                "minimum": 256,
+                "x-order": 2,
+                "nullable": true
+              },
+              "height": {
+                "type": "integer",
+                "title": "Height",
+                "default": null,
+                "maximum": 1440,
+                "minimum": 256,
+                "x-order": 3,
+                "nullable": true
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt for image generation."
+              },
+              "lora_scale": {
+                "type": "number",
+                "title": "Lora Scale",
+                "default": 0.5,
+                "maximum": 3,
+                "minimum": -1,
+                "x-order": 8
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "16:9",
+                "x-order": 1,
+                "description": "Aspect ratio for the generated image."
+              },
+              "hf_api_token": {
+                "type": "string",
+                "title": "Hf Api Token",
+                "format": "password",
+                "default": null,
+                "x-order": 9,
+                "nullable": true,
+                "writeOnly": true,
+                "x-cog-secret": true
+              },
+              "lora_weights": {
+                "type": "string",
+                "title": "Lora Weights",
+                "default": null,
+                "x-order": 7,
+                "nullable": true
+              },
+              "prompt_upsampling": {
+                "type": "boolean",
+                "title": "Prompt Upsampling",
+                "default": false,
+                "x-order": 4,
+                "description": "Upsample the prompt with an LLM."
+              },
+              "disable_safety_checker": {
+                "type": "boolean",
+                "title": "Disable Safety Checker",
+                "default": false,
+                "x-order": 6,
+                "description": "Disable safety checker for generated images."
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "16:9",
+              "9:16",
+              "4:3",
+              "3:4",
+              "3:2",
+              "2:3",
+              "custom"
+            ],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": "https://github.com/PrunaAI/pruna/blob/main/LICENSE",
+  "name": "p-image",
+  "owner": "prunaai",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 20787496,
+  "url": "https://replicate.com/prunaai/p-image",
+  "visibility": "public",
+  "weights_url": null
+}

@@ -1,0 +1,251 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/73c5af65-f578-4113-b62c-2a56971cff2f/replicate-prediction-trmpwr78.webp",
+  "created_at": "2025-06-12T09:24:39.272587Z",
+  "default_example": {
+    "completed_at": "2025-06-12T10:26:31.764669Z",
+    "created_at": "2025-06-12T10:26:28.846000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "mj40q3j3dsrm80cqcepthewtj0",
+    "input": {
+      "prompt": "The photo: Create a cinematic, photorealistic medium shot capturing the dynamic energy of a high-octane action film. The focus is a young woman with wind-swept dark hair streaked with pink highlights and determined features, looking directly and intently into the camera lens, she is slightly off-center. She wears a fitted pink and gold racing jacket over a black tank top with \"Imagen 4 Fast\" in motion-stylized lettering and on the next line \"on Replicate\" emblazoned across the chest and aviator sunglasses pushed up on her head. The lighting is dramatic with motion blur streaks and neon reflections from passing city lights, creating dynamic lens flares and light trails (they do not cover her face). The background shows a blurred urban nightscape with streaking car headlights and illuminated skyscrapers rushing past, rendered with heavy motion blur and shallow depth of field. High contrast lighting, vibrant neon color palette with deep blues and electric yellows, and razor-sharp focus on her intense eyes enhance the fast-paced, electrifying atmosphere. She is illuminated while the background is darker.",
+      "aspect_ratio": "4:3",
+      "output_format": "jpg",
+      "safety_filter_level": "block_only_high"
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Generating image...\nGenerated image in 2.90 seconds",
+    "metrics": {
+      "image_count": 1,
+      "predict_time": 2.904647002,
+      "total_time": 2.918669
+    },
+    "model": "google/imagen-4-fast",
+    "output": "https://replicate.delivery/xezq/iKriMK0zXbbiNRr6WgOJtchWTXTEf9SD62XlFUpdxA3r6CbKA/tmp_2u2189v.jpg",
+    "source": "web",
+    "started_at": "2025-06-12T10:26:28.860022Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-uhimzazw2txxjnfvwldbad6gu34gkc2r22g4rerymmr3wgeidf3a",
+      "get": "https://api.replicate.com/v1/predictions/mj40q3j3dsrm80cqcepthewtj0",
+      "cancel": "https://api.replicate.com/v1/predictions/mj40q3j3dsrm80cqcepthewtj0/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "Use this fast version of Imagen 4 when speed and cost are more important than quality",
+  "github_url": null,
+  "latest_version": {
+    "id": "a8bdc4df01d1d9a16d1bb6dd1b666bdc11ce7a36addb9d9c2facee463244861e",
+    "created_at": "2026-10-01T15:40:26.946089Z",
+    "cog_version": "0.23.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.23.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt for image generation"
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "1:1",
+                "x-order": 1,
+                "description": "Aspect ratio of the generated image"
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/output_format"
+                  }
+                ],
+                "default": "jpg",
+                "x-order": 3,
+                "description": "Format of the output image"
+              },
+              "safety_filter_level": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/safety_filter_level"
+                  }
+                ],
+                "default": "block_only_high",
+                "x-order": 2,
+                "description": "block_low_and_above is strictest, block_medium_and_above blocks some prompts, block_only_high is most permissive but some prompts will still be blocked"
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": ["1:1", "9:16", "16:9", "3:4", "4:3"],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "output_format": {
+            "enum": ["jpg", "png"],
+            "type": "string",
+            "title": "output_format",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          },
+          "safety_filter_level": {
+            "enum": [
+              "block_low_and_above",
+              "block_medium_and_above",
+              "block_only_high"
+            ],
+            "type": "string",
+            "title": "safety_filter_level",
+            "description": "An enumeration."
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "imagen-4-fast",
+  "owner": "google",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 5994563,
+  "url": "https://replicate.com/google/imagen-4-fast",
+  "visibility": "public",
+  "weights_url": null
+}

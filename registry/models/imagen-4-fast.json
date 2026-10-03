@@ -1,0 +1,21 @@
+{
+  "id": "imagen-4-fast",
+  "name": "Imagen 4 Fast",
+  "kind": "image",
+  "description": "The fast version of Google's Imagen 4, for when speed and cost matter more than the last bit of quality.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "google/imagen-4-fast",
+      "inputs": {},
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        }
+      }
+    }
+  ]
+}

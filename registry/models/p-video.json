@@ -1,0 +1,46 @@
+{
+  "id": "p-video",
+  "name": "P-Video",
+  "kind": "video",
+  "description": "Pruna's fast, low-cost video model with a draft mode for rapid iteration: text-to-video, image-to-video and audio-to-video.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "prunaai/p-video",
+      "inputs": {
+        "first_frame": {
+          "field": "image",
+          "kind": "image",
+          "label": "First frame"
+        },
+        "last_frame": {
+          "field": "last_frame_image",
+          "kind": "image",
+          "label": "Last frame"
+        },
+        "soundtrack": {
+          "field": "audio",
+          "kind": "audio",
+          "label": "Audio (drives the video; sets its length)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        }
+      }
+    }
+  ]
+}

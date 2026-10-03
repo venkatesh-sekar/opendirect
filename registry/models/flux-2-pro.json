@@ -1,0 +1,34 @@
+{
+  "id": "flux-2-pro",
+  "name": "FLUX.2 Pro",
+  "kind": "image",
+  "description": "Black Forest Labs' high-quality image generation and editing model with up to eight reference images.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "black-forest-labs/flux-2-pro",
+      "inputs": {
+        "reference": {
+          "field": "input_images",
+          "kind": "image",
+          "max": 8,
+          "label": "Reference images"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        }
+      }
+    }
+  ]
+}

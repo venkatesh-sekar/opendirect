@@ -1,0 +1,33 @@
+{
+  "id": "qwen-image",
+  "name": "Qwen-Image",
+  "kind": "image",
+  "description": "Alibaba's Qwen image foundation model, notably strong at rendering complex text.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "qwen/qwen-image",
+      "inputs": {
+        "source": {
+          "field": "image",
+          "kind": "image",
+          "label": "Source image (img2img)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "negative_prompt": {
+          "field": "negative_prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "seed": {
+          "field": "seed"
+        }
+      }
+    }
+  ]
+}
