@@ -33,7 +33,15 @@ const fixture = vi.hoisted(() => ({
     | ((patch: Partial<ReactFlowState<CanvasFlowNode, CanvasFlowEdge>>) => void)
     | null,
   surface: null as CanvasSurface | null,
+  toast: Object.assign(vi.fn(), {
+    error: vi.fn(),
+    info: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  }),
 }))
+vi.mock("sonner", () => ({ toast: fixture.toast }))
 vi.mock("@/lib/ipc", () => ({
   invoke: fixture.invoke,
   isBridgeAvailable: () => true,
@@ -452,6 +460,225 @@ describe("the composer on a real canvas", () => {
     )
     await waitFor(() =>
       expect(fixture.state!().nodes.map((node) => node.id)).not.toContain("pic")
+    )
+
+    click("gen")
+    expect(await screen.findByTestId("prompt-bar-controls")).toBeInTheDocument()
+  })
+
+  /**
+   * A stand-in for the main process's canvas tables, so a delete, an undo and
+   * a redo each see what the last one left — including the cascade that takes
+   * a node's edges with it, and an asset that has since been deleted.
+   */
+  function fakeMain(
+    start: CanvasDto,
+    { missingAssets = new Set<string>() } = {}
+  ) {
+    let graph = start
+    let minted = 0
+    fixture.invoke.mockImplementation((channel: string, input: unknown) => {
+      const args = input as Record<string, unknown>
+      switch (channel) {
+        case "canvas:get":
+          return Promise.resolve(graph)
+        case "generations:list":
+          return Promise.resolve({ items: [], total: 0 })
+        case "settings:get":
+          return Promise.resolve({})
+        case "assets:get": {
+          const id = args.id as string
+          return missingAssets.has(id)
+            ? Promise.reject(new Error(`Asset ${id} was not found`))
+            : Promise.resolve({ id })
+        }
+        case "canvas:node:delete": {
+          const ids = new Set(args.ids as string[])
+          graph = {
+            nodes: graph.nodes.filter((node) => !ids.has(node.id)),
+            edges: graph.edges.filter(
+              (edge) =>
+                !ids.has(edge.sourceNodeId) && !ids.has(edge.targetNodeId)
+            ),
+          }
+          return Promise.resolve({ ok: true })
+        }
+        case "canvas:edge:delete": {
+          const ids = new Set(args.ids as string[])
+          graph = { ...graph, edges: graph.edges.filter((e) => !ids.has(e.id)) }
+          return Promise.resolve({ ok: true })
+        }
+        case "canvas:node:create": {
+          const assetId = (args.assetId as string | null) ?? null
+          if (assetId && missingAssets.has(assetId))
+            return Promise.reject(new Error("FOREIGN KEY constraint failed"))
+          const node = {
+            ...row(`n${++minted}`, args.x as number),
+            ...(args as object),
+            id: `n${minted}`,
+          } as CanvasNodeDto
+          graph = { ...graph, nodes: [...graph.nodes, node] }
+          return Promise.resolve(node)
+        }
+        case "canvas:edge:create": {
+          const live = new Set(graph.nodes.map((node) => node.id))
+          if (
+            !live.has(args.sourceNodeId as string) ||
+            !live.has(args.targetNodeId as string)
+          )
+            return Promise.reject(new Error("Canvas node not found"))
+          const edge = {
+            id: `e${++minted}`,
+            projectId: "p",
+            createdAt: 1,
+            slotField: null,
+            ...(args as object),
+          } as CanvasDto["edges"][number]
+          graph = { ...graph, edges: [...graph.edges, edge] }
+          return Promise.resolve(edge)
+        }
+        default:
+          return new Promise(() => {})
+      }
+    })
+    return { graph: () => graph, missingAssets }
+  }
+
+  it("records deleting a wired node as one undo step, and redoes it as one", async () => {
+    const user = userEvent.setup()
+    const { client } = await mountComposer({ picture: true })
+    const main = fakeMain(
+      client.getQueryData<CanvasDto>(queryKeys.canvas.graph)!
+    )
+
+    click("pic")
+    await user.keyboard("{Delete}")
+    await waitFor(() =>
+      expect(channelCalls("canvas:node:delete")[0]?.[1]).toEqual({
+        ids: ["pic"],
+      })
+    )
+    expect(main.graph().edges.map((edge) => edge.id)).toEqual(["e-note"])
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Undo Delete node" })
+    )
+    await waitFor(() =>
+      expect(
+        main
+          .graph()
+          .edges.map((edge) => edge.sourceNodeId)
+          .sort()
+      ).toEqual(["n1", "note"])
+    )
+    // The node and its wire came back together; nothing else is left to undo.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled()
+    )
+    expect(channelCalls("canvas:edge:create")).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole("button", { name: "Redo Delete node" }))
+    await waitFor(() =>
+      expect(main.graph().nodes.map((node) => node.id)).toEqual(["note", "gen"])
+    )
+    expect(main.graph().edges.map((edge) => edge.id)).toEqual(["e-note"])
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled()
+    )
+    expect(
+      screen.getByRole("button", { name: "Undo Delete node" })
+    ).toBeEnabled()
+  })
+
+  it("drops an undo step whose file was deleted since, and keeps the rest of the stack", async () => {
+    const user = userEvent.setup()
+    const { client } = await mountComposer({ picture: true })
+    const main = fakeMain(
+      client.getQueryData<CanvasDto>(queryKeys.canvas.graph)!
+    )
+
+    // An earlier step that must survive: the composer's ✕ on the note.
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Disconnect a bellhop opens the lift",
+      })
+    )
+    await waitFor(() =>
+      expect(main.graph().edges.map((edge) => edge.id)).toEqual(["e-pic"])
+    )
+
+    click("pic")
+    await user.keyboard("{Delete}")
+    await waitFor(() =>
+      expect(main.graph().nodes.map((node) => node.id)).toEqual(["note", "gen"])
+    )
+
+    // The Assets tab deletes the picture the node showed.
+    main.missingAssets.add("a-lobby")
+
+    const unhandled = vi.fn()
+    process.on("unhandledRejection", unhandled)
+    try {
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Undo Delete node" })
+      )
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Undo Delete edge" })
+        ).toBeEnabled()
+      )
+      expect(main.graph().nodes.map((node) => node.id)).toEqual(["note", "gen"])
+      expect(channelCalls("canvas:edge:create")).toHaveLength(0)
+      // Said once, quietly — not an error dialog.
+      expect(fixture.toast).toHaveBeenCalledWith(
+        expect.stringMatching(/can.t be undone/i),
+        expect.anything()
+      )
+      // Dropped, not parked on the redo side either.
+      expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled()
+
+      // The step beneath it still undoes.
+      fireEvent.click(screen.getByRole("button", { name: "Undo Delete edge" }))
+      await waitFor(() =>
+        expect(main.graph().edges.map((edge) => edge.sourceNodeId)).toEqual([
+          "note",
+        ])
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      process.off("unhandledRejection", unhandled)
+    }
+  })
+
+  it("keeps the prompt bar working after undoing an added node", async () => {
+    const { client } = await mountComposer()
+    const main = fakeMain(
+      client.getQueryData<CanvasDto>(queryKeys.canvas.graph)!
+    )
+
+    act(() =>
+      fixture.surface!.spawn(
+        client.getQueryData<CanvasDto>(queryKeys.canvas.graph)!.nodes[1]!,
+        "right",
+        "image_gen"
+      )
+    )
+    await waitFor(() =>
+      expect(main.graph().nodes.map((one) => one.id)).toContain("n1")
+    )
+    click("n1")
+    fireEvent.click(await screen.findByRole("button", { name: /^Undo / }))
+    await waitFor(() =>
+      expect(main.graph().edges.map((edge) => edge.targetNodeId)).toEqual([
+        "gen",
+      ])
+    )
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Undo Add node" })
+    )
+    await waitFor(() =>
+      expect(fixture.state!().nodes.map((one) => one.id)).not.toContain("n1")
     )
 
     click("gen")

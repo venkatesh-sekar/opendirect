@@ -47,6 +47,7 @@ import {
   type EdgeChange,
   type NodeChange,
   type NodeProps,
+  type OnDelete,
   type OnNodeDrag,
 } from "@xyflow/react"
 import type {
@@ -79,7 +80,10 @@ import {
   usePickCanvasNode,
   useUpdateCanvasNode,
 } from "@/hooks/use-canvas"
-import { useCanvasHistory } from "@/hooks/use-canvas-history"
+import {
+  StaleHistoryEntryError,
+  useCanvasHistory,
+} from "@/hooks/use-canvas-history"
 import { queryKeys } from "@/hooks/query-keys"
 import { useGenerations } from "@/hooks/use-generations"
 import { modelDescriptorQuery } from "@/hooks/use-models"
@@ -99,7 +103,7 @@ import {
   firstFreeSlot,
   modelOptionsForNode,
 } from "@/lib/canvas/slots"
-import { pathsForFiles } from "@/lib/ipc"
+import { invoke, pathsForFiles } from "@/lib/ipc"
 import { modelKeyOf } from "@/lib/model-key"
 import { useSettings } from "@/lib/settings"
 
@@ -383,6 +387,74 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   const chooseFiles = useChooseFiles()
   const generations = useGenerations(containerId, { limit: 1 })
 
+  /**
+   * Of these asset ids, the ones no longer in the project. An asset deleted
+   * from the Assets tab takes its media nodes with it, and a step on the undo
+   * stack cannot bring back a node whose file is gone.
+   */
+  const missingAssets = useCallback(
+    async (ids: readonly (string | null | undefined)[]) => {
+      const unique = [...new Set(ids.filter((id): id is string => !!id))]
+      const missing = await Promise.all(
+        unique.map((id) =>
+          invoke("assets:get", { id }).then(
+            () => null,
+            () => id
+          )
+        )
+      )
+      return new Set(missing.filter((id): id is string => id !== null))
+    },
+    []
+  )
+
+  /**
+   * The node ids on the canvas right now, asked of main rather than the
+   * cache: the cache can still hold a node an asset deletion has just
+   * cascaded away, and an edge into it would be refused.
+   */
+  const liveNodeIds = useCallback(async () => {
+    const graph = await client.fetchQuery({
+      queryKey: queryKeys.canvas.graph,
+      queryFn: () => invoke("canvas:get"),
+      staleTime: 0,
+    })
+    return new Set(graph.nodes.map((node) => node.id))
+  }, [client])
+
+  /**
+   * One press of Undo or Redo — from the rail, the keyboard or a toast.
+   *
+   * A step that can no longer apply has already been dropped from the stack
+   * by the time this hears of it; all that is left is to say so, quietly. Any
+   * other failure leaves the step where it was and is reported here rather
+   * than escaping as an unhandled rejection.
+   */
+  const { undo: undoStep, redo: redoStep } = history
+  const stepHistory = useCallback(
+    async (direction: "undo" | "redo") => {
+      try {
+        const result = await (direction === "undo" ? undoStep() : redoStep())
+        if (result.status === "dropped") {
+          toast(
+            direction === "undo"
+              ? "That step can't be undone"
+              : "That step can't be redone",
+            { description: result.reason }
+          )
+        }
+      } catch (error) {
+        toast.error(
+          direction === "undo" ? "Could not undo" : "Could not redo",
+          {
+            description: error instanceof Error ? error.message : undefined,
+          }
+        )
+      }
+    },
+    [undoStep, redoStep]
+  )
+
   const [mode, setMode] = useState<CanvasMode>("pan")
   const [selectedNodes, setSelectedNodes] = useState<readonly string[]>([])
   const [selectedEdges, setSelectedEdges] = useState<readonly string[]>([])
@@ -645,11 +717,17 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           await deleteEdges.mutateAsync([edgeId])
         },
         redo: async () => {
+          const live = await liveNodeIds()
+          if (!live.has(sourceNodeId) || !live.has(targetNodeId)) {
+            throw new StaleHistoryEntryError(
+              "What it connected is no longer on the canvas."
+            )
+          }
           edgeId = (await createEdge.mutateAsync(variables)).id
         },
       })
     },
-    [client, createEdge, deleteEdges, history, slotFor]
+    [client, createEdge, deleteEdges, history, liveNodeIds, slotFor]
   )
 
   const onConnect = useCallback(
@@ -663,74 +741,6 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   /* Deleting                                                            */
   /* ------------------------------------------------------------------ */
 
-  const onNodesDelete = useCallback(
-    (deleted: CanvasFlowNode[]) => {
-      const rows = deleted.map((one) => one.data.node)
-      if (rows.length === 0) return
-      const gone = new Set(rows.map((one) => one.id))
-      // SQLite cascades these; undo has to put them back by hand.
-      const orphaned = latest.current.edges.filter(
-        (edge) => gone.has(edge.sourceNodeId) || gone.has(edge.targetNodeId)
-      )
-
-      let ids = new Map(rows.map((one) => [one.id, one.id]))
-      void deleteNodes.mutateAsync([...ids.values()])
-
-      history.push({
-        operation: "node:delete",
-        label: rows.length > 1 ? `Delete ${rows.length} nodes` : "Delete node",
-        undo: async () => {
-          const remade = new Map<string, string>()
-          for (const row of rows) {
-            const node = await createNode.mutateAsync({
-              type: row.type,
-              x: row.x,
-              y: row.y,
-              width: row.width,
-              height: row.height,
-              assetId: row.assetId,
-              text: row.text,
-              color: row.color,
-            })
-            // What it pointed at is not part of creating a node, and a run it
-            // had already paid for must survive being taken off the board.
-            if (row.generationId || row.batchId || row.pickAssetId) {
-              await updateNode.mutateAsync({
-                id: node.id,
-                patch: {
-                  generationId: row.generationId,
-                  batchId: row.batchId,
-                  pickAssetId: row.pickAssetId,
-                },
-              })
-            }
-            remade.set(row.id, node.id)
-          }
-          for (const edge of orphaned) {
-            await createEdge.mutateAsync({
-              sourceNodeId: remade.get(edge.sourceNodeId) ?? edge.sourceNodeId,
-              targetNodeId: remade.get(edge.targetNodeId) ?? edge.targetNodeId,
-              slotField: edge.slotField,
-            })
-          }
-          ids = remade
-        },
-        redo: async () => {
-          await deleteNodes.mutateAsync([...ids.values()])
-        },
-      })
-
-      // Delete/Backspace is a bare keystroke on a surface full of them, and
-      // the undo stack it lands on is invisible. This is the only thing that
-      // says what happened and offers the way back.
-      toast(rows.length > 1 ? `${rows.length} nodes deleted` : "Node deleted", {
-        description: "The files they point at stay in the project.",
-        action: { label: "Undo", onClick: () => void history.undo() },
-      })
-    },
-    [createEdge, createNode, deleteNodes, history, updateNode]
-  )
-
   /** Deletes edge rows as one undoable step — the Delete key and the composer's ✕. */
   const deleteEdgeRows = useCallback(
     (rows: readonly CanvasEdgeDto[]) => {
@@ -743,8 +753,18 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
         operation: "edge:delete",
         label: rows.length > 1 ? `Delete ${rows.length} edges` : "Delete edge",
         undo: async () => {
+          // A node at either end may have gone since, with its asset.
+          const live = await liveNodeIds()
+          const restorable = rows.filter(
+            (edge) => live.has(edge.sourceNodeId) && live.has(edge.targetNodeId)
+          )
+          if (restorable.length === 0) {
+            throw new StaleHistoryEntryError(
+              "The nodes it connected are no longer on the canvas."
+            )
+          }
           const remade: string[] = []
-          for (const edge of rows) {
+          for (const edge of restorable) {
             const made = await createEdge.mutateAsync({
               sourceNodeId: edge.sourceNodeId,
               targetNodeId: edge.targetNodeId,
@@ -759,15 +779,148 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
         },
       })
     },
-    [createEdge, deleteEdges, history]
+    [createEdge, deleteEdges, history, liveNodeIds]
   )
 
-  const onEdgesDelete = useCallback(
-    (deleted: CanvasFlowEdge[]) =>
-      deleteEdgeRows(
-        deleted.flatMap((one) => (one.data ? [one.data.edge] : []))
-      ),
-    [deleteEdgeRows]
+  /**
+   * The Delete key: whatever it took off the canvas, as one undoable step.
+   *
+   * React Flow reports a deletion three times — the edges (every edge on a
+   * deleted node included), then the nodes, then both together here. Only
+   * this last report is listened to. Recording the first two separately put
+   * a node's wires on the stack as a step of their own, which undid the node
+   * (wires and all, re-pointed at its new id) and then tried to re-create the
+   * same wires against the old id a second time.
+   */
+  const onDelete: OnDelete<CanvasFlowNode, CanvasFlowEdge> = useCallback(
+    ({ nodes, edges }) => {
+      const rows = nodes.map((one) => one.data.node)
+      const edgeRows = edges.flatMap((one) => (one.data ? [one.data.edge] : []))
+      if (rows.length === 0) {
+        deleteEdgeRows(edgeRows)
+        return
+      }
+      const gone = new Set(rows.map((one) => one.id))
+      const touches = (edge: CanvasEdgeDto) =>
+        gone.has(edge.sourceNodeId) || gone.has(edge.targetNodeId)
+      // SQLite cascades these; undo has to put them back by hand.
+      const attached = new Map<string, CanvasEdgeDto>()
+      for (const edge of [...latest.current.edges, ...edgeRows]) {
+        if (touches(edge)) attached.set(edge.id, edge)
+      }
+      // Wires selected on their own, between nodes that stay.
+      const loose = edgeRows.filter((edge) => !touches(edge))
+      const isLoose = new Set(loose.map((edge) => edge.id))
+      const wires = [...attached.values(), ...loose]
+
+      // Undo re-creates rows under new ids, so redo has to delete *those*.
+      let nodeIds = rows.map((one) => one.id)
+      let looseIds = loose.map((one) => one.id)
+      const remove = async () => {
+        await Promise.all([
+          looseIds.length > 0 ? deleteEdges.mutateAsync(looseIds) : null,
+          nodeIds.length > 0 ? deleteNodes.mutateAsync(nodeIds) : null,
+        ])
+      }
+      void remove()
+
+      history.push({
+        operation: "node:delete",
+        label: rows.length > 1 ? `Delete ${rows.length} nodes` : "Delete node",
+        undo: async () => {
+          // An asset deleted since took its media nodes with it; those cannot
+          // come back, and a pick of a deleted take comes back unpicked.
+          const missing = await missingAssets(
+            rows.flatMap((one) => [one.assetId, one.pickAssetId])
+          )
+          const restorable = rows.filter(
+            (one) => !one.assetId || !missing.has(one.assetId)
+          )
+          if (restorable.length === 0) {
+            throw new StaleHistoryEntryError(
+              rows.length > 1
+                ? "Their files were deleted from the project."
+                : "Its file was deleted from the project."
+            )
+          }
+          const remade = new Map<string, string>()
+          for (const row of restorable) {
+            const node = await createNode.mutateAsync({
+              type: row.type,
+              x: row.x,
+              y: row.y,
+              width: row.width,
+              height: row.height,
+              assetId: row.assetId,
+              text: row.text,
+              color: row.color,
+            })
+            const pickAssetId =
+              row.pickAssetId && !missing.has(row.pickAssetId)
+                ? row.pickAssetId
+                : null
+            // What it pointed at is not part of creating a node, and a run it
+            // had already paid for must survive being taken off the board.
+            if (row.generationId || row.batchId || pickAssetId) {
+              await updateNode.mutateAsync({
+                id: node.id,
+                patch: {
+                  generationId: row.generationId,
+                  batchId: row.batchId,
+                  pickAssetId,
+                },
+              })
+            }
+            remade.set(row.id, node.id)
+          }
+          // A deleted node's wires point at its new id; a wire to a node that
+          // did not come back, or has gone since, is left out.
+          const live = await liveNodeIds()
+          const endpoint = (id: string) =>
+            gone.has(id) ? remade.get(id) : live.has(id) ? id : undefined
+          const remadeLoose: string[] = []
+          for (const edge of wires) {
+            const sourceNodeId = endpoint(edge.sourceNodeId)
+            const targetNodeId = endpoint(edge.targetNodeId)
+            if (!sourceNodeId || !targetNodeId) continue
+            const made = await createEdge.mutateAsync({
+              sourceNodeId,
+              targetNodeId,
+              slotField: edge.slotField,
+            })
+            if (isLoose.has(edge.id)) remadeLoose.push(made.id)
+          }
+          nodeIds = [...remade.values()]
+          looseIds = remadeLoose
+          if (restorable.length < rows.length) {
+            toast("Some nodes could not be restored", {
+              description: "Their files were deleted from the project.",
+            })
+          }
+        },
+        redo: remove,
+      })
+
+      // Delete/Backspace is a bare keystroke on a surface full of them, and
+      // the undo stack it lands on is invisible. This is the only thing that
+      // says what happened and offers the way back.
+      toast(rows.length > 1 ? `${rows.length} nodes deleted` : "Node deleted", {
+        description: "The files they point at stay in the project.",
+        action: { label: "Undo", onClick: () => void stepHistory("undo") },
+      })
+    },
+    [
+      createEdge,
+      createNode,
+      deleteEdgeRows,
+      deleteEdges,
+      deleteNodes,
+      history,
+      liveNodeIds,
+      missingAssets,
+      stepHistory,
+      updateNode,
+    ]
   )
 
   /** The composer's ✕ on a note: its wire(s) into `targetNodeId`, undoably. */
@@ -822,6 +975,14 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           await deleteNodes.mutateAsync([id])
         },
         redo: async () => {
+          if (
+            extra.assetId &&
+            (await missingAssets([extra.assetId])).has(extra.assetId)
+          ) {
+            throw new StaleHistoryEntryError(
+              "Its file was deleted from the project."
+            )
+          }
           const again = await createNode.mutateAsync({
             type,
             x: position.x,
@@ -835,7 +996,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       })
       return node
     },
-    [createNode, deleteNodes, history]
+    [createNode, deleteNodes, history, missingAssets]
   )
 
   /** The "+" on a node's side: a new node one gap over, already connected. */
@@ -976,19 +1137,31 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
       history.push({
         operation: "node:pick",
         label: "Change pick",
-        undo: () => {
+        undo: async () => {
           // There is no "unpick" channel, and there does not need to be: a
           // pick is a nullable column and the patch says so.
           if (previous === null) {
             updateNode.mutate({ id: node.id, patch: { pickAssetId: null } })
             return
           }
+          if ((await missingAssets([previous])).has(previous)) {
+            throw new StaleHistoryEntryError(
+              "The take it picked was deleted from the project."
+            )
+          }
           pickNode.mutate({ id: node.id, assetId: previous })
         },
-        redo: () => pickNode.mutate({ id: node.id, assetId }),
+        redo: async () => {
+          if ((await missingAssets([assetId])).has(assetId)) {
+            throw new StaleHistoryEntryError(
+              "The take it picked was deleted from the project."
+            )
+          }
+          pickNode.mutate({ id: node.id, assetId })
+        },
       })
     },
-    [history, pickNode, updateNode]
+    [history, missingAssets, pickNode, updateNode]
   )
 
   /* ------------------------------------------------------------------ */
@@ -1096,23 +1269,21 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
    * left out on purpose: inside a note or the prompt box, undo belongs to the
    * text box the caret is in.
    */
-  const undo = history.undo
-  const redo = history.redo
   useHotkeys(
     "mod+z",
     (event) => {
       event.preventDefault()
-      void undo()
+      void stepHistory("undo")
     },
-    [undo]
+    [stepHistory]
   )
   useHotkeys(
     "mod+shift+z",
     (event) => {
       event.preventDefault()
-      void redo()
+      void stepHistory("redo")
     },
-    [redo]
+    [stepHistory]
   )
 
   /* ------------------------------------------------------------------ */
@@ -1261,8 +1432,8 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           onAdd={addFromRail}
           onImport={onImportClick}
           importing={importAssets.isPending || chooseFiles.isPending}
-          onUndo={() => void history.undo()}
-          onRedo={() => void history.redo()}
+          onUndo={() => void stepHistory("undo")}
+          onRedo={() => void stepHistory("redo")}
           canUndo={history.canUndo && !history.busy}
           canRedo={history.canRedo && !history.busy}
           undoLabel={history.undoLabel}
@@ -1335,8 +1506,7 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           onConnect={onConnect}
-          onNodesDelete={onNodesDelete}
-          onEdgesDelete={onEdgesDelete}
+          onDelete={onDelete}
           /* Delete takes the selection off the canvas, and nothing else: the
              asset and the generation stay in the project. */
           deleteKeyCode={["Delete", "Backspace"]}

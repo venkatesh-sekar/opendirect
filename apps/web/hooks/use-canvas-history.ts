@@ -20,6 +20,12 @@
  *
  * The stack is bounded. A canvas session is long and every drag is an entry;
  * an unbounded stack holds every closure it was ever given.
+ *
+ * An entry can outlive what it points at: an asset deleted from the Assets tab
+ * takes its media nodes with it, and the step that would bring one back has
+ * nothing left to bring back. Its thunk says so by throwing a
+ * `StaleHistoryEntryError`, and the step is dropped rather than kept — it can
+ * never succeed, and leaving it on top would wedge every step beneath it.
  */
 import { useCallback, useMemo, useRef, useState } from "react"
 
@@ -51,6 +57,18 @@ export interface CanvasHistoryEntry {
   undo: () => void | Promise<void>
   /** Does it again, after an undo. */
   redo: () => void | Promise<void>
+}
+
+/**
+ * Thrown by an entry's `undo` or `redo` when what it would restore no longer
+ * exists — an asset deleted since, and the media node that went with it. The
+ * message says why, in words the user can read.
+ */
+export class StaleHistoryEntryError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "StaleHistoryEntryError"
+  }
 }
 
 /** How many entries are kept. Older ones fall off the bottom. */
@@ -85,7 +103,10 @@ export function pushEntry(
 
 export interface CanvasHistoryStep {
   entry: CanvasHistoryEntry
+  /** The stacks once the entry has replayed. */
   state: CanvasHistoryState
+  /** The stacks with the entry gone from both — what a stale entry leaves. */
+  without: CanvasHistoryState
 }
 
 /** The entry an undo would replay, and the stack it leaves behind. */
@@ -98,6 +119,7 @@ export function undoEntry(state: CanvasHistoryState): CanvasHistoryStep | null {
       past: state.past.slice(0, -1),
       future: [entry, ...state.future],
     },
+    without: { past: state.past.slice(0, -1), future: state.future },
   }
 }
 
@@ -111,13 +133,22 @@ export function redoEntry(state: CanvasHistoryState): CanvasHistoryStep | null {
       past: [...state.past, entry],
       future: state.future.slice(1),
     },
+    without: { past: state.past, future: state.future.slice(1) },
   }
 }
 
+/** What one press of Undo or Redo came to. */
+export type CanvasReplayResult =
+  /** Nothing to replay, or a replay was already in flight. */
+  | { status: "idle" }
+  | { status: "done"; entry: CanvasHistoryEntry }
+  /** The entry could no longer apply and is gone from the stack. */
+  | { status: "dropped"; entry: CanvasHistoryEntry; reason: string }
+
 export interface CanvasHistory {
   push: (entry: CanvasHistoryEntry) => void
-  undo: () => Promise<void>
-  redo: () => Promise<void>
+  undo: () => Promise<CanvasReplayResult>
+  redo: () => Promise<CanvasReplayResult>
   clear: () => void
   canUndo: boolean
   canRedo: boolean
@@ -134,7 +165,9 @@ export interface CanvasHistory {
  *
  * A replay that throws leaves the stacks exactly as they were and rethrows,
  * so the failed step is still there to try again — moving it would lose the
- * only record of how to put the canvas back.
+ * only record of how to put the canvas back. The one exception is a
+ * `StaleHistoryEntryError`: that step can never succeed, so it is dropped and
+ * the press resolves `"dropped"` instead of throwing.
  */
 export function useCanvasHistory(limit: number = HISTORY_LIMIT): CanvasHistory {
   const [state, setState] = useState<CanvasHistoryState>(emptyHistory)
@@ -167,16 +200,24 @@ export function useCanvasHistory(limit: number = HISTORY_LIMIT): CanvasHistory {
     async (
       take: (state: CanvasHistoryState) => CanvasHistoryStep | null,
       run: (entry: CanvasHistoryEntry) => void | Promise<void>
-    ) => {
-      if (running.current) return
+    ): Promise<CanvasReplayResult> => {
+      if (running.current) return { status: "idle" }
       const step = take(latest.current)
-      if (!step) return
+      if (!step) return { status: "idle" }
       running.current = true
       setBusy(true)
       try {
-        await run(step.entry)
+        try {
+          await run(step.entry)
+        } catch (error) {
+          if (!(error instanceof StaleHistoryEntryError)) throw error
+          latest.current = step.without
+          setState(step.without)
+          return { status: "dropped", entry: step.entry, reason: error.message }
+        }
         latest.current = step.state
         setState(step.state)
+        return { status: "done", entry: step.entry }
       } finally {
         running.current = false
         setBusy(false)
