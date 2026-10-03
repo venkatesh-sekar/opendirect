@@ -11,8 +11,8 @@
  * - URI-typed inputs become reference slots (see `reference-slots.ts`).
  * - A handful of well-known fields are lifted into `commonControls`; nothing
  *   is removed from the schema in the process.
- * - Pricing comes from the hand-maintained table in `cost.ts`, because
- *   Replicate's API exposes no pricing field at all.
+ * - Pricing comes from the hand-curated `registry/pricing.json` (see
+ *   `curated-pricing.ts`), because Replicate's API exposes no pricing field.
  *
  * ⛔ `submit` is the one paid call in this file. It is exercised only against
  * `msw` handlers backed by recorded fixtures — never the live API. Model and
@@ -32,7 +32,11 @@ import {
 } from "@opendirect/contract"
 import Replicate, { type Model, type Prediction } from "replicate"
 
-import { REPLICATE_PRICING } from "./cost"
+import {
+  curatedPrice,
+  curatedPriceHint,
+  curatedPricing,
+} from "./curated-pricing"
 import { deriveReferenceSlots } from "./reference-slots"
 import type {
   GenerationRequest,
@@ -85,10 +89,10 @@ const SEED_COLLECTIONS: Array<[slug: string, kind: ModelKind | null]> = [
 ]
 
 const PRICING_NOTE =
-  "Pricing is not exposed by the Replicate API, so this rate is transcribed by hand from the model's public page (2026-09-16) and is an unverified estimate."
+  "Pricing is not exposed by the Replicate API, so this rate is copied by hand from the model's public page and is an unverified estimate."
 
 const NO_PRICE_NOTE =
-  "No published rate for this model in OpenDirect's Replicate pricing table, so no cost can be estimated."
+  "No published rate for this model: Replicate's API exposes no price, and OpenDirect's curated pricing table (registry/pricing.json) has no entry for it yet, so no cost can be estimated. The model's Replicate page lists its price."
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -270,54 +274,16 @@ export function inferKindFromSchema(
   return "other"
 }
 
-/** Pricing block for the descriptor: the local table, verbatim, never a guess. */
+/** Pricing block for the descriptor: the curated table, verbatim, never a guess. */
 function pricingFor(slug: string): Pricing {
-  const price = REPLICATE_PRICING[slug]
+  const price = curatedPrice("replicate", slug)
   if (!price) return { ...unknownPricing, note: NO_PRICE_NOTE }
-
-  const skus: Record<string, string> = {}
-  for (const [tier, usd] of Object.entries(price.tiers))
-    skus[tier] = String(usd)
-
-  return {
-    basis: price.basis,
-    currency: "USD",
-    skus,
-    // A pre-flight number needs the form values; the creation bar calls
-    // `estimateCost` with them. The descriptor only carries the rates.
-    estimate: null,
-    source: "local_table",
-    note: `${price.note} ${PRICING_NOTE}`,
-  }
+  return curatedPricing(price, PRICING_NOTE)
 }
 
-/**
- * The cheapest published rate for the picker's one-line hint, or null when the
- * local table has nothing for this model — which the picker renders as
- * "price unknown", never as $0.00.
- *
- * Only the base tiers are considered: the `:video_in` variants are dearer by
- * construction, and `nano-banana-pro`'s `fallback` tier is a rate Replicate
- * publishes but OpenDirect never quotes (see `cost.ts`), so advertising it as
- * the "from" price would understate every real run.
- */
 function priceHintFor(slug: string): PriceHint | null {
-  const price = REPLICATE_PRICING[slug]
-  if (!price) return null
-
-  let lowest: number | null = null
-  for (const [tier, usd] of Object.entries(price.tiers)) {
-    if (tier.includes(":") || tier === "fallback") continue
-    if (lowest === null || usd < lowest) lowest = usd
-  }
-  if (lowest === null) return null
-
-  return {
-    amount: lowest,
-    unit: price.unit,
-    basis: price.basis,
-    source: "local_table",
-  }
+  const price = curatedPrice("replicate", slug)
+  return price ? curatedPriceHint(price) : null
 }
 
 function summaryOf(model: Model, kind: ModelKind): ModelSummary {

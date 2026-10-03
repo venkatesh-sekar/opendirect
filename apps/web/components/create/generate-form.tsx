@@ -39,6 +39,7 @@ import { SettingsPopover } from "@/components/canvas/settings-popover"
 import { ModelPicker } from "@/components/models/model-picker"
 
 import { AdvancedParams } from "./advanced-params"
+import { UnknownCostNotice } from "./unknown-cost-notice"
 
 /** Stable: the picker keeps it in a hotkey dependency list. */
 const ANY_KIND: ModelKind[] = ["image", "video"]
@@ -276,15 +277,13 @@ export function GenerateForm({
       </div>
 
       {plan.unknownCost && descriptor && !plan.cost.isFetching ? (
-        <label className="flex items-start gap-2 rounded-md border border-status-running/30 bg-status-running/5 p-2 text-xs">
-          <input
-            type="checkbox"
-            checked={plan.acceptedUnknownCost}
-            onChange={(event) => plan.acceptUnknownCost(event.target.checked)}
-          />
-          I understand pricing is unavailable for this model. This run may incur
-          charges; the provider determines the final cost.
-        </label>
+        <UnknownCostNotice
+          quote={plan.cost.data}
+          descriptor={descriptor}
+          checked={plan.acceptedUnknownCost}
+          onCheckedChange={plan.acceptUnknownCost}
+          className="border-status-running/30 bg-status-running/5"
+        />
       ) : null}
 
       <Button

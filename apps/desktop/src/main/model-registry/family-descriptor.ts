@@ -42,7 +42,7 @@ import {
 } from "@opendirect/contract"
 
 import type { ModelCatalog } from "../catalog"
-import { estimateCost } from "../providers/cost"
+import { estimateForDescriptor } from "../providers/cost"
 import { annotateDescriptor } from "./annotate"
 import type { ModelRegistry } from "./registry"
 
@@ -313,14 +313,7 @@ function unknownQuote(note: string): CostQuote {
 }
 
 function quote(descriptor: ModelDescriptor, params: Record<string, unknown>) {
-  return estimateCost({
-    provider: descriptor.provider,
-    kind: descriptor.kind,
-    slug: descriptor.slug,
-    pricingSkus: descriptor.pricing.skus,
-    params,
-    inputSchema: descriptor.inputSchema,
-  })
+  return estimateForDescriptor(descriptor, params)
 }
 
 /**

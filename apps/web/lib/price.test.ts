@@ -1,7 +1,47 @@
 import type { CostQuote } from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
-import { formatCostQuote, formatPriceHint, formatUsd } from "./price"
+import {
+  formatCostQuote,
+  formatPriceHint,
+  formatRate,
+  formatUsd,
+  providerModelPage,
+} from "./price"
+
+describe("formatRate / unknown quotes that carry a rate", () => {
+  const unknown: CostQuote = {
+    amount: 0,
+    currency: "USD",
+    basis: "per_second",
+    confidence: "unknown",
+    source: "none",
+    note: "Pick a duration to see an estimated cost for this model.",
+    sku: "duration_seconds_1080p",
+    rate: { amount: 0.2, unit: "second" },
+  }
+
+  it("shows the per-second rate instead of 'Cost unknown'", () => {
+    expect(formatCostQuote(unknown)).toBe("$0.20/s")
+  })
+
+  it("formats per-output rates", () => {
+    expect(formatRate({ amount: 0.003, unit: "output" })).toBe("$0.0030/output")
+    expect(formatRate(null)).toBeNull()
+  })
+})
+
+describe("providerModelPage", () => {
+  it("links the provider's public model page", () => {
+    expect(providerModelPage("openrouter", "alibaba/wan-3.0")).toEqual({
+      name: "OpenRouter",
+      url: "https://openrouter.ai/alibaba/wan-3.0",
+    })
+    expect(providerModelPage("replicate", "bytedance/seedance-2.5").url).toBe(
+      "https://replicate.com/bytedance/seedance-2.5"
+    )
+  })
+})
 
 describe("formatPriceHint", () => {
   it("says the price is unknown rather than showing a zero", () => {

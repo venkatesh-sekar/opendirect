@@ -19,31 +19,15 @@
  * type and under the name the model declared. It never invents a value: a
  * model whose schema states no default starts unset.
  */
-import type { ModelDescriptor } from "@opendirect/contract"
+import {
+  DURATION_FPS_FIELDS,
+  DURATION_FRAME_FIELDS,
+  DURATION_SECONDS_FIELDS,
+  parseSeconds,
+  type ModelDescriptor,
+} from "@opendirect/contract"
 
 import { labelFor, propertiesOf, type JsonSchema } from "./split-schema"
-
-/** Field names that are a length in seconds, in preference order. */
-const SECONDS_FIELDS = [
-  "duration",
-  "duration_seconds",
-  "seconds",
-  "duration_sec",
-  "video_duration",
-] as const
-
-/** Field names that may be a length in frames, in preference order. */
-const FRAME_FIELDS = [
-  "num_frames",
-  "video_length",
-  "length",
-  "frames",
-  "num_video_frames",
-  "frame_count",
-] as const
-
-/** Field names that state the frame rate a frame count plays at. */
-const FPS_FIELDS = ["fps", "frames_per_second", "frame_rate"] as const
 
 /**
  * The most discrete values a bounded range is listed as. Wan 3's 2–30 and
@@ -86,13 +70,8 @@ function isNumberType(schema: JsonSchema): boolean {
   return schema.type === "integer" || schema.type === "number"
 }
 
-/** `5`, `"5"`, `"5s"`, `"5 sec"`, `"5 seconds"` → 5. Anything else → null. */
-export function parseSeconds(value: unknown): number | null {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null
-  if (typeof value !== "string") return null
-  const match = /^\s*(-?\d+(?:\.\d+)?)\s*(?:s|secs?|seconds?)?\s*$/i.exec(value)
-  return match ? Number(match[1]) : null
-}
+/** Re-exported for callers that already read lengths from this module. */
+export { parseSeconds }
 
 function enumValues(schema: JsonSchema): DurationValue[] | null {
   const values = schema.enum
@@ -131,7 +110,7 @@ export function findDurationField(descriptor: ModelDescriptor): string | null {
   const mapped = descriptor.commonControls.duration
   if (usable(mapped)) return mapped
   if (descriptor.kind !== "video") return null
-  for (const field of [...SECONDS_FIELDS, ...FRAME_FIELDS]) {
+  for (const field of [...DURATION_SECONDS_FIELDS, ...DURATION_FRAME_FIELDS]) {
     if (usable(field)) return field
   }
   return null
@@ -139,7 +118,7 @@ export function findDurationField(descriptor: ModelDescriptor): string | null {
 
 function fpsFieldOf(properties: Record<string, JsonSchema>): string | null {
   return (
-    FPS_FIELDS.find(
+    DURATION_FPS_FIELDS.find(
       (field) => properties[field] && isNumberType(properties[field])
     ) ?? null
   )
@@ -150,7 +129,8 @@ function unitOf(
   values: number[],
   hasFps: boolean
 ): DurationSpec["unit"] {
-  if ((SECONDS_FIELDS as readonly string[]).includes(field)) return "seconds"
+  if ((DURATION_SECONDS_FIELDS as readonly string[]).includes(field))
+    return "seconds"
   if (/frame/i.test(field)) return "frames"
   // `length` / `video_length`: frames when the model has a frame rate or the
   // numbers are far past any plausible clip length in seconds.

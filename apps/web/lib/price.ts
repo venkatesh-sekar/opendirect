@@ -1,4 +1,4 @@
-import type { CostQuote, PriceHint } from "@opendirect/contract"
+import type { CostQuote, PriceHint, ProviderId } from "@opendirect/contract"
 
 /** `0.0000107` → `$0.0000107`; a small rate keeps its significant digits. */
 export function formatUsd(amount: number): string {
@@ -33,7 +33,37 @@ export function formatPriceHint(hint: PriceHint | null | undefined): string {
  * one thing it is not.
  */
 export function formatCostQuote(quote: CostQuote | null | undefined): string {
-  if (!quote || quote.confidence === "unknown") return "Cost unknown"
+  if (!quote || quote.confidence === "unknown") {
+    // A known rate still missing its quantity (no duration yet) shows the
+    // rate, `$0.20/s` — what the model is billed at — never a total.
+    return formatRate(quote?.rate) ?? "Cost unknown"
+  }
   const prefix = quote.confidence === "estimated" ? "~" : ""
   return `${prefix}${formatUsd(quote.amount)}`
+}
+
+const RATE_UNITS: Record<string, string> = { second: "s", output: "output" }
+
+/** `{ amount: 0.2, unit: "second" }` → `$0.20/s`; null when there is no rate. */
+export function formatRate(rate: CostQuote["rate"]): string | null {
+  if (!rate) return null
+  return `${formatUsd(rate.amount)}/${RATE_UNITS[rate.unit] ?? rate.unit}`
+}
+
+const PROVIDER_PAGES: Record<ProviderId, { name: string; base: string }> = {
+  replicate: { name: "Replicate", base: "https://replicate.com/" },
+  openrouter: { name: "OpenRouter", base: "https://openrouter.ai/" },
+}
+
+/**
+ * The provider's own public page for a model, where its price is listed —
+ * the place to check when OpenDirect cannot quote one.
+ */
+export function providerModelPage(
+  provider: ProviderId,
+  slug: string
+): { name: string; url: string } {
+  const page = PROVIDER_PAGES[provider]
+  const path = slug.split("/").map(encodeURIComponent).join("/")
+  return { name: page.name, url: `${page.base}${path}` }
 }

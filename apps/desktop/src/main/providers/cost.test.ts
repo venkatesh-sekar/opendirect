@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { estimateCost, REPLICATE_PRICING } from "./cost"
+import { estimateCost } from "./cost"
+import { CURATED_PRICING } from "./curated-pricing"
 
 describe("estimateCost", () => {
   it("prices a per-second OpenRouter video model", () => {
@@ -300,13 +301,16 @@ describe("estimateCost", () => {
   })
 
   it("keeps every published tier for the curated Replicate models", () => {
-    expect(Object.keys(REPLICATE_PRICING).sort()).toEqual([
-      "bytedance/seedance-2.0",
-      "bytedance/seedance-2.5",
-      "google/nano-banana-2",
-      "google/nano-banana-pro",
+    expect(Object.keys(CURATED_PRICING).sort()).toEqual([
+      "replicate:black-forest-labs/flux-schnell",
+      "replicate:bytedance/seedance-2.0",
+      "replicate:bytedance/seedance-2.5",
+      "replicate:google/nano-banana-2",
+      "replicate:google/nano-banana-pro",
     ])
-    expect(REPLICATE_PRICING["bytedance/seedance-2.0"]?.tiers).toMatchObject({
+    expect(
+      CURATED_PRICING["replicate:bytedance/seedance-2.0"]?.tiers
+    ).toMatchObject({
       "480p": 0.08,
       "480p:video_in": 0.1,
       "4k": 1,
