@@ -91,7 +91,10 @@
 
 /* Keep pan/zoom on the compositor. Node surfaces stay separate so a large
    graph does not become one enormous texture that is rasterized every frame.
-   Offscreen nodes are culled by React Flow, bounding the layer count. */
+   Offscreen nodes are culled by React Flow, bounding the layer count.
+   Not a cause of blur when zoomed in: Electron 44 re-rasters this layer at
+   the zoom it settles on (measured, with and without the hint). Sharp images
+   come from the source ladder in `nodes/canvas-image.tsx`. */
 .react-flow__viewport {
   will-change: transform;
 }

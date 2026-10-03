@@ -144,7 +144,16 @@ fails with "No project is open" when there is none.
 ### Thumbnails
 
 **Images** get a real preview: `sharp` writes `thumbnails/<assetId>.webp` at
-512px on the longest edge, and the same pass fills `assets.width` / `height`.
+512px on the longest edge (EXIF orientation applied), and the same pass fills
+`assets.width` / `height`.
+
+Larger sizes are made on demand. `<asset.url>?w=1024` or `?w=2048` asks the
+`asset://` protocol for a downscaled webp, which `media-tiers.ts` renders once
+and caches under `thumbnails/w<edge>/` (re-rendered if the source is newer);
+the original is served instead when it is no larger or cannot be resized. The
+renderer's `CanvasImage` picks thumbnail → 1024 → 2048 → original from the
+element's size × canvas zoom × `devicePixelRatio`, so a zoomed-in node is sharp
+and a zoomed-out overview decodes only thumbnails.
 
 **Video does not.** The alternative was `ffmpeg-static` + `fluent-ffmpeg` for a
 first-frame grab, which adds a ~70 MB per-platform binary and its own licensing
