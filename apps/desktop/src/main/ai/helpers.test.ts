@@ -61,6 +61,19 @@ describe("helperPrompt", () => {
     // A rethink is a prompt the user can run, so it asks for one paragraph.
     expect(rethink).toContain("one prompt for a generative image")
     expect(rethink).toContain("Image: /projects/Hotel/assets/2026/09/a.png")
+    expect(rethink).not.toContain("The prompt behind it")
+  })
+
+  it("gives a rethink the prompt behind the image, when there is one", () => {
+    const rethink = helperPrompt({
+      helper: "rethink-image",
+      imagePath: "/p/a.png",
+      prompt: "  a bellhop in a red corridor ",
+    })
+
+    expect(rethink).toContain(
+      "The prompt behind it:\na bellhop in a red corridor"
+    )
   })
 
   it("carries the container and its notes into the shot list", () => {

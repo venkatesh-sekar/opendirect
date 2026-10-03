@@ -967,6 +967,14 @@ describe("PromptBar", () => {
       tool: "claude",
       request: { helper: "rethink-image", assetId: "a0" },
     })
+    // The prompt as it stands goes along as context for the rethink.
+    expect(
+      (
+        invoke.mock.calls.find(([c]) => c === "ai:run")![1] as {
+          request: { prompt?: string }
+        }
+      ).request.prompt
+    ).toContain("a lift opens")
     expect(await screen.findByTestId("ai-result-text")).toBeVisible()
     expect(await screen.findByLabelText("Prompt")).toHaveValue("a lift opens")
 

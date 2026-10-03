@@ -17,6 +17,7 @@
  * nothing.
  */
 import { execFile as execFileCallback } from "node:child_process"
+import { realpath } from "node:fs/promises"
 import { promisify } from "node:util"
 
 import {
@@ -163,12 +164,30 @@ async function resolveRequest(
   }
 
   const assetPath = await realAssetPath(current.project, asset.relPath)
-  if (isImageHelper(request.helper)) {
-    return { helper: request.helper, imagePath: assetPath }
+  if (
+    request.helper === "explain-image" ||
+    request.helper === "rethink-image"
+  ) {
+    return {
+      helper: request.helper,
+      imagePath: assetPath,
+      prompt: request.prompt ?? null,
+    }
   }
   return request.helper === "describe-reference"
     ? { helper: "describe-reference", assetPath }
     : { helper: "analyze-video", assetPath }
+}
+
+/**
+ * The open project's folder, resolved through symlinks like the image paths
+ * `realAssetPath` returns, so a path made relative to it (codex's comma-free
+ * `--image`) points where the child process actually starts.
+ */
+async function projectCwd(): Promise<string | undefined> {
+  const path = getCurrentProject()?.project.path
+  if (!path) return undefined
+  return realpath(path).catch(() => path)
 }
 
 /** The images a resolved request points the CLI at, already validated. */
@@ -220,6 +239,7 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
     instructions: input.instructions ?? null,
   }
   const model = resolveRunModel(input.model, modelSetting(chosen))
+  const cwd = await projectCwd()
 
   const controller = new AbortController()
   running.set(input.runId, controller)
@@ -251,7 +271,7 @@ export async function runAiHelper(input: AiRunRequest): Promise<AiResult> {
         prompt,
         model,
         command: status.path ?? chosen,
-        cwd: getCurrentProject()?.project.path,
+        cwd,
         allowedTools: HELPER_TOOLS[helper],
         images: imagesOf(resolved),
         signal: controller.signal,

@@ -145,10 +145,27 @@ describe("argument building", () => {
     expect(codexArgs()).not.toContain("--image")
   })
 
-  it("leaves a comma-holding path out of codex's --image, which splits on commas", () => {
+  it("passes a comma-holding image path to codex relative to its cwd", () => {
+    const args = codexArgs({
+      images: ["/projects/Hotel, v2/assets/2026/x.png"],
+      cwd: "/projects/Hotel, v2",
+    })
+    // codex splits --image on commas; the relative path has none.
+    expect(args.slice(1, 3)).toEqual(["--image", "./assets/2026/x.png"])
+  })
+
+  it("leaves an image out of --image only when no comma-free path exists", () => {
+    // No cwd to be relative to, a comma in the file's own name, or a file
+    // outside the working directory: the prompt's path is all codex gets.
     expect(codexArgs({ images: ["/projects/a,b/x.png"] })).not.toContain(
       "--image"
     )
+    expect(
+      codexArgs({ images: ["/projects/p/assets/a,b.png"], cwd: "/projects/p" })
+    ).not.toContain("--image")
+    expect(
+      codexArgs({ images: ["/elsewhere/a,b/x.png"], cwd: "/projects/p" })
+    ).not.toContain("--image")
   })
 
   it("lets claude read the image's folder and nothing more", () => {

@@ -226,14 +226,67 @@ describe("asking a local CLI about the selected image", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     })
-    return render(
+    const view = (selected: boolean) => (
       <QueryClientProvider client={client}>
         <CanvasSurfaceProvider value={surface}>
-          <MediaNodeAssist node={node} asset={asset} />
+          <MediaNodeAssist node={node} asset={asset} selected={selected} />
         </CanvasSurfaceProvider>
       </QueryClientProvider>
     )
+    const rendered = render(view(true))
+    return { select: (selected: boolean) => rendered.rerender(view(selected)) }
   }
+
+  /** Holds `ai:run` open until the test answers it, like a slow CLI. */
+  function holdRun(): (text: string) => void {
+    let answer: (text: string) => void = () => {}
+    const fallback = invoke.getMockImplementation()!
+    invoke.mockImplementation((channel: string, payload?: unknown) =>
+      channel === "ai:run"
+        ? new Promise((resolve) => {
+            answer = (text) =>
+              resolve({
+                runId: "r",
+                helper: "explain-image",
+                tool: "claude",
+                text,
+                summary: null,
+                shots: [],
+                durationMs: 1,
+              })
+          })
+        : fallback(channel, payload)
+    )
+    return (text) => answer(text)
+  }
+
+  it("keeps a run's answer when the node is deselected mid-run", async () => {
+    const user = userEvent.setup()
+    const { select } = mountAssist(true)
+    const answer = holdRun()
+
+    await user.click(await screen.findByRole("button", { name: "AI helpers" }))
+    await user.click(
+      await screen.findByRole("button", { name: "Explain image" })
+    )
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("ai:run", expect.anything())
+    )
+
+    // Clicking away hides the ✨ trigger, and only the trigger.
+    select(false)
+    expect(screen.queryByRole("button", { name: "AI helpers" })).toBeNull()
+    answer("A red door, lit from the left.")
+
+    expect(await screen.findByTestId("ai-result-text")).toHaveTextContent(
+      "A red door, lit from the left."
+    )
+    // An explanation is not a prompt: Copy, and no new node from it.
+    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "New image node with this prompt" })
+    ).toBeNull()
+  })
 
   it("rethinks the image by asset id and seeds a new node only on request", async () => {
     const user = userEvent.setup()

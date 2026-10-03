@@ -87,17 +87,23 @@ export function MediaNodeBody({ node }: { node: CanvasNodeDto }) {
  * ✨ on a selected picture: Explain or Rethink it with the local `claude` or
  * `codex`, the same menu and the same answer dialog as Improve prompt.
  *
- * Only mounted while the node is selected — select the image, then ask — and
- * absent altogether without a CLI, as `<HelperMenu/>` always is. The answer
- * can be copied, or become the prompt of a new image node wired to this one.
+ * The run and its dialog stay mounted for as long as the node is; only the ✨
+ * trigger waits for the node to be selected — select the image, then ask. So
+ * clicking away mid-run does not lose the answer of a CLI that is still
+ * working. Absent altogether without a CLI, as `<HelperMenu/>` always is.
+ *
+ * Every answer can be copied. A rethink is a prompt, so it can also become
+ * the prompt of a new image node wired to this one; an explanation cannot.
  * ⛔ That seeds a composition; Run is still the user's to press.
  */
 export function MediaNodeAssist({
   node,
   asset,
+  selected,
 }: {
   node: CanvasNodeDto
   asset: AssetDto
+  selected: boolean
 }) {
   const surface = useCanvasSurface()
   const tools = useAiTools()
@@ -106,22 +112,24 @@ export function MediaNodeAssist({
 
   return (
     <>
-      <HelperMenu
-        tools={tools.data}
-        helpers={AI_IMAGE_HELPERS}
-        images={images}
-        disabled={ai.state === "running"}
-        className="nodrag nopan size-6"
-        onRun={(helper, tool, options, image) => {
-          if (isImageHelper(helper) && image) {
-            ai.run({ helper, assetId: image.id }, tool, options)
-          }
-        }}
-      />
+      {selected ? (
+        <HelperMenu
+          tools={tools.data}
+          helpers={AI_IMAGE_HELPERS}
+          images={images}
+          disabled={ai.state === "running"}
+          className="nodrag nopan size-6"
+          onRun={(helper, tool, options, image) => {
+            if (isImageHelper(helper) && image) {
+              ai.run({ helper, assetId: image.id }, tool, options)
+            }
+          }}
+        />
+      ) : null}
       <HelperResultDialog
         controller={ai}
         onApply={
-          surface
+          surface && ai.helper === "rethink-image"
             ? (text) =>
                 surface.spawn(node, "right", "image_gen", { prompt: text })
             : undefined
@@ -168,8 +176,12 @@ export function MediaNode({ data, selected }: NodeProps<CanvasFlowNode>) {
       title={node.asset ? assetLabel(node.asset) : "Media"}
       actions={
         <>
-          {selected && node.asset?.kind === "image" ? (
-            <MediaNodeAssist node={node} asset={node.asset} />
+          {node.asset?.kind === "image" ? (
+            <MediaNodeAssist
+              node={node}
+              asset={node.asset}
+              selected={selected === true}
+            />
           ) : null}
           <MediaNodeDetails node={node} />
         </>

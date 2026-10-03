@@ -28,7 +28,7 @@
  * provider credit, and it is only ever reached from an explicit menu click.
  */
 import { spawn as nodeSpawn } from "node:child_process"
-import { dirname, isAbsolute } from "node:path"
+import { dirname, isAbsolute, relative, sep } from "node:path"
 
 import { aiModelSchema, type AiToolId } from "@opendirect/contract"
 
@@ -276,6 +276,30 @@ export interface ToolPolicy {
   model?: string | null
   /** Validated absolute image paths the helper is pointed at. */
   images?: readonly string[]
+  /** The child's working directory, which a relative image path is from. */
+  cwd?: string
+}
+
+/**
+ * `image` as `./…` from `cwd`, or null when that is not a comma-free path
+ * inside `cwd`. The `./` prefix also keeps it from ever reading as a flag.
+ */
+function commaFreeRelative(
+  image: string,
+  cwd: string | undefined
+): string | null {
+  if (!cwd || !isAbsolute(cwd)) return null
+  const rel = relative(cwd, image)
+  if (
+    !rel ||
+    isAbsolute(rel) ||
+    rel === ".." ||
+    rel.startsWith(`..${sep}`) ||
+    rel.includes(",")
+  ) {
+    return null
+  }
+  return `.${sep}${rel}`
 }
 
 /**
@@ -377,17 +401,24 @@ export function claudeArgs(policy: ToolPolicy): string[] {
  * initial prompt"), so the model sees the picture itself rather than a path
  * it would have to go and read. The flag is variadic (`<FILE>...`), so each
  * one sits straight after `exec` and is followed by another `--` flag: last,
- * it would swallow the `-` stdin marker as a second image. A path holding a
- * comma is not attached: codex-rs declares the flag with a `,` value
- * delimiter (not shown by `--help`), so it would arrive as two broken paths.
- * The path is still in the prompt, for codex to open itself.
+ * it would swallow the `-` stdin marker as a second image.
+ *
+ * codex-rs declares the flag with a `,` value delimiter (not shown by
+ * `--help`), so a path holding a comma would arrive as two broken paths. The
+ * comma is nearly always in the project folder's own name, so such an image
+ * is passed relative to the working directory instead (`./assets/…`), which
+ * the child resolves against the `cwd` it was started in. Only when even that
+ * holds a comma is it left out, and codex opens it from the prompt's path.
  */
 export function codexArgs(
-  policy: Pick<ToolPolicy, "model" | "images"> = {}
+  policy: Pick<ToolPolicy, "model" | "images" | "cwd"> = {}
 ): string[] {
   const args = ["exec"]
   for (const image of checkedImages(policy.images)) {
-    if (!image.includes(",")) args.push("--image", image)
+    const arg = image.includes(",")
+      ? commaFreeRelative(image, policy.cwd)
+      : image
+    if (arg) args.push("--image", arg)
   }
   args.push(
     "--color",
@@ -478,6 +509,7 @@ function runCli(tool: AiToolId, options: RunOptions): Promise<AiRunOutput> {
         allowedTools: options.allowedTools ?? [],
         model: options.model ?? null,
         images: options.images ?? [],
+        cwd: options.cwd,
       })
     } catch (error) {
       // An invalid model never reaches a child process.

@@ -197,6 +197,11 @@ export const aiRunRequestSchema = z.object({
     z.object({
       helper: z.enum(AI_IMAGE_HELPERS),
       assetId: z.string().min(1),
+      /**
+       * The prompt behind the image — the node's current one, or the one it
+       * was generated from — so a rethink starts from what was asked for.
+       */
+      prompt: z.string().nullable().optional(),
     }),
   ]),
 })
