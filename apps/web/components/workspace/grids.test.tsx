@@ -191,9 +191,20 @@ describe("the Generations page", () => {
       "generations:list": { items: many, outputs: [] },
     })
 
+    // Not `getByRole("button", { name })`: every tile is a button too, and a
+    // role query works out the accessible name of each one, restyling the
+    // whole page in jsdom after every page loads. With hundreds of tiles that
+    // took over a second a page and timed the test out on CI. So the button
+    // is found by its label, then checked for what the role query asserted.
+    const showMore = () =>
+      screen.queryByText("Show more")?.closest("button") ?? null
+
     await screen.findByText("take 0")
     expect(screen.queryByText("take 65")).toBeNull()
-    await user.click(screen.getByRole("button", { name: /show more/i }))
+    const first = showMore()
+    expect(first).toHaveAccessibleName("Show more")
+    expect(first).toBeVisible()
+    await user.click(first!)
     expect(await screen.findByText("take 65")).toBeVisible()
     expect(invoke).toHaveBeenCalledWith("generations:list", {
       limit: 60,
@@ -201,13 +212,18 @@ describe("the Generations page", () => {
     })
 
     for (let page = 2; page < 10; page++) {
-      await user.click(screen.getByRole("button", { name: /show more/i }))
+      const button = showMore()
+      expect(button).toBeEnabled()
+      await user.click(button!)
       await screen.findByText(`take ${page * 60}`)
     }
     expect(await screen.findByText("take 559")).toBeVisible()
-    expect(screen.queryByRole("button", { name: /show more/i })).toBeNull()
-    // Ten pages of real tiles in jsdom: slow, not stuck.
-  }, 30_000)
+    expect(showMore()).toBeNull()
+    expect(screen.queryByText("Loading…")).toBeNull()
+    // It still renders 560 real tiles: about 1.3 s alone but nearly 4 s in the
+    // full suite on a dev machine, and slower on CI, so the 5 s default is
+    // too close.
+  }, 15_000)
 
   it("says so when the project has no runs yet", async () => {
     mount(<GenerationsScreen />, {
