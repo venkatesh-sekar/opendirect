@@ -1,0 +1,358 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_cover_image/0e673f85-fb3a-4cf5-b3f5-29f5b55cfa15/tmpwsnsut8w.webp",
+  "created_at": "2026-09-08T19:25:36.688327Z",
+  "default_example": {
+    "completed_at": "2026-09-08T19:48:46.337223Z",
+    "created_at": "2026-09-08T19:48:32.645000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "9kzw0k550nrmw0d0ga8avxr2zg",
+    "input": {
+      "prompt": "a bird",
+      "quality": "auto",
+      "background": "auto",
+      "moderation": "auto",
+      "aspect_ratio": "16:9",
+      "output_format": "webp",
+      "number_of_images": 1,
+      "output_compression": 90
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Model: gpt-image-2.5-sunburst\nGenerating image...\nNo sid included.\nGenerated image in 13.5sec\nGenerated 1 images\nInput text token count: 8\nInput image token count: 0\nOutput token count: 157",
+    "metrics": {
+      "model_variant": "auto",
+      "resolution_target": "16:9",
+      "image_output_count": 1,
+      "predict_time": 13.64356328,
+      "total_time": 13.692223839
+    },
+    "model": "openai/gpt-image-2.5-sunburst",
+    "output": [
+      "https://replicate.delivery/xezq/CeL1CsnYUl0JOC3HpSBRGY8luuEZCWzDao5sWwrfQJqeEDXuA/tmp88n5l66j.webp"
+    ],
+    "source": "web",
+    "started_at": "2026-09-08T19:48:32.693660Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/jbxs-syjwhgibfl6lote4ihfduyqlxub6ecladkj6s6wyx4vj2wxv5yzq",
+      "get": "https://api.replicate.com/v1/predictions/9kzw0k550nrmw0d0ga8avxr2zg",
+      "cancel": "https://api.replicate.com/v1/predictions/9kzw0k550nrmw0d0ga8avxr2zg/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "OpenAI's most capable image model, built for workflows where editing precision matters most. Generate and edit images from text and image inputs with strong instruction following, sharp text rendering, and detailed control.",
+  "github_url": null,
+  "latest_version": {
+    "id": "e1204af0d6a06a91cd56d07307495ad0436d11eddf144d0c960c44a82e0e4931",
+    "created_at": "2026-09-22T14:47:09.586195Z",
+    "cog_version": "0.22.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.22.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "A text description of the desired image"
+              },
+              "quality": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/quality"
+                  }
+                ],
+                "default": "auto",
+                "x-order": 5,
+                "description": "The quality of the generated image. Higher quality takes longer and costs more."
+              },
+              "user_id": {
+                "type": "string",
+                "title": "User Id",
+                "default": null,
+                "x-order": 10,
+                "nullable": true,
+                "description": "An optional unique identifier representing your end-user. This helps OpenAI monitor and detect abuse."
+              },
+              "background": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/background"
+                  }
+                ],
+                "default": "auto",
+                "x-order": 6,
+                "description": "Set whether the background is transparent or opaque or choose automatically"
+              },
+              "moderation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/moderation"
+                  }
+                ],
+                "default": "auto",
+                "x-order": 9,
+                "description": "Content moderation level"
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "1:1",
+                "x-order": 2,
+                "description": "The size of the generated image. Use 'auto' to let the model pick. Sizes above 2560x1440 are experimental and may give more variable results."
+              },
+              "input_images": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "title": "Input Images",
+                "default": null,
+                "x-order": 3,
+                "nullable": true,
+                "description": "A list of images to use as input for the generation"
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/output_format"
+                  }
+                ],
+                "default": "webp",
+                "x-order": 8,
+                "description": "Output format"
+              },
+              "openai_api_key": {
+                "type": "string",
+                "title": "Openai Api Key",
+                "format": "password",
+                "default": null,
+                "x-order": 1,
+                "nullable": true,
+                "writeOnly": true,
+                "description": "Your OpenAI API key (optional - uses proxy if not provided)",
+                "x-cog-secret": true
+              },
+              "number_of_images": {
+                "type": "integer",
+                "title": "Number Of Images",
+                "default": 1,
+                "maximum": 10,
+                "minimum": 1,
+                "x-order": 4,
+                "description": "Number of images to generate (1-10)"
+              },
+              "output_compression": {
+                "type": "integer",
+                "title": "Output Compression",
+                "default": 90,
+                "maximum": 100,
+                "minimum": 0,
+                "x-order": 7,
+                "description": "Compression level (0-100%)"
+              }
+            }
+          },
+          "Output": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": "Output"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "quality": {
+            "enum": ["low", "medium", "high", "xhigh", "max", "auto"],
+            "type": "string",
+            "title": "quality",
+            "description": "An enumeration."
+          },
+          "background": {
+            "enum": ["auto", "transparent", "opaque"],
+            "type": "string",
+            "title": "background",
+            "description": "An enumeration."
+          },
+          "moderation": {
+            "enum": ["auto", "low"],
+            "type": "string",
+            "title": "moderation",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:2",
+              "2:3",
+              "4:3",
+              "3:4",
+              "16:9",
+              "9:16",
+              "auto",
+              "1024x1024",
+              "1536x1024",
+              "1024x1536",
+              "1536x1152",
+              "1152x1536",
+              "2048x2048",
+              "2048x1152",
+              "1152x2048",
+              "3840x2160",
+              "2160x3840"
+            ],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "output_format": {
+            "enum": ["png", "jpeg", "webp"],
+            "type": "string",
+            "title": "output_format",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "gpt-image-2.5-sunburst",
+  "owner": "openai",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 912216,
+  "url": "https://replicate.com/openai/gpt-image-2.5-sunburst",
+  "visibility": "public",
+  "weights_url": null
+}

@@ -1,5 +1,7 @@
+import { modelFamilySchema } from "@opendirect/contract"
 import { describe, expect, it } from "vitest"
 
+import { BUNDLED_FAMILIES } from "../model-registry/bundled"
 import { estimateCost } from "./cost"
 import { CURATED_PRICING } from "./curated-pricing"
 
@@ -300,13 +302,40 @@ describe("estimateCost", () => {
     expect(r.note).toMatch(/audio/i)
   })
 
+  it("has a curated rate for every Replicate endpoint the bundled registry maps", () => {
+    const unpriced = BUNDLED_FAMILIES.flatMap(({ raw }) =>
+      modelFamilySchema
+        .parse(raw)
+        .endpoints.filter((endpoint) => endpoint.provider === "replicate")
+        .map((endpoint) => `replicate:${endpoint.model}`)
+    ).filter((key) => !(key in CURATED_PRICING))
+    expect(unpriced).toEqual([])
+  })
+
   it("keeps every published tier for the curated Replicate models", () => {
     expect(Object.keys(CURATED_PRICING).sort()).toEqual([
+      "replicate:alibaba/wan-3",
+      "replicate:black-forest-labs/flux-2-pro",
       "replicate:black-forest-labs/flux-schnell",
       "replicate:bytedance/seedance-2.0",
       "replicate:bytedance/seedance-2.5",
+      "replicate:bytedance/seedream-4.5",
+      "replicate:google/imagen-4-fast",
       "replicate:google/nano-banana-2",
       "replicate:google/nano-banana-pro",
+      "replicate:google/veo-3.1",
+      "replicate:google/veo-3.1-fast",
+      "replicate:ideogram-ai/ideogram-v3-turbo",
+      "replicate:kwaivgi/kling-v2.5-turbo-pro",
+      "replicate:lightricks/ltx-2-fast",
+      "replicate:minimax/hailuo-2.3",
+      "replicate:openai/gpt-image-1.5",
+      "replicate:openai/gpt-image-2",
+      "replicate:openai/gpt-image-2.5-flare",
+      "replicate:openai/gpt-image-2.5-sunburst",
+      "replicate:prunaai/p-image",
+      "replicate:prunaai/p-video",
+      "replicate:qwen/qwen-image",
     ])
     expect(
       CURATED_PRICING["replicate:bytedance/seedance-2.0"]?.tiers

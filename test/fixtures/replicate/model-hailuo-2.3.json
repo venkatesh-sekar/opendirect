@@ -1,0 +1,294 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/1c5d6ebb-8251-4f70-b3bb-dd64729d0858/hailuo-23-sm.mp4",
+  "created_at": "2025-10-26T17:23:28.316877Z",
+  "default_example": {
+    "completed_at": "2025-10-26T19:31:02.941242Z",
+    "created_at": "2025-10-26T19:29:26.100000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "gcj2bj9tahrme0ct47zs0r83rg",
+    "input": {
+      "prompt": "a tiktok dancer is dancing on a small drone, doing flips and tricks",
+      "duration": 6,
+      "resolution": "768p",
+      "prompt_optimizer": true
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Generating video...\nStill generating...\nStill generating...\nGenerated video in 93.9sec\nRetrieving file...\nDownloading 1436016 bytes\nDownloaded 1.37MB in 2.26sec",
+    "metrics": {
+      "predict_time": 96.833779547,
+      "total_time": 96.841242597
+    },
+    "model": "minimax/hailuo-2.3",
+    "output": "https://replicate.delivery/xezq/R815jtkXkHYKDl2rDAh8sDjuXNMpdcWcf20ezb6nPLM2jCjVA/tmpfrzx9a45.mp4",
+    "source": "web",
+    "started_at": "2025-10-26T19:29:26.107463Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-czmo5g2f4mirhqv6ujwdbc2drrqry6d4ncp6rvl5envgsvjbgyeq",
+      "get": "https://api.replicate.com/v1/predictions/gcj2bj9tahrme0ct47zs0r83rg",
+      "cancel": "https://api.replicate.com/v1/predictions/gcj2bj9tahrme0ct47zs0r83rg/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "A high-fidelity video generation model optimized for realistic human motion, cinematic VFX, expressive characters, and strong prompt and style adherence across both text-to-video and image-to-video workflows",
+  "github_url": null,
+  "latest_version": {
+    "id": "23a02633b5a44780345a59d4d43f8bd510efa239c56f08f29639ff24fa6615e1",
+    "created_at": "2025-11-07T13:28:10.177976Z",
+    "cog_version": "0.16.8",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "description": "Text prompt for generation"
+              },
+              "duration": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/duration"
+                  }
+                ],
+                "default": 6,
+                "x-order": 2,
+                "description": "Duration of the video in seconds. 10 seconds is only available for 768p resolution."
+              },
+              "resolution": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/resolution"
+                  }
+                ],
+                "default": "768p",
+                "x-order": 3,
+                "description": "Pick between 768p or 1080p resolution. 1080p supports only 6-second duration."
+              },
+              "prompt_optimizer": {
+                "type": "boolean",
+                "title": "Prompt Optimizer",
+                "default": true,
+                "description": "Use prompt optimizer"
+              },
+              "first_frame_image": {
+                "type": "string",
+                "title": "First Frame Image",
+                "format": "uri",
+                "description": "First frame image for video generation. The output video will have the same aspect ratio as this image."
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "duration": {
+            "enum": [6, 10],
+            "type": "integer",
+            "title": "duration",
+            "description": "An enumeration."
+          },
+          "resolution": {
+            "enum": ["768p", "1080p"],
+            "type": "string",
+            "title": "resolution",
+            "description": "An enumeration."
+          },
+          "WebhookEvent": {
+            "enum": ["start", "output", "logs", "completed"],
+            "type": "string",
+            "title": "WebhookEvent",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "context": {
+                "type": "object",
+                "title": "Context",
+                "nullable": true,
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "webhook": {
+                "type": "string",
+                "title": "Webhook",
+                "format": "uri",
+                "nullable": true,
+                "maxLength": 65536,
+                "minLength": 1
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "output_file_prefix": {
+                "type": "string",
+                "title": "Output File Prefix",
+                "nullable": true
+              },
+              "webhook_events_filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WebhookEvent"
+                },
+                "default": ["start", "output", "logs", "completed"],
+                "nullable": true
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs",
+                "default": ""
+              },
+              "error": {
+                "type": "string",
+                "title": "Error",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "$ref": "#/components/schemas/Status",
+                "nullable": true
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics",
+                "nullable": true,
+                "additionalProperties": true
+              },
+              "version": {
+                "type": "string",
+                "title": "Version",
+                "nullable": true
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "hailuo-2.3",
+  "owner": "minimax",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 132725,
+  "url": "https://replicate.com/minimax/hailuo-2.3",
+  "visibility": "public",
+  "weights_url": null
+}

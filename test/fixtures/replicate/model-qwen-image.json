@@ -1,0 +1,431 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/62e062a1-f4e4-4192-9f0c-56408f092fec/replicate-prediction-97qabd8z.webp",
+  "created_at": "2025-08-04T17:23:39.724770Z",
+  "default_example": {
+    "completed_at": "2025-08-18T16:01:12.508409Z",
+    "created_at": "2025-08-18T16:01:09.026000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "qk9jfknxm9rma0crqqmswwd95w",
+    "input": {
+      "prompt": "Bookstore window display. A sign displays “New Arrivals This Week”. Below, a shelf tag with the text “Best-Selling Novels Here”. To the side, a colorful poster advertises “Author Meet And Greet on Saturday” with a central portrait of the author. There are four books on the bookshelf, namely “The light between worlds” “When stars are scattered” “The slient patient” “The night circus”",
+      "go_fast": true,
+      "guidance": 4,
+      "strength": 0.9,
+      "image_size": "optimize_for_quality",
+      "lora_scale": 1,
+      "aspect_ratio": "16:9",
+      "output_format": "webp",
+      "enhance_prompt": false,
+      "output_quality": 80,
+      "negative_prompt": " ",
+      "num_inference_steps": 50
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using seed: 141586\nGeneration took 3.34 seconds\nTotal safe images: 1 out of 1",
+    "metrics": {
+      "predict_time": 3.473950458,
+      "total_time": 3.482409
+    },
+    "model": "qwen/qwen-image",
+    "output": [
+      "https://replicate.delivery/xezq/CalqB1ZADWLfASezGoEtpx1070CViNt8zw8Ni7PjR2PIBQMVA/out-0.webp"
+    ],
+    "source": "web",
+    "started_at": "2025-08-18T16:01:09.034458Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-as7nvl7upjl3gf2lawhy5thb2rr7xetoqqzib32zaoqpxyaaiw4q",
+      "get": "https://api.replicate.com/v1/predictions/qk9jfknxm9rma0crqqmswwd95w",
+      "cancel": "https://api.replicate.com/v1/predictions/qk9jfknxm9rma0crqqmswwd95w/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "An image generation foundation model in the Qwen series that achieves significant advances in complex text rendering.",
+  "github_url": "https://github.com/QwenLM/Qwen-Image",
+  "latest_version": {
+    "id": "0bba9e70f78437359725e0989ead45ca8b09e6c12a070dfe9a09e6856b43a44d",
+    "created_at": "2026-01-20T16:48:29.924296Z",
+    "cog_version": "0.16.9",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "x-order": 15,
+                "nullable": true,
+                "description": "Random seed. Set for reproducible generation"
+              },
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "x-order": 7,
+                "description": "Input image for img2img pipeline"
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Prompt for generated image"
+              },
+              "go_fast": {
+                "type": "boolean",
+                "title": "Go Fast",
+                "default": true,
+                "x-order": 12,
+                "description": "Run faster predictions with additional optimizations."
+              },
+              "guidance": {
+                "type": "number",
+                "title": "Guidance",
+                "default": 3,
+                "maximum": 10,
+                "minimum": 0,
+                "x-order": 14,
+                "description": "Guidance for generated image. Lower values can give more realistic images. Good values to try are 2, 2.5, 3 and 3.5"
+              },
+              "strength": {
+                "type": "number",
+                "title": "Strength",
+                "default": 0.9,
+                "maximum": 1,
+                "minimum": 0,
+                "x-order": 8,
+                "description": "Strength for img2img pipeline"
+              },
+              "image_size": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/image_size"
+                  }
+                ],
+                "default": "optimize_for_quality",
+                "x-order": 11,
+                "description": "Image size for the generated image"
+              },
+              "lora_scale": {
+                "type": "number",
+                "title": "Lora Scale",
+                "default": 1,
+                "x-order": 4,
+                "description": "Determines how strongly the main LoRA should be applied."
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "16:9",
+                "x-order": 10,
+                "description": "Aspect ratio for the generated image"
+              },
+              "lora_weights": {
+                "type": "string",
+                "title": "Lora Weights",
+                "x-order": 2,
+                "nullable": true,
+                "description": "Load LoRA weights. Only works with text to image pipeline. Supports arbitrary .safetensors URLs, tar files, and zip files from the Internet (for example, 'https://huggingface.co/flymy-ai/qwen-image-lora/resolve/main/pytorch_lora_weights.safetensors', 'https://example.com/lora_weights.tar.gz', or 'https://example.com/lora_weights.zip')"
+              },
+              "output_format": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/output_format"
+                  }
+                ],
+                "default": "webp",
+                "x-order": 16,
+                "description": "Format of the output images"
+              },
+              "enhance_prompt": {
+                "type": "boolean",
+                "title": "Enhance Prompt",
+                "default": false,
+                "x-order": 1,
+                "description": "Enhance the prompt with positive magic."
+              },
+              "output_quality": {
+                "type": "integer",
+                "title": "Output Quality",
+                "default": 80,
+                "maximum": 100,
+                "minimum": 0,
+                "x-order": 17,
+                "description": "Quality when saving the output images, from 0 to 100. 100 is best quality, 0 is lowest quality. Not relevant for .png outputs"
+              },
+              "negative_prompt": {
+                "type": "string",
+                "title": "Negative Prompt",
+                "default": " ",
+                "x-order": 9,
+                "description": "Negative prompt for generated image"
+              },
+              "extra_lora_scale": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "title": "Extra Lora Scale",
+                "x-order": 6,
+                "nullable": true,
+                "description": "Scales for additional LoRAs as an array of numbers (e.g., 0.5, 0.7). Must match the number of weights in extra_lora_weights."
+              },
+              "replicate_weights": {
+                "type": "string",
+                "title": "Replicate Weights",
+                "x-order": 3,
+                "nullable": true,
+                "description": "Load LoRA weights from Replicate training. Only works with text to image pipeline. Supports arbitrary .safetensors URLs, tar files, and zip files from the Internet."
+              },
+              "extra_lora_weights": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Extra Lora Weights",
+                "x-order": 5,
+                "nullable": true,
+                "description": "Additional LoRA weights as an array of URLs. Same formats supported as lora_weights (e.g., ['https://huggingface.co/flymy-ai/qwen-image-lora/resolve/main/pytorch_lora_weights.safetensors', 'https://huggingface.co/flymy-ai/qwen-image-realism-lora/resolve/main/flymy_realism.safetensors'])"
+              },
+              "num_inference_steps": {
+                "type": "integer",
+                "title": "Num Inference Steps",
+                "default": 30,
+                "maximum": 50,
+                "minimum": 1,
+                "x-order": 13,
+                "description": "Number of denoising steps. Recommended range is 28-50, and lower number of steps produce lower quality outputs, faster."
+              },
+              "disable_safety_checker": {
+                "type": "boolean",
+                "title": "Disable Safety Checker",
+                "default": false,
+                "x-order": 18,
+                "description": "Disable safety checker for generated images."
+              }
+            }
+          },
+          "Output": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": "Output"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "image_size": {
+            "enum": ["optimize_for_quality", "optimize_for_speed"],
+            "type": "string",
+            "title": "image_size",
+            "description": "An enumeration."
+          },
+          "WebhookEvent": {
+            "enum": ["start", "output", "logs", "completed"],
+            "type": "string",
+            "title": "WebhookEvent",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "output_format": {
+            "enum": ["webp", "jpg", "png"],
+            "type": "string",
+            "title": "output_format",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "context": {
+                "type": "object",
+                "title": "Context",
+                "nullable": true,
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "webhook": {
+                "type": "string",
+                "title": "Webhook",
+                "format": "uri",
+                "nullable": true,
+                "maxLength": 65536,
+                "minLength": 1
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "output_file_prefix": {
+                "type": "string",
+                "title": "Output File Prefix",
+                "nullable": true
+              },
+              "webhook_events_filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WebhookEvent"
+                },
+                "default": ["start", "output", "logs", "completed"],
+                "nullable": true
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs",
+                "default": ""
+              },
+              "error": {
+                "type": "string",
+                "title": "Error",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "$ref": "#/components/schemas/Status",
+                "nullable": true
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics",
+                "nullable": true,
+                "additionalProperties": true
+              },
+              "version": {
+                "type": "string",
+                "title": "Version",
+                "nullable": true
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": "https://choosealicense.com/licenses/apache-2.0/",
+  "name": "qwen-image",
+  "owner": "qwen",
+  "is_official": true,
+  "paper_url": "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-Image/Qwen_Image.pdf",
+  "run_count": 2018667,
+  "url": "https://replicate.com/qwen/qwen-image",
+  "visibility": "public",
+  "weights_url": "https://huggingface.co/Qwen/Qwen-Image"
+}

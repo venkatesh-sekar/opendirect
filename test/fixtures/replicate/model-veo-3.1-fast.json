@@ -1,0 +1,339 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/8a4d195c-cdd7-4544-9ee4-d9f67bb9017d/replicate-prediction-9y7jqn5by.mp4",
+  "created_at": "2025-10-10T13:30:26.980435Z",
+  "default_example": {
+    "completed_at": "2025-10-15T15:33:53.314531Z",
+    "created_at": "2025-10-15T15:32:50.807000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "9y7jqn5byxrm80csx2083y5he4",
+    "input": {
+      "image": "https://replicate.delivery/pbxt/NtDCMBJNIQTOU0mZtlnlrqrPLgYvTvpCISbFIiweYPsotGY5/replicate-prediction-gn4tnddn5drme0csx1yt3jvy4c.jpeg",
+      "prompt": "Overlapping geometric shapes, pulsing to upbeat electronic music with SFX of shifting patterns",
+      "duration": 8,
+      "last_frame": "https://replicate.delivery/pbxt/NtDCLnwTQaPfLhgaNDmLevN8QivDFS8V91M8pCwEpDNIN9uA/replicate-prediction-8m82ekaj7hrma0csx1xrkmqjhm.jpeg",
+      "resolution": "720p",
+      "aspect_ratio": "16:9",
+      "generate_audio": true
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using seed: 1897636100\nStarting video generation...\nStill generating...\nGenerated video in 60.89 seconds\nDownloading video...\nDownloaded video in 0.11 seconds",
+    "metrics": {
+      "predict_time": 62.373097527,
+      "total_time": 62.507531
+    },
+    "model": "google/veo-3.1-fast",
+    "output": "https://replicate.delivery/xezq/8ZOMlNOoESqDDZXc9SwJNselA7lTLS1MBx3HgSx0lTzwhrvKA/tmpyid0s5l4.mp4",
+    "source": "web",
+    "started_at": "2025-10-15T15:32:50.941434Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-vt7zautjtg2zpdaezyvol5a2wq4cmqcnfvdp4wgghrh4jj5afr3a",
+      "get": "https://api.replicate.com/v1/predictions/9y7jqn5byxrm80csx2083y5he4",
+      "cancel": "https://api.replicate.com/v1/predictions/9y7jqn5byxrm80csx2083y5he4/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "New and improved version of Veo 3 Fast, with higher-fidelity video, context-aware audio and last frame support",
+  "github_url": null,
+  "latest_version": {
+    "id": "ba987aceebef53bebfede32973f842fe3aa2301bf2585878181e7a7677052e36",
+    "created_at": "2026-03-25T21:29:12.550073Z",
+    "cog_version": "0.16.12",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "seed": {
+                "type": "integer",
+                "title": "Seed",
+                "x-order": 8,
+                "nullable": true,
+                "description": "Random seed. Omit for random generations"
+              },
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "x-order": 3,
+                "nullable": true,
+                "description": "Input image to start generating from. Ideal images are 16:9 or 9:16 and 1280x720 or 720x1280, depending on the aspect ratio you choose."
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt for video generation"
+              },
+              "duration": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/duration"
+                  }
+                ],
+                "default": 8,
+                "x-order": 2,
+                "description": "Video duration in seconds"
+              },
+              "last_frame": {
+                "type": "string",
+                "title": "Last Frame",
+                "format": "uri",
+                "x-order": 4,
+                "nullable": true,
+                "description": "Ending image for interpolation. When provided with an input image, creates a transition between the two images."
+              },
+              "resolution": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/resolution"
+                  }
+                ],
+                "default": "1080p",
+                "x-order": 6,
+                "description": "Resolution of the generated video"
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "16:9",
+                "x-order": 1,
+                "description": "Video aspect ratio"
+              },
+              "generate_audio": {
+                "type": "boolean",
+                "title": "Generate Audio",
+                "default": true,
+                "x-order": 7,
+                "description": "Generate audio with the video"
+              },
+              "negative_prompt": {
+                "type": "string",
+                "title": "Negative Prompt",
+                "x-order": 5,
+                "nullable": true,
+                "description": "Description of what to exclude from the generated video"
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "duration": {
+            "enum": [4, 6, 8],
+            "type": "integer",
+            "title": "duration",
+            "description": "An enumeration."
+          },
+          "resolution": {
+            "enum": ["720p", "1080p"],
+            "type": "string",
+            "title": "resolution",
+            "description": "An enumeration."
+          },
+          "WebhookEvent": {
+            "enum": ["start", "output", "logs", "completed"],
+            "type": "string",
+            "title": "WebhookEvent",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": ["16:9", "9:16"],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "context": {
+                "type": "object",
+                "title": "Context",
+                "nullable": true,
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "webhook": {
+                "type": "string",
+                "title": "Webhook",
+                "format": "uri",
+                "nullable": true,
+                "maxLength": 65536,
+                "minLength": 1
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "output_file_prefix": {
+                "type": "string",
+                "title": "Output File Prefix",
+                "nullable": true
+              },
+              "webhook_events_filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WebhookEvent"
+                },
+                "default": ["start", "output", "logs", "completed"],
+                "nullable": true
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs",
+                "default": ""
+              },
+              "error": {
+                "type": "string",
+                "title": "Error",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "$ref": "#/components/schemas/Status",
+                "nullable": true
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics",
+                "nullable": true,
+                "additionalProperties": true
+              },
+              "version": {
+                "type": "string",
+                "title": "Version",
+                "nullable": true
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "veo-3.1-fast",
+  "owner": "google",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 832976,
+  "url": "https://replicate.com/google/veo-3.1-fast",
+  "visibility": "public",
+  "weights_url": null
+}

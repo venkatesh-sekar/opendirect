@@ -1,0 +1,35 @@
+{
+  "id": "seedream-4-5",
+  "name": "Seedream 4.5",
+  "kind": "image",
+  "description": "ByteDance's image model with strong spatial understanding and world knowledge, for generation and multi-reference editing at 2K or 4K.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "bytedance/seedream-4.5",
+      "inputs": {
+        "reference": {
+          "field": "image_input",
+          "kind": "image",
+          "max": 14,
+          "label": "Reference images"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "resolution": {
+          "field": "size",
+          "values": {
+            "2K": "2K",
+            "4K": "4K"
+          }
+        }
+      }
+    }
+  ]
+}

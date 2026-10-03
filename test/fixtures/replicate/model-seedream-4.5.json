@@ -1,0 +1,314 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/2e35026c-1f46-4bbe-a314-e27079e943fa/seedream-45-sm.jpg",
+  "created_at": "2025-12-03T04:08:05.221636Z",
+  "default_example": {
+    "completed_at": "2025-12-04T17:28:04.837997Z",
+    "created_at": "2025-12-04T17:27:49.635000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "gajz93f8gdrmc0ctx9kt03372r",
+    "input": {
+      "size": "4K",
+      "width": 2048,
+      "height": 2048,
+      "prompt": "A warm, nostalgic film-style interior of a cozy café, shot on 35mm-inspired digital photography with soft afternoon sunlight filtering through the front windows. Wooden shelves display neatly arranged ceramics, pastries, and coffee beans. Hand-painted signage on the main interior window reads ‘Seedream 4.5’ in clean, classic lettering, similar to boutique branding. A vintage bicycle with a wicker basket is visible outside the entrance, casting soft shadows on the floor. Rich textures, natural light, warm tones, subtle grain, and calm neighborhood-café ambiance.",
+      "max_images": 1,
+      "image_input": [],
+      "aspect_ratio": "16:9",
+      "sequential_image_generation": "disabled"
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Generating 4096x2304 image with aspect ratio 16:9 at 4K resolution\nGenerating...\nGenerated in 14.0sec",
+    "metrics": {
+      "predict_time": 15.190624255,
+      "total_time": 15.202997649
+    },
+    "model": "bytedance/seedream-4.5",
+    "output": [
+      "https://replicate.delivery/xezq/lSRiDsXJnC5HD9gOSrb2HTgAYRMRSmyd0UcbvzMhVSEp29bF/tmpq47k3q7q.jpg"
+    ],
+    "source": "web",
+    "started_at": "2025-12-04T17:27:49.647373Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-7c6irrv7hna3iakdarnlg6puv235icu6d42yqnm2df3p52oijccq",
+      "get": "https://api.replicate.com/v1/predictions/gajz93f8gdrmc0ctx9kt03372r",
+      "cancel": "https://api.replicate.com/v1/predictions/gajz93f8gdrmc0ctx9kt03372r/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "Seedream 4.5: Upgraded Bytedance image model with stronger spatial understanding and world knowledge",
+  "github_url": null,
+  "latest_version": {
+    "id": "9fe3b8282dcb9d9063b05e33210a1432801f7c5a6641db944baefcec4886761a",
+    "created_at": "2026-06-01T15:13:53.601347Z",
+    "cog_version": "0.20.0",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "size": {
+            "enum": ["2K", "4K", "custom"],
+            "type": "string",
+            "title": "size",
+            "description": "An enumeration."
+          },
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "size": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/size"
+                  }
+                ],
+                "default": "2K",
+                "x-order": 2,
+                "description": "Image resolution: 2K (2048px), 4K (4096px), or 'custom' for specific dimensions. Note: 1K resolution is not supported in Seedream 4.5."
+              },
+              "width": {
+                "type": "integer",
+                "title": "Width",
+                "default": 2048,
+                "maximum": 4096,
+                "minimum": 1024,
+                "x-order": 4,
+                "description": "Custom image width (only used when size='custom'). Range: 1024-4096 pixels."
+              },
+              "height": {
+                "type": "integer",
+                "title": "Height",
+                "default": 2048,
+                "maximum": 4096,
+                "minimum": 1024,
+                "x-order": 5,
+                "description": "Custom image height (only used when size='custom'). Range: 1024-4096 pixels."
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "maxLength": 4000,
+                "description": "Text prompt for image generation. Maximum 4000 characters. BytePlus recommends keeping prompts under 600 English words for best results."
+              },
+              "max_images": {
+                "type": "integer",
+                "title": "Max Images",
+                "default": 1,
+                "maximum": 15,
+                "minimum": 1,
+                "x-order": 7,
+                "description": "Maximum number of images to generate when sequential_image_generation='auto'. Range: 1-15. Total images (input + generated) cannot exceed 15."
+              },
+              "image_input": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uri"
+                },
+                "title": "Image Input",
+                "default": [],
+                "x-order": 1,
+                "description": "Input image(s) for image-to-image generation. List of 1-14 images for single or multi-reference generation."
+              },
+              "aspect_ratio": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/aspect_ratio"
+                  }
+                ],
+                "default": "match_input_image",
+                "x-order": 3,
+                "description": "Image aspect ratio. Only used when size is not 'custom'. Use 'match_input_image' to automatically match the input image's aspect ratio."
+              },
+              "disable_safety_checker": {
+                "type": "boolean",
+                "title": "Disable Safety Checker",
+                "default": false,
+                "x-order": 8,
+                "description": "Disable the safety checker for generated images. When enabled, input moderation is relaxed to only block illegal content (CSAM). Use responsibly."
+              },
+              "sequential_image_generation": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/sequential_image_generation"
+                  }
+                ],
+                "default": "disabled",
+                "x-order": 6,
+                "description": "Group image generation mode. 'disabled' generates a single image. 'auto' lets the model decide whether to generate multiple related images (e.g., story scenes, character variations)."
+              }
+            }
+          },
+          "Output": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "title": "Output"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "aspect_ratio": {
+            "enum": [
+              "match_input_image",
+              "1:1",
+              "4:3",
+              "3:4",
+              "4:5",
+              "5:4",
+              "16:9",
+              "9:16",
+              "3:2",
+              "2:3",
+              "21:9",
+              "9:21"
+            ],
+            "type": "string",
+            "title": "aspect_ratio",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id"
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs"
+              },
+              "error": {
+                "type": "string",
+                "title": "Error"
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input"
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "type": "string",
+                "title": "Status"
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics"
+              },
+              "version": {
+                "type": "string",
+                "title": "Version"
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time"
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time"
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time"
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          },
+          "sequential_image_generation": {
+            "enum": ["disabled", "auto"],
+            "type": "string",
+            "title": "sequential_image_generation",
+            "description": "An enumeration."
+          }
+        }
+      }
+    }
+  },
+  "license_url": null,
+  "name": "seedream-4.5",
+  "owner": "bytedance",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 36877855,
+  "url": "https://replicate.com/bytedance/seedream-4.5",
+  "visibility": "public",
+  "weights_url": null
+}

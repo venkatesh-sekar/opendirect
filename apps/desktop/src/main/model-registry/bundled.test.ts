@@ -117,6 +117,27 @@ describe("bundled registry", () => {
     expect(over).toEqual([])
   })
 
+  it.each(files)(
+    "%s maps no endpoint that needs the user's own provider key",
+    (file) => {
+      // Such a model (gpt-image-1, Sora 2 without a key) is billed to that
+      // other account, not the user's Replicate or OpenRouter key.
+      const { family } = readFamily(file)
+      for (const endpoint of family.endpoints) {
+        const schema = fixtureInputSchema(endpoint.provider, endpoint.model)
+        const properties = (schema?.properties ?? {}) as Record<
+          string,
+          { format?: unknown } | undefined
+        >
+        const required = Array.isArray(schema?.required) ? schema.required : []
+        const secrets = required.filter(
+          (field) => properties[String(field)]?.format === "password"
+        )
+        expect(secrets, `${endpoint.provider}:${endpoint.model}`).toEqual([])
+      }
+    }
+  )
+
   it("index, files on disk and bundled.ts list the same families", () => {
     const index = registryIndexSchema.parse(
       JSON.parse(readFileSync(resolve(REGISTRY, "index.json"), "utf8"))

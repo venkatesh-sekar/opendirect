@@ -1,11 +1,28 @@
 {
   "format": 1,
-  "registryVersion": 1,
+  "registryVersion": 2,
   "families": [
+    "flux-2-pro",
     "flux-schnell",
+    "gpt-image-1-5",
+    "gpt-image-2",
+    "gpt-image-2-5-flare",
+    "gpt-image-2-5-sunburst",
+    "hailuo-2-3",
+    "ideogram-v3-turbo",
+    "imagen-4-fast",
+    "kling-2-5-turbo-pro",
+    "ltx-2-fast",
     "nano-banana-2",
     "nano-banana-pro",
+    "p-image",
+    "p-video",
+    "qwen-image",
     "seedance-2-0",
-    "seedance-2-5"
+    "seedance-2-5",
+    "seedream-4-5",
+    "veo-3-1",
+    "veo-3-1-fast",
+    "wan-3"
   ]
 }

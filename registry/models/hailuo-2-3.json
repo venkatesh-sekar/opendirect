@@ -1,0 +1,30 @@
+{
+  "id": "hailuo-2-3",
+  "name": "Hailuo 2.3",
+  "kind": "video",
+  "description": "MiniMax's high-fidelity video model for realistic human motion, cinematic VFX and expressive characters, from text or a first frame.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "minimax/hailuo-2.3",
+      "inputs": {
+        "first_frame": {
+          "field": "first_frame_image",
+          "kind": "image",
+          "label": "First frame (sets the aspect ratio)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        }
+      }
+    }
+  ]
+}

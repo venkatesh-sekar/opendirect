@@ -1,0 +1,53 @@
+{
+  "id": "veo-3-1",
+  "name": "Veo 3.1",
+  "kind": "video",
+  "description": "Google's flagship video model: high-fidelity video with context-aware audio, first and last frame control, and reference images.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "google/veo-3.1",
+      "inputs": {
+        "first_frame": {
+          "field": "image",
+          "kind": "image",
+          "label": "First frame"
+        },
+        "last_frame": {
+          "field": "last_frame",
+          "kind": "image",
+          "label": "Last frame (needs a first frame; ignored with references)"
+        },
+        "reference": {
+          "field": "reference_images",
+          "kind": "image",
+          "max": 3,
+          "label": "Reference images (subject; 16:9 and 8 s only)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "negative_prompt": {
+          "field": "negative_prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        },
+        "generate_audio": {
+          "field": "generate_audio"
+        }
+      }
+    }
+  ]
+}

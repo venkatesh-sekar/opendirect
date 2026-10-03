@@ -31,7 +31,10 @@ const curatedPriceSchema = z.object({
   /** The provider page the rates were copied from. */
   source: z.url(),
   note: z.string(),
-  /** USD per unit, keyed `<resolution>`, `<resolution>:video_in` or `*`. */
+  /**
+   * USD per unit, keyed `<resolution>` or `*`, optionally with a `:video_in`,
+   * `:audio` or `:silent` variant.
+   */
   tiers: z
     .record(z.string(), z.number().nonnegative())
     .refine((tiers) => Object.keys(tiers).length > 0, "no tiers"),
@@ -76,15 +79,16 @@ export function curatedPricing(price: CuratedPrice, caveat: string): Pricing {
 /**
  * The cheapest curated rate, for the picker's one-line hint.
  *
- * Only the base tiers are considered: the `:video_in` variants are dearer by
- * construction, and `nano-banana-pro`'s `fallback` tier is a rate Replicate
- * publishes but OpenDirect never quotes, so advertising it as the "from" price
- * would understate every real run.
+ * The `:video_in` variants are left out, being dearer by construction, and so
+ * is `nano-banana-pro`'s `fallback` tier: a rate Replicate publishes but
+ * OpenDirect never quotes, so advertising it as the "from" price would
+ * understate every real run. A `:silent` rate is a run anyone can choose, so
+ * it counts.
  */
 export function curatedPriceHint(price: CuratedPrice): PriceHint | null {
   let lowest: number | null = null
   for (const [tier, usd] of Object.entries(price.tiers)) {
-    if (tier.includes(":") || tier === "fallback") continue
+    if (tier.endsWith(":video_in") || tier === "fallback") continue
     if (lowest === null || usd < lowest) lowest = usd
   }
   if (lowest === null) return null

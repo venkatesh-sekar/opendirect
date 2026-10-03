@@ -19,7 +19,11 @@ import {
 } from "@opendirect/contract"
 
 import { estimateCost, estimateForDescriptor, parseOpenRouterSku } from "./cost"
-import { CURATED_PRICING, curatedPrice } from "./curated-pricing"
+import {
+  CURATED_PRICING,
+  curatedPrice,
+  curatedPriceHint,
+} from "./curated-pricing"
 
 interface FixtureModel {
   id: string
@@ -375,6 +379,79 @@ describe("curated pricing table", () => {
     })
     expect(r.amount).toBeCloseTo(0.012, 6)
     expect(r.source).toBe("local_table")
+  })
+
+  it("hints a silent rate as the from-price, but never a video-input one", () => {
+    const hint = (slug: string) =>
+      curatedPriceHint(curatedPrice("replicate", slug)!)?.amount
+    expect(hint("google/veo-3.1")).toBe(0.2)
+    expect(hint("bytedance/seedance-2.5")).toBe(0.1028)
+  })
+
+  it("quotes a curated with-audio rate unless the run turns audio off", () => {
+    const veo = (params: Record<string, unknown>) =>
+      estimateCost({
+        provider: "replicate",
+        kind: "video",
+        slug: "google/veo-3.1",
+        pricingSkus: {},
+        params,
+        controls: { duration: "duration", audio: "generate_audio" },
+      })
+
+    expect(veo({ duration: 8, generate_audio: true }).amount).toBeCloseTo(3.2)
+    expect(veo({ duration: 8, generate_audio: false }).amount).toBeCloseTo(1.6)
+    // Unset audio is quoted at its worst case, and the note says so.
+    const unset = veo({ duration: 8 })
+    expect(unset.amount).toBeCloseTo(3.2)
+    expect(unset.note).toMatch(/with-audio rate/)
+  })
+
+  it("multiplies a per-output rate by the model's own count field", () => {
+    const r = estimateCost({
+      provider: "replicate",
+      kind: "image",
+      slug: "openai/gpt-image-2",
+      pricingSkus: {},
+      params: { number_of_images: 3 },
+      inputSchema: {
+        type: "object",
+        properties: {
+          number_of_images: { type: "integer", minimum: 1, maximum: 10 },
+        },
+      },
+    })
+    expect(r.amount).toBeCloseTo(0.384, 6)
+  })
+
+  it("quotes GPT Image 2.5 at its dearest quality, never below it", () => {
+    for (const slug of [
+      "openai/gpt-image-2.5-flare",
+      "openai/gpt-image-2.5-sunburst",
+    ]) {
+      const r = estimateCost({
+        provider: "replicate",
+        kind: "image",
+        slug,
+        pricingSkus: {},
+        params: { quality: "max" },
+      })
+      expect(r.amount).toBeCloseTo(0.5, 6)
+      expect(r.note).toMatch(/dearest quality/)
+    }
+  })
+
+  it("prices a per-megapixel model by its target resolution", () => {
+    const flux = (resolution: string) =>
+      estimateCost({
+        provider: "replicate",
+        kind: "image",
+        slug: "black-forest-labs/flux-2-pro",
+        pricingSkus: {},
+        params: { resolution },
+      }).amount
+    expect(flux("1 MP")).toBeCloseTo(0.03, 6)
+    expect(flux("4 MP")).toBeCloseTo(0.075, 6)
   })
 
   it("lets a provider's own SKUs win over the curated table", () => {

@@ -1,0 +1,38 @@
+{
+  "id": "kling-2-5-turbo-pro",
+  "name": "Kling 2.5 Turbo Pro",
+  "kind": "video",
+  "description": "Kling's fast pro-level text-to-video and image-to-video model with smooth motion, cinematic depth and strong prompt adherence.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "kwaivgi/kling-v2.5-turbo-pro",
+      "inputs": {
+        "first_frame": {
+          "field": "start_image",
+          "kind": "image",
+          "label": "First frame (sets the aspect ratio)"
+        },
+        "last_frame": {
+          "field": "end_image",
+          "kind": "image",
+          "label": "Last frame"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "negative_prompt": {
+          "field": "negative_prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        }
+      }
+    }
+  ]
+}

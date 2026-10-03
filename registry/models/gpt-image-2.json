@@ -1,0 +1,30 @@
+{
+  "id": "gpt-image-2",
+  "name": "GPT Image 2",
+  "kind": "image",
+  "description": "OpenAI's image model: strong instruction following, sharp text rendering and detailed editing from input images.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "openai/gpt-image-2",
+      "inputs": {
+        "reference": {
+          "field": "input_images",
+          "kind": "image",
+          "label": "Input images"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "count": {
+          "field": "number_of_images"
+        }
+      }
+    }
+  ]
+}

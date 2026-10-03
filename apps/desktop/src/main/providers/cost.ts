@@ -33,6 +33,7 @@ import {
   DURATION_FPS_FIELDS,
   DURATION_FRAME_FIELDS,
   DURATION_SECONDS_FIELDS,
+  detectOutputCountField,
   parseSeconds,
   type CommonControls,
   type CostConfidence,
@@ -172,7 +173,11 @@ export function parseOpenRouterSku(
   }
 }
 
-/** Reads one curated tier key: `<resolution>`, `<resolution>:video_in`, `*`. */
+/**
+ * Reads one curated tier key: `<resolution>` or `*`, optionally followed by
+ * `:video_in` (Replicate's dearer video-input variant), `:audio` or `:silent`
+ * (a with- or without-audio rate, as Veo publishes).
+ */
 function parseCuratedTier(
   key: string,
   usd: number,
@@ -184,7 +189,7 @@ function parseCuratedTier(
     usd,
     basis,
     resolution: resolution === "*" ? null : resolution,
-    audio: null,
+    audio: variant === "audio" ? true : variant === "silent" ? false : null,
     input: variant === "video_in" ? "video" : null,
   }
 }
@@ -543,7 +548,12 @@ export function estimateCost(input: EstimateCostInput): CostEstimateResult {
     if (duration?.fromDefault)
       durationNote = ` No duration is set, so the model's default of ${duration.seconds} s is used.`
   } else {
-    quantity = readNumber(input.params, ["num_outputs", "n"]) ?? 1
+    quantity =
+      readNumber(input.params, [
+        detectOutputCountField(input.inputSchema)?.field,
+        "num_outputs",
+        "n",
+      ]) ?? 1
   }
 
   if (quantity === null || quantity <= 0) {

@@ -1,0 +1,24 @@
+{
+  "id": "p-image",
+  "name": "P-Image",
+  "kind": "image",
+  "description": "Pruna's sub-second text-to-image model, built for fast, low-cost production use.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "prunaai/p-image",
+      "inputs": {},
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "seed": {
+          "field": "seed"
+        }
+      }
+    }
+  ]
+}

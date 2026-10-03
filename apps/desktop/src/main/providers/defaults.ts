@@ -2,9 +2,12 @@
  * The recommended models the picker offers first.
  *
  * A short, curated list, not a ranking: these are the slugs OpenDirect was
- * built and verified against. Every slug below was checked live on
- * **2026-09-16** — the Replicate ones via `GET /v1/models/{owner}/{name}` and
- * Replicate search, the OpenRouter one via `GET /api/v1/videos/models`.
+ * built and verified against. The Seedance and Nano Banana slugs were checked
+ * live on **2026-09-16**, the rest on **2026-10-03** — the Replicate ones via
+ * `GET /v1/models/{owner}/{name}` and Replicate search, the OpenRouter one via
+ * `GET /api/v1/videos/models`. After the defaults, each modality offers one
+ * pick per trade-off: the best quality, a balanced one, and the fastest and
+ * cheapest. Every Replicate key here is mapped by a bundled registry family.
  *
  * Providers re-slug and retire models without notice, so this table is a
  * *hint*, never a promise: if `getModel()` reports a key here as unavailable,
@@ -33,10 +36,19 @@ export const RECOMMENDED = {
       key: "openrouter:bytedance/seedance-2.5",
       label: "Seedance 2.5 (OpenRouter)",
     },
+    { key: "replicate:google/veo-3.1", label: "Veo 3.1" },
+    {
+      key: "replicate:kwaivgi/kling-v2.5-turbo-pro",
+      label: "Kling 2.5 Turbo Pro",
+    },
+    { key: "replicate:prunaai/p-video", label: "P-Video" },
   ],
   image: [
     { key: "replicate:google/nano-banana-2", label: "Nano Banana 2" },
     { key: "replicate:google/nano-banana-pro", label: "Nano Banana Pro" },
+    { key: "replicate:black-forest-labs/flux-2-pro", label: "FLUX.2 Pro" },
+    { key: "replicate:bytedance/seedream-4.5", label: "Seedream 4.5" },
+    { key: "replicate:google/imagen-4-fast", label: "Imagen 4 Fast" },
   ],
 } as const satisfies Partial<Record<ModelKind, readonly RecommendedEntry[]>>
 

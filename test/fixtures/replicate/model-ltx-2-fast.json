@@ -1,0 +1,298 @@
+{
+  "cover_image_url": "https://tjzk.replicate.delivery/models_models_featured_image/e72919bc-17d9-4fca-b90c-79e5d3b93778/ltx-2-lip-sm.mp4",
+  "created_at": "2025-10-22T21:37:41.510705Z",
+  "default_example": {
+    "completed_at": "2025-10-23T17:26:53.746155Z",
+    "created_at": "2025-10-23T17:26:13.563000Z",
+    "data_removed": false,
+    "error": null,
+    "id": "pfckwq2s7drmc0ct28drz3gq2c",
+    "input": {
+      "image": "https://replicate.delivery/pbxt/Nvp4bHMZRVeafvUBJKIfzlqkqRjLl8Fyn3JMuWUlUWEVhzuT/replicate-prediction-pwnbqza6f9rm80ct1sgtfgvwdr.png",
+      "prompt": "A high-speed drone shot captures a surreal scene in a dimly lit subway station, where a woman is flying effortlessly above the ground. She is wearing a flowing, traditional garment with red floral patterns, which billows dramatically around her. Her long, dark hair streams back in the wind, mirroring the rapid forward motion. The camera tracks her from the front, aligned perfectly to her unwavering, determined gaze. The background streaks past in a blur, with tiled walls and structural pillars creating a tunnel-like effect. Fluorescent lights overhead provide a stark, linear illumination, casting moving shadows across her face and highlighting the movement. The platform edges, outlined by fluorescent yellow safety lines, zip by beneath her, while distant, indistinct passengers and signs add to the vivid sense of speed and direction. The shot maintains the woman’s steady, surreal flight through the bustling transit space, creating an atmosphere of dynamic elegance and otherworldly grace. She yells: \"LTX 2 now on Replicate. Try it today!\"",
+      "duration": 6,
+      "resolution": "1080p",
+      "generate_audio": true
+    },
+    "is_free_trial_prediction": false,
+    "logs": "Using resolution: 1920x1080 (16:9 @ 1080p)\nEncoded image as base64 data URI (3.34MB)\nGenerating video from image...\nGenerated video in 39.2sec\nGenerated video: 1920x1080, 6.12s, 302,745,600 total pixels",
+    "metrics": {
+      "predict_time": 40.172467299,
+      "total_time": 40.183155
+    },
+    "model": "lightricks/ltx-2-fast",
+    "output": "https://replicate.delivery/xezq/Xe3HUYeQMIlJzEmRW2RFdH6Vifeg8Z1PkAmhlc5eS0pqrLQsC/tmpzqz2e09l.mp4",
+    "source": "web",
+    "started_at": "2025-10-23T17:26:13.573687Z",
+    "status": "succeeded",
+    "urls": {
+      "stream": "https://stream.replicate.com/v1/files/bcwr-ez6busuojxub657dg7ynvuvhsjc7tp777f74cpovz2n44z3jbveq",
+      "get": "https://api.replicate.com/v1/predictions/pfckwq2s7drmc0ct28drz3gq2c",
+      "cancel": "https://api.replicate.com/v1/predictions/pfckwq2s7drmc0ct28drz3gq2c/cancel"
+    },
+    "version": "hidden"
+  },
+  "description": "Ideal for rapid ideation and mobile workflows. Perfect for creators who need instant feedback, real-time previews, or high-throughput content.",
+  "github_url": null,
+  "latest_version": {
+    "id": "648be07d527d495347de88ea3f37a8f1114834de0d50512a67dd4e77b7e9cfc1",
+    "created_at": "2026-03-07T04:05:52.486992Z",
+    "cog_version": "0.16.12",
+    "openapi_schema": {
+      "info": {
+        "title": "Cog",
+        "version": "0.1.0"
+      },
+      "paths": {},
+      "openapi": "3.0.2",
+      "components": {
+        "schemas": {
+          "Input": {
+            "type": "object",
+            "title": "Input",
+            "required": ["prompt"],
+            "properties": {
+              "image": {
+                "type": "string",
+                "title": "Image",
+                "format": "uri",
+                "x-order": 1,
+                "description": "First frame image for image-to-video generation"
+              },
+              "prompt": {
+                "type": "string",
+                "title": "Prompt",
+                "x-order": 0,
+                "description": "Text prompt describing the video to generate"
+              },
+              "duration": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/duration"
+                  }
+                ],
+                "default": 6,
+                "x-order": 3,
+                "description": "Duration of the video in seconds. Durations longer than 10 seconds are only available with 1080p resolution."
+              },
+              "resolution": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/resolution"
+                  }
+                ],
+                "default": "1080p",
+                "x-order": 2,
+                "description": "Resolution quality of the generated video"
+              },
+              "generate_audio": {
+                "type": "boolean",
+                "title": "Generate Audio",
+                "default": true,
+                "x-order": 4,
+                "description": "Generate audio for the video. Used for text_to_video and image_to_video tasks."
+              }
+            }
+          },
+          "Output": {
+            "type": "string",
+            "title": "Output",
+            "format": "uri"
+          },
+          "Status": {
+            "enum": [
+              "starting",
+              "processing",
+              "succeeded",
+              "canceled",
+              "failed"
+            ],
+            "type": "string",
+            "title": "Status",
+            "description": "An enumeration."
+          },
+          "duration": {
+            "enum": [6, 8, 10, 12, 14, 16, 18, 20],
+            "type": "integer",
+            "title": "duration",
+            "description": "An enumeration."
+          },
+          "resolution": {
+            "enum": ["1080p", "2k", "4k"],
+            "type": "string",
+            "title": "resolution",
+            "description": "An enumeration."
+          },
+          "WebhookEvent": {
+            "enum": ["start", "output", "logs", "completed"],
+            "type": "string",
+            "title": "WebhookEvent",
+            "description": "An enumeration."
+          },
+          "ValidationError": {
+            "type": "object",
+            "title": "ValidationError",
+            "required": ["loc", "msg", "type"],
+            "properties": {
+              "loc": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "title": "Location"
+              },
+              "msg": {
+                "type": "string",
+                "title": "Message"
+              },
+              "type": {
+                "type": "string",
+                "title": "Error Type"
+              }
+            }
+          },
+          "PredictionRequest": {
+            "type": "object",
+            "title": "PredictionRequest",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "context": {
+                "type": "object",
+                "title": "Context",
+                "nullable": true,
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "webhook": {
+                "type": "string",
+                "title": "Webhook",
+                "format": "uri",
+                "nullable": true,
+                "maxLength": 65536,
+                "minLength": 1
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "output_file_prefix": {
+                "type": "string",
+                "title": "Output File Prefix",
+                "nullable": true
+              },
+              "webhook_events_filter": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/WebhookEvent"
+                },
+                "default": ["start", "output", "logs", "completed"],
+                "nullable": true
+              }
+            }
+          },
+          "PredictionResponse": {
+            "type": "object",
+            "title": "PredictionResponse",
+            "properties": {
+              "id": {
+                "type": "string",
+                "title": "Id",
+                "nullable": true
+              },
+              "logs": {
+                "type": "string",
+                "title": "Logs",
+                "default": ""
+              },
+              "error": {
+                "type": "string",
+                "title": "Error",
+                "nullable": true
+              },
+              "input": {
+                "$ref": "#/components/schemas/Input",
+                "nullable": true
+              },
+              "output": {
+                "$ref": "#/components/schemas/Output"
+              },
+              "status": {
+                "$ref": "#/components/schemas/Status",
+                "nullable": true
+              },
+              "metrics": {
+                "type": "object",
+                "title": "Metrics",
+                "nullable": true,
+                "additionalProperties": true
+              },
+              "version": {
+                "type": "string",
+                "title": "Version",
+                "nullable": true
+              },
+              "created_at": {
+                "type": "string",
+                "title": "Created At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "started_at": {
+                "type": "string",
+                "title": "Started At",
+                "format": "date-time",
+                "nullable": true
+              },
+              "completed_at": {
+                "type": "string",
+                "title": "Completed At",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          },
+          "HTTPValidationError": {
+            "type": "object",
+            "title": "HTTPValidationError",
+            "properties": {
+              "detail": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ValidationError"
+                },
+                "title": "Detail"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "license_url": "https://website.ltx.video/api-license-agreement",
+  "name": "ltx-2-fast",
+  "owner": "lightricks",
+  "is_official": true,
+  "paper_url": null,
+  "run_count": 89789,
+  "url": "https://replicate.com/lightricks/ltx-2-fast",
+  "visibility": "public",
+  "weights_url": null
+}

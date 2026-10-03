@@ -623,6 +623,57 @@ describe("estimateFor", () => {
     })
   })
 
+  const replicateFamilies = bundled.families
+    .filter((e) => e.family.endpoints.some((p) => p.provider === "replicate"))
+    .map((e) => e.family.id)
+
+  it.each(replicateFamilies)(
+    "%s builds a descriptor and prices a default run on Replicate",
+    async (id) => {
+      expect(modelDescriptorSchema.parse(build(id))).toBeTruthy()
+
+      const { source } = fakeSource({ configured: ["replicate"] })
+      const quote = await estimateFor(source, familyKey(id), {}, {})
+
+      // The schema's default duration fills a per-second rate; nothing reads
+      // as "pricing unavailable".
+      expect(quote.confidence).toBe("estimated")
+      expect(quote.amount).toBeGreaterThan(0)
+    }
+  )
+
+  it("prices Veo 3.1 at its silent rate when the run turns audio off", async () => {
+    const { source } = fakeSource({ configured: ["replicate"] })
+    const veo = (params: Record<string, unknown>) =>
+      estimateFor(source, familyKey("veo-3-1"), params, {})
+
+    expect((await veo({ duration: 8 })).amount).toBeCloseTo(3.2)
+    expect(
+      (await veo({ duration: 8, generate_audio: false })).amount
+    ).toBeCloseTo(1.6)
+  })
+
+  it("prices Hailuo 2.3 and Wan 3.0 by the resolution the run asks for", async () => {
+    const { source } = fakeSource({ configured: ["replicate"] })
+
+    const hailuo = await estimateFor(
+      source,
+      familyKey("hailuo-2-3"),
+      { duration: 6, resolution: "1080p" },
+      {}
+    )
+    expect(hailuo.sku).toBe("1080p")
+    expect(hailuo.amount).toBeCloseTo(0.49, 2)
+
+    const wan = await estimateFor(
+      source,
+      familyKey("wan-3"),
+      { duration: 10, resolution: "480p" },
+      {}
+    )
+    expect(wan.amount).toBeCloseTo(0.25)
+  })
+
   it("prices a concrete key as before", async () => {
     const { source } = fakeSource({
       configured: ["openrouter"],

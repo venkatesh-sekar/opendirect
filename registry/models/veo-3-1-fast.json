@@ -1,0 +1,47 @@
+{
+  "id": "veo-3-1-fast",
+  "name": "Veo 3.1 Fast",
+  "kind": "video",
+  "description": "The faster, cheaper Veo 3.1: high-fidelity video with context-aware audio and first and last frame control.",
+  "endpoints": [
+    {
+      "provider": "replicate",
+      "model": "google/veo-3.1-fast",
+      "inputs": {
+        "first_frame": {
+          "field": "image",
+          "kind": "image",
+          "label": "First frame"
+        },
+        "last_frame": {
+          "field": "last_frame",
+          "kind": "image",
+          "label": "Last frame (needs a first frame)"
+        }
+      },
+      "controls": {
+        "prompt": {
+          "field": "prompt"
+        },
+        "negative_prompt": {
+          "field": "negative_prompt"
+        },
+        "aspect_ratio": {
+          "field": "aspect_ratio"
+        },
+        "duration": {
+          "field": "duration"
+        },
+        "resolution": {
+          "field": "resolution"
+        },
+        "seed": {
+          "field": "seed"
+        },
+        "generate_audio": {
+          "field": "generate_audio"
+        }
+      }
+    }
+  ]
+}
