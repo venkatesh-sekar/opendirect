@@ -393,6 +393,71 @@ describe("the composer on a real canvas", () => {
     expect(fixture.state!().nodes.map((node) => node.id)).toContain("gen")
   })
 
+  /** What a click on a node does: React Flow's own selection, not ours. */
+  function click(nodeId: string) {
+    act(() => fixture.state!().addSelectedNodes([nodeId]))
+  }
+
+  /** The graph once `pic` is gone, as the main process would answer it. */
+  function withoutPicture(canvas: CanvasDto): CanvasDto {
+    return {
+      nodes: canvas.nodes.filter((node) => node.id !== "pic"),
+      edges: canvas.edges.filter((edge) => edge.sourceNodeId !== "pic"),
+    }
+  }
+
+  it("shows the prompt bar on a generate node clicked after another node was deleted", async () => {
+    const user = userEvent.setup()
+    const { client } = await mountComposer({ picture: true })
+    const after = withoutPicture(
+      client.getQueryData<CanvasDto>(queryKeys.canvas.graph)!
+    )
+    fixture.invoke.mockImplementation((channel: string) => {
+      if (channel === "canvas:get") return Promise.resolve(after)
+      if (channel === "canvas:node:delete" || channel === "canvas:edge:delete")
+        return Promise.resolve({ ok: true })
+      if (channel === "generations:list")
+        return Promise.resolve({ items: [], total: 0 })
+      if (channel === "settings:get") return Promise.resolve({})
+      return new Promise(() => {})
+    })
+
+    click("pic")
+    await waitFor(() =>
+      expect(screen.queryByTestId("prompt-bar-controls")).toBeNull()
+    )
+    await user.keyboard("{Delete}")
+    await waitFor(() =>
+      expect(channelCalls("canvas:node:delete")[0]?.[1]).toEqual({
+        ids: ["pic"],
+      })
+    )
+    await waitFor(() =>
+      expect(fixture.state!().nodes.map((node) => node.id)).not.toContain("pic")
+    )
+
+    click("gen")
+    expect(await screen.findByTestId("prompt-bar-controls")).toBeInTheDocument()
+  })
+
+  it("shows the prompt bar after a selected node's row vanishes from outside the canvas", async () => {
+    // An asset deleted elsewhere cascades its media node; React Flow never
+    // hears of it as a removal.
+    const { client } = await mountComposer({ picture: true })
+    click("pic")
+    act(() =>
+      client.setQueryData<CanvasDto>(queryKeys.canvas.graph, (canvas) =>
+        withoutPicture(canvas!)
+      )
+    )
+    await waitFor(() =>
+      expect(fixture.state!().nodes.map((node) => node.id)).not.toContain("pic")
+    )
+
+    click("gen")
+    expect(await screen.findByTestId("prompt-bar-controls")).toBeInTheDocument()
+  })
+
   it("keeps the prompt bar out of the canvas's pan and drag", async () => {
     await mountComposer()
     // React Flow's d3-zoom swallows a mousedown outside `.nopan`, so a

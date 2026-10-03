@@ -319,6 +319,33 @@ export function toFlowEdges(
   return result
 }
 
+type FlowChange = NodeChange<CanvasFlowNode> | EdgeChange<CanvasFlowEdge>
+
+function changesSelection(change: FlowChange): boolean {
+  return change.type === "select" || change.type === "remove"
+}
+
+/**
+ * The selection after React Flow's changes.
+ *
+ * A removal has to leave the selection too. React Flow deletes a selected
+ * node with a `remove` change and no `select: false`, and once the node is out
+ * of its store, the next click has nothing left to deselect. A deleted id kept
+ * here made the following click a selection of two, which has no prompt bar.
+ */
+function applySelectionChanges(
+  current: readonly string[],
+  changes: readonly FlowChange[]
+): readonly string[] {
+  const selected = new Set(current)
+  for (const change of changes) {
+    if (change.type === "select" && change.selected) selected.add(change.id)
+    else if (change.type === "select" || change.type === "remove")
+      selected.delete(change.id)
+  }
+  return [...selected]
+}
+
 function CanvasSurfaceInner({ containerId }: CanvasProps) {
   const canvasQuery = useCanvas()
   const canvas: CanvasDto = useMemo(
@@ -399,9 +426,16 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
   // One cache for the life of the surface. `toFlowNodes` only ever reuses or
   // replaces entries by identity, so a double render produces the same array.
   const flowNodeCache = useMemo(() => new Map<string, CanvasFlowNode>(), [])
+  // A row can also leave without React Flow reporting a removal — an asset
+  // deleted elsewhere takes its media node with it, an undo deletes what it
+  // made — so only ids still on the canvas count as selected.
+  const liveSelectedNodes = useMemo(() => {
+    const live = new Set(canvas.nodes.map((node) => node.id))
+    return selectedNodes.filter((id) => live.has(id))
+  }, [canvas.nodes, selectedNodes])
   const flowNodes: CanvasFlowNode[] = useMemo(
-    () => toFlowNodes(canvas.nodes, new Set(selectedNodes), flowNodeCache),
-    [canvas.nodes, selectedNodes, flowNodeCache]
+    () => toFlowNodes(canvas.nodes, new Set(liveSelectedNodes), flowNodeCache),
+    [canvas.nodes, liveSelectedNodes, flowNodeCache]
   )
 
   // React Flow applies pointer movement locally. Only persisted changes and
@@ -470,31 +504,15 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
       // Only settled positions (including keyboard nudges) reach the cache.
       if (moves.length > 0) mover.move(moves)
-      const selections = changes.filter((change) => change.type === "select")
-      if (selections.length > 0)
-        setSelectedNodes((current) => {
-          const selected = new Set(current)
-          for (const change of selections) {
-            if (change.selected) selected.add(change.id)
-            else selected.delete(change.id)
-          }
-          return [...selected]
-        })
+      if (changes.some(changesSelection))
+        setSelectedNodes((current) => applySelectionChanges(current, changes))
     },
     [mover]
   )
 
   const onEdgesChange = useCallback((changes: EdgeChange<CanvasFlowEdge>[]) => {
-    const selections = changes.filter((change) => change.type === "select")
-    if (selections.length > 0)
-      setSelectedEdges((current) => {
-        const selected = new Set(current)
-        for (const change of selections) {
-          if (change.selected) selected.add(change.id)
-          else selected.delete(change.id)
-        }
-        return [...selected]
-      })
+    if (changes.some(changesSelection))
+      setSelectedEdges((current) => applySelectionChanges(current, changes))
   }, [])
 
   const onNodeDragStart: OnNodeDrag<CanvasFlowNode> = useCallback(
@@ -1151,9 +1169,10 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
 
   /** The prompt bar belongs to exactly one selected generate node. */
   const selectedGenerateNode =
-    selectedNodes.length === 1
+    liveSelectedNodes.length === 1
       ? (canvas.nodes.find(
-          (node) => node.id === selectedNodes[0] && isGenerateNode(node.type)
+          (node) =>
+            node.id === liveSelectedNodes[0] && isGenerateNode(node.type)
         ) ?? null)
       : null
 
