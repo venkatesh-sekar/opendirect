@@ -146,6 +146,39 @@ describe("MediaViewer", () => {
     await waitFor(() => expect(viewer).toHaveTextContent("1 of 2"))
   })
 
+  it("stays on the same output when an earlier one lands while it is open", async () => {
+    const client = new QueryClient()
+    const viewer = (assets: AssetDto[], index: number) => (
+      <QueryClientProvider client={client}>
+        <MediaViewer
+          assets={assets}
+          index={index}
+          open
+          onClose={vi.fn()}
+          caption={(one) => ({ title: `Take ${one.id}` })}
+        />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(viewer(pair, 1))
+    const dialog = await screen.findByRole("dialog")
+    expect(dialog).toHaveTextContent("2 of 2")
+    expect(dialog).toHaveTextContent("Take asset-2")
+
+    // A batch sibling ahead of it finishes: everything after it shifts by one.
+    const earlier = asset({ id: "asset-0", relPath: "media/0.png" })
+    rerender(viewer([earlier, ...pair], 2))
+
+    await waitFor(() => expect(dialog).toHaveTextContent("3 of 3"))
+    expect(dialog).toHaveTextContent("Take asset-2")
+    invoke.mockResolvedValue({ ok: true })
+    fireEvent.click(screen.getByRole("button", { name: "Open" }))
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("shell:openAsset", {
+        assetId: "asset-2",
+      })
+    )
+  })
+
   it("opens and reveals the file on screen through the shell, and nothing else", async () => {
     invoke.mockResolvedValue({ ok: true })
     mount(<MediaViewer assets={pair} index={1} open onClose={vi.fn()} />)

@@ -167,26 +167,28 @@ export function MediaViewer({
 
   // `index` points into `assets`; the slides are the viewable subset of it.
   const requested = assets[index]
-  const start = Math.max(
-    0,
-    requested ? viewable.findIndex((asset) => asset.id === requested.id) : 0
-  )
+  const startId =
+    (requested && isViewable(requested) ? requested.id : viewable[0]?.id) ??
+    null
   /**
-   * The slide on screen, owned here rather than by the lightbox.
+   * The output on screen, owned here rather than by the lightbox — by *id*.
    *
    * The lightbox jumps back to its `index` prop whenever its slides change,
    * and on a canvas they change on every job push. Feeding it the slide the
-   * user is actually on keeps a refetch from yanking them back to the start.
-   * Reset to `start` on each open, during render, so the first frame of the
-   * viewer is already the right one.
+   * user is actually on keeps a refetch from yanking them back to the start;
+   * remembering which asset that is, not which position, keeps a batch
+   * sibling that lands *ahead* of it from swapping the picture under them.
+   * Reset on each open, during render, so the first frame is the right one.
    */
-  const [current, setCurrent] = useState(start)
+  const [currentId, setCurrentId] = useState(startId)
   const [wasOpen, setWasOpen] = useState(open)
   if (open !== wasOpen) {
     setWasOpen(open)
-    if (open) setCurrent(start)
+    if (open) setCurrentId(startId)
   }
-  const shownIndex = Math.min(current, Math.max(viewable.length - 1, 0))
+  const found = viewable.findIndex((asset) => asset.id === currentId)
+  // Gone from the set (deleted while open): back to the first.
+  const shownIndex = found >= 0 ? found : 0
   const shown = viewable[shownIndex] ?? null
 
   const openFile = useOpenAsset()
@@ -256,7 +258,12 @@ export function MediaViewer({
         captions={{ descriptionTextAlign: "center", descriptionMaxLines: 4 }}
         counter={{ separator: "of" }}
         toolbar={{ buttons: [...cropButtons, ...fileButtons, "zoom", "close"] }}
-        on={{ view: ({ index: next }) => setCurrent(next) }}
+        on={{
+          view: ({ index: next }) => {
+            const asset = viewable[next]
+            if (asset) setCurrentId(asset.id)
+          },
+        }}
         render={
           single ? { buttonPrev: () => null, buttonNext: () => null } : {}
         }
