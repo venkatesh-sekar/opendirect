@@ -50,7 +50,7 @@ import {
   type Asset,
 } from "../db/schema"
 import { assetKindFor, contentTypeFor, mediaUrl } from "../media"
-import { tierRelPath } from "../media-tier-paths"
+import { isPlainRelPath, tierRelPath } from "../media-tier-paths"
 import { assetRelPath, resolveAssetPath, type ProjectRef } from "../project"
 import { hashFile } from "./hash"
 import { createPreview, NO_PREVIEW, type Thumbnailer } from "./thumbnails"
@@ -308,9 +308,10 @@ export async function deleteAsset(
     files.push(asset.relPath)
     // The 1024/2048px copies the `asset://` protocol cached for the canvas.
     // Derived from the file, so they go when it goes — and stay while another
-    // row still names it.
-    for (const edge of ASSET_TIER_EDGES)
-      files.push(tierRelPath(asset.relPath, edge))
+    // row still names it. A path that could not have had a tier has none.
+    if (isPlainRelPath(asset.relPath))
+      for (const edge of ASSET_TIER_EDGES)
+        files.push(tierRelPath(asset.relPath, edge))
   }
   if (
     asset.thumbnailRelPath &&

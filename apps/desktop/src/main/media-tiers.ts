@@ -17,8 +17,8 @@
  * Electron-free, so it is tested against a temp folder like `media.ts`.
  */
 import { randomUUID } from "node:crypto"
-import { mkdir, rename, rm, stat } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { mkdir, realpath, rename, rm, stat } from "node:fs/promises"
+import { dirname, join, relative, sep } from "node:path"
 
 import { parseAssetTier, type AssetTierEdge } from "@opendirect/contract"
 import sharp from "sharp"
@@ -30,7 +30,7 @@ import {
   resolveMediaRequest,
   type MediaRequest,
 } from "./media"
-import { tierRelPath } from "./media-tier-paths"
+import { isPlainRelPath, TIER_ROOT, tierRelPath } from "./media-tier-paths"
 import { realAssetPath, type ProjectRef } from "./project"
 
 /** Formats a resize keeps intact. Not gif (animation) or svg (vector). */
@@ -58,6 +58,41 @@ async function mtimeOf(path: string): Promise<number | null> {
   }
 }
 
+function isWithin(path: string, folder: string): boolean {
+  return path === folder || path.startsWith(folder + sep)
+}
+
+/**
+ * Makes the tier's folder, but only if it really is under `thumbnails/`.
+ *
+ * The lexical path is already plain, but a symlink planted at `thumbnails/`
+ * or `thumbnails/w1024/` would carry `mkdir` and the write somewhere else
+ * entirely. So the nearest folder that already exists is resolved first and
+ * must be inside the real `thumbnails/` (or be the project root, when
+ * `thumbnails/` is not there yet), and the folder `mkdir` leaves is checked
+ * again before anything is written into it.
+ */
+async function prepareTierFolder(root: string, target: string) {
+  const thumbnails = join(root, TIER_ROOT)
+  const folder = dirname(target)
+  let existing = folder
+  let real: string | null = null
+  while (real === null) {
+    try {
+      real = await realpath(existing)
+    } catch {
+      const parent = dirname(existing)
+      if (parent === existing) return false
+      existing = parent
+    }
+  }
+  const allowed = existing === root ? real === root : isWithin(real, thumbnails)
+  if (!allowed) return false
+
+  await mkdir(folder, { recursive: true })
+  return isWithin(await realpath(folder), thumbnails)
+}
+
 /**
  * Writes the tier, or reports that the original should be served instead.
  *
@@ -66,6 +101,7 @@ async function mtimeOf(path: string): Promise<number | null> {
  */
 async function renderTier(
   sourcePath: string,
+  root: string,
   target: string,
   edge: AssetTierEdge
 ): Promise<boolean> {
@@ -77,7 +113,7 @@ async function renderTier(
     const height = metadata.autoOrient?.height ?? metadata.height
     if (!width || !height || Math.max(width, height) <= edge) return false
 
-    await mkdir(dirname(target), { recursive: true })
+    if (!(await prepareTierFolder(root, target))) return false
     await image
       .resize({
         width: edge,
@@ -98,9 +134,11 @@ async function renderTier(
 /**
  * Resolves an `asset://` URL, honouring a `?w=` tier when one helps.
  *
- * Every path still goes through `resolveMediaRequest` first, and the cached
- * tier is served through `realAssetPath`, so a tier cannot reach anything the
- * original request could not.
+ * Every path still goes through `resolveMediaRequest` first. The tier is then
+ * named from where the original *really* is, relative to the real project
+ * folder — never from the URL's own spelling, which may climb with `..%2F` —
+ * and is written and served only from inside `thumbnails/`, so a tier cannot
+ * reach anything the original request could not.
  */
 export async function resolveTieredMediaRequest(
   project: Pick<ProjectRef, "path">,
@@ -108,39 +146,44 @@ export async function resolveTieredMediaRequest(
 ): Promise<MediaRequest> {
   const original = await resolveMediaRequest(project, url)
   const edge = parseAssetTier(url)
-  const relPath = parseMediaUrl(url)
-  if (edge === null || relPath === null) return original
-
-  const [folder] = relPath.split("/")
-  if (!folder || !TIERED_FOLDERS.has(folder)) return original
-  if (!RESIZABLE_EXTENSIONS.has(extensionOf(relPath))) return original
-
-  const rel = tierRelPath(relPath, edge)
-  const target = join(project.path, rel)
-
-  // A cached tier older than its source is stale — the file was replaced.
-  const [sourceTime, tierTime] = await Promise.all([
-    mtimeOf(original.path),
-    mtimeOf(target),
-  ])
-  let ready = tierTime !== null && sourceTime !== null && tierTime >= sourceTime
-  if (!ready) {
-    let job = inFlight.get(target)
-    if (!job) {
-      job = renderTier(original.path, target, edge).finally(() =>
-        inFlight.delete(target)
-      )
-      inFlight.set(target, job)
-    }
-    ready = await job
-  }
-  if (!ready) return original
+  const asked = parseMediaUrl(url)
+  if (edge === null || asked === null || !isPlainRelPath(asked)) return original
 
   try {
-    return {
-      path: await realAssetPath(project, rel),
-      contentType: contentTypeFor(rel),
+    const root = await realpath(project.path)
+    // `original.path` is already real and inside `root`.
+    const relPath = relative(root, original.path).split(sep).join("/")
+    if (!isPlainRelPath(relPath)) return original
+
+    const [folder] = relPath.split("/")
+    if (!folder || !TIERED_FOLDERS.has(folder)) return original
+    if (!RESIZABLE_EXTENSIONS.has(extensionOf(relPath))) return original
+
+    const rel = tierRelPath(relPath, edge)
+    const target = join(root, rel)
+
+    // A cached tier older than its source is stale — the file was replaced.
+    const [sourceTime, tierTime] = await Promise.all([
+      mtimeOf(original.path),
+      mtimeOf(target),
+    ])
+    let ready =
+      tierTime !== null && sourceTime !== null && tierTime >= sourceTime
+    if (!ready) {
+      let job = inFlight.get(target)
+      if (!job) {
+        job = renderTier(original.path, root, target, edge).finally(() =>
+          inFlight.delete(target)
+        )
+        inFlight.set(target, job)
+      }
+      ready = await job
     }
+    if (!ready) return original
+
+    const served = await realAssetPath(project, rel)
+    if (!isWithin(served, join(root, TIER_ROOT))) return original
+    return { path: served, contentType: contentTypeFor(rel) }
   } catch {
     return original
   }
