@@ -18,6 +18,8 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { SaveAsContainerMenu } from "@/components/board/save-as-container"
 
+import { CanvasImage } from "./canvas-image"
+
 export interface AssetTileProps {
   asset: AssetDto
   className?: string
@@ -63,13 +65,11 @@ function renderTile(asset: AssetDto, className?: string): ReactElement {
   }
 
   if (asset.url) {
+    // The thumbnail when small, up to the original when zoomed in on.
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={asset.thumbnailUrl ?? asset.url}
+      <CanvasImage
+        asset={asset}
         alt={label}
-        loading="lazy"
-        decoding="async"
         className={cn("bg-muted object-cover", className)}
       />
     )

@@ -146,6 +146,11 @@ const nodeTypes = {
 const edgeTypes = { reference: memo(ReferenceEdge) }
 const INITIAL_NODES: CanvasFlowNode[] = []
 
+/** How far the user can zoom in; 8× shows a 320px node's photo at 2560px. */
+const MAX_ZOOM = 8
+/** Opening a canvas never fits a lone node closer than the old 2× limit. */
+const FIT_VIEW_OPTIONS = { maxZoom: 2 }
+
 /** The droppable id the sidebar's asset drag lands on. */
 export const CANVAS_DROPPABLE_ID = "canvas"
 
@@ -1345,8 +1350,11 @@ function CanvasSurfaceInner({ containerId }: CanvasProps) {
           zoomOnScroll
           zoomOnDoubleClick={false}
           minZoom={0.1}
-          maxZoom={2}
+          /* Far enough in to inspect a picture's own pixels: images swap to a
+             sharper file as the zoom needs it (see nodes/canvas-image.tsx). */
+          maxZoom={MAX_ZOOM}
           fitView
+          fitViewOptions={FIT_VIEW_OPTIONS}
           proOptions={{ hideAttribution: false }}
           className="min-h-0 flex-1"
         >

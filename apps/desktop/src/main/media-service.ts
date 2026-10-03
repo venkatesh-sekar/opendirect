@@ -13,13 +13,16 @@
  *   open project's media folders are opened; everything else — a traversal, a
  *   symlink out of the project, the database, a missing file — is the same
  *   opaque 404.
+ * - An image URL may carry `?w=1024` / `?w=2048`; `media-tiers.ts` answers it
+ *   with a cached downscale so a zoomed canvas need not decode the original.
  */
 import { pathToFileURL } from "node:url"
 
 import { net, protocol } from "electron"
 import log from "electron-log/main"
 
-import { MEDIA_SCHEME, resolveMediaRequest } from "./media"
+import { MEDIA_SCHEME } from "./media"
+import { resolveTieredMediaRequest } from "./media-tiers"
 import { getCurrentProject } from "./project-service"
 
 let registered = false
@@ -58,7 +61,9 @@ export function registerMediaProtocol(): void {
 
     let resolved
     try {
-      resolved = await resolveMediaRequest(project, request.url)
+      // A `?w=` tier is a cached downscale of the same file; anything else,
+      // or a tier that would not help, is the original.
+      resolved = await resolveTieredMediaRequest(project, request.url)
     } catch {
       // Outside the project, not a servable folder, not one of our URLs, or
       // simply missing — the renderer is told the same thing either way.

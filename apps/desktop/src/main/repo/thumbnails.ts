@@ -20,11 +20,11 @@
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-import type { AssetKind } from "@opendirect/contract"
+import { ASSET_THUMBNAIL_EDGE, type AssetKind } from "@opendirect/contract"
 import sharp from "sharp"
 
 /** Longest edge of a generated preview, in pixels. */
-export const THUMBNAIL_MAX_EDGE = 512
+export const THUMBNAIL_MAX_EDGE = ASSET_THUMBNAIL_EDGE
 
 export interface PreviewRequest {
   /** Absolute path of the file already copied into the project. */
@@ -57,8 +57,16 @@ export const createPreview: Thumbnailer = async (request) => {
   const relPath = thumbnailRelPath(request.assetId)
   const target = join(request.projectPath, relPath)
   try {
-    const image = sharp(request.sourcePath, { failOn: "none" })
-    const { width, height } = await image.metadata()
+    // `autoOrient` applies a phone photo's EXIF rotation, which the webp would
+    // otherwise drop — leaving the preview sideways beside an original that
+    // Chromium shows upright. The size recorded is the upright one too.
+    const image = sharp(request.sourcePath, {
+      failOn: "none",
+      autoOrient: true,
+    })
+    const metadata = await image.metadata()
+    const width = metadata.autoOrient?.width ?? metadata.width
+    const height = metadata.autoOrient?.height ?? metadata.height
     await mkdir(dirname(target), { recursive: true })
     await image
       // `inside` never upscales a small source and keeps the aspect ratio.
